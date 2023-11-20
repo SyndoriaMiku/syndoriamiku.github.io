@@ -14,7 +14,7 @@ $(document).ready(function () {
         //Automatic ID
         $.ajax({
             type: "GET",
-            url: "http://syndoria.pythonanywhere.com/api/new/",
+            url: "https://syndoria.pythonanywhere.com/api/new/",
             success: function (response) {
                 $("#player-id-input").val(response.id);
             }
@@ -50,7 +50,7 @@ $(document).ready(function () {
 
         $.ajax({
             type: "GET",
-            url: "http://syndoria.pythonanywhere.com/api/players/",
+            url: "https://syndoria.pythonanywhere.com/api/players/",
             success: function (response) {
                 for (let i=0; i<response.length; i++) {
                     let playerId = response[i].id;
@@ -89,7 +89,7 @@ $(document).ready(function () {
         //Post data
         $.ajax({
             type: "POST",
-            url: "http://syndoria.pythonanywhere.com/api/players/",
+            url: "https://syndoria.pythonanywhere.com/api/players/",
             data: JSON.stringify(data),
             dataType: "json",
             contentType: "application/json",
@@ -120,7 +120,7 @@ $(document).ready(function () {
         //Post data
         $.ajax({
             type: "POST",
-            url: "http://syndoria.pythonanywhere.com/api/result/",
+            url: "https://syndoria.pythonanywhere.com/api/result/",
             data: JSON.stringify(data),
             dataType: "json",
             contentType: "application/json",
@@ -149,7 +149,7 @@ $(document).ready(function () {
         //Post data
         $.ajax({
             type: "POST",
-            url: "http://syndoria.pythonanywhere.com/api/result/",
+            url: "https://syndoria.pythonanywhere.com/api/result/",
             data: JSON.stringify(data),
             dataType: "json",
             contentType: "application/json",
@@ -212,7 +212,7 @@ function loadData(query) {
     $("#player-table tbody").empty();
     $.ajax({
         type: "GET",
-        url: `http://syndoria.pythonanywhere.com/api/players/?query=${query}`,
+        url: `https://syndoria.pythonanywhere.com/api/players/?query=${query}`,
         success: function (response) {
             for (let i=0; i<response.length; i++) {
                 let playerId = response[i].id;
