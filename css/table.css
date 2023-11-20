@@ -1,0 +1,43 @@
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    border-spacing: unset;
+    border: unset;
+    background-color: #FFFFFF;
+}
+
+.table tr {
+    border-bottom: 1px solid #bbbbbb;
+    height: 48px;
+}
+
+.table tr td, th {
+    padding: 16px;
+    padding-right: 10px;
+}
+
+.text-left{
+    text-align: left;
+}
+
+.text-right{
+    text-align: right;
+}
+
+.text-center{
+    text-align: center;
+}
+
+.table tbody tr:hover {
+    background-color: #E9EBEE;
+    
+}
+
+.sort {
+    cursor: pointer;
+}
+
+.table-delete-cell {
+    padding: 6px !important;
+    width: 100px;
+}

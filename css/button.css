@@ -1,0 +1,55 @@
+@font-face {
+    font-family: Google;
+    src: url(../font/GoogleSans-Regular.otf);
+}
+
+.btn {
+    background-color: #019160;
+    border-radius: 4px;
+    border: none;
+    height: 40px;
+    padding: 0 24px;
+    font-size: 13px;
+    color: #FFFFFF;
+    text-align: center;
+    cursor: pointer;
+    min-width: 100px;
+    font-family: Google;
+}
+
+.icon-as-btn {
+    background-color: #FFFFFF;
+    border-radius: 4px;
+    border: none;
+    cursor: pointer;
+}
+
+.btn:hover {
+    background-color: #2FBE8E;
+}
+
+.btn:active {
+    background-color: #01B075;
+}
+
+.btn-icon {
+    background-repeat: no-repeat;
+    background-position: 16px center;
+    background-size: 16px 16px;
+    padding-left: 40px;
+    padding-right: 24px;
+}
+
+.delete-btn {
+    background-color: #F65454;
+}
+
+.delete-btn:hover {
+    background-color: #F65454;
+}
+
+.btn-dialog {
+    position: relative;
+    height: 36px;
+    margin: 12px 0;
+}  

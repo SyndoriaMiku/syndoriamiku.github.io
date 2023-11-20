@@ -1,0 +1,46 @@
+.dialog {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    right: 0;
+    background-color: rgba(0, 0, 0, 0.75);
+    z-index: 50;
+
+}
+
+.dialog-main {
+    position: absolute;
+    background-color: #FFFFFF;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    border-radius: 4px;
+}
+
+.dialog-footer {
+    width: 100%;
+    background-color: #BBBBBB;
+    align-items: center;
+    height: 60px;
+    border-bottom-left-radius: 4px;
+    border-bottom-right-radius: 4px;
+}
+
+.title-dialog {
+    padding: 24px 24px;
+    margin-block: 0;
+}
+
+.dialog-form {
+    padding: 0 24px;
+}
+
+.dialog-input {
+    display: block;
+}
+
+.field-row {
+    padding-bottom: 16px;
+}
