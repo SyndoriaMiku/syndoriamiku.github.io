@@ -1,0 +1,104 @@
+@import url(./css/button.css);
+@import url(./css/table.css);
+@import url(./css/dialog.css);
+
+
+@font-face {
+    font-family: Google;
+    src: url(./font/GoogleSans-Regular.otf);
+    font-size: 13px;
+}
+
+@font-face {
+    font-family: Google Bold;
+    src: url(./font/GoogleSans-Bold.otf);
+}
+
+@font-face {
+    font-family: Google Italic;
+    src: url(./font/GoogleSans-Italic.otf);
+}
+
+a:visited {
+    text-decoration: none;
+}
+
+a {
+    text-decoration: none;
+}
+
+body {
+    font-family: "Google";
+}
+
+.content {
+    background-color: #E9EBEE;
+    padding-left: 24px;
+}
+
+.row {
+    width: 100%;
+    display: flex;
+}
+
+.col-50 {
+    width: 50%;
+}
+
+.input {
+    font-family: Google;
+    height: 40px;
+    width: 180px;
+    color: #000000;
+    border-width: 1px;
+    border-radius: 4px;
+    border-color: #bbbbbb;
+    border-style: solid;
+    padding: 0 16px;
+}
+
+.input:focus {
+    border-color: #019160;
+}
+
+.input::placeholder {
+    font-size: 11px;
+    color: #bbbbbb;
+}
+
+.error {
+    border-color: #FF4747;
+}
+
+.input-icon {
+    background-repeat: no-repeat;
+    background-position: 16px center;
+    padding-left: 40px;
+}
+
+.combo-box {
+    font-family: Google;
+    border-width: 1px;
+    border-radius: 4px;
+    border-color: #BBBBBB;
+    border-style: solid;
+    height: 40px;
+}
+
+.combo-box option {
+    background-color: #E9EBEE;
+    margin: 40px;
+}
+
+.icon-16px {
+    width: 16px;
+    height: 16px;
+}
+
+.icon-24px {
+    width: 24px;
+    height: 24px;
+}
+
+
+

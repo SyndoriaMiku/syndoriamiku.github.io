@@ -60,7 +60,7 @@ $(document).ready(function () {
                     var option = $(`<option value="${playerId}">${playerName}</option>`);
 
                     //Append HTML to table
-                    $("#player-1").append(option);
+                    $("#player-1").append(option.clone());
                     $("#player-2").append(option.clone());
                 }
             }
