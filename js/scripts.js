@@ -70,6 +70,8 @@ $(document).ready(function () {
     //Cancel result dialog
     $("#btn-close-result").click(function () {
         off("#result-dialog");
+        $("#player-1").empty();
+        $("#player-2").empty();
     });
 
     //Add player button
@@ -132,6 +134,9 @@ $(document).ready(function () {
                 loadData("0");
             }
         });
+
+        $("#player-1").empty();
+        $("#player-2").empty();
     });
 
     //Report Player 2 Win
@@ -161,6 +166,9 @@ $(document).ready(function () {
                 loadData("0");
             }
         });
+
+        $("#player-1").empty();
+        $("#player-2").empty();
     });
 
 
