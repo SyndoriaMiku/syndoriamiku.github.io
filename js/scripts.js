@@ -70,8 +70,8 @@ $(document).ready(function () {
     //Cancel result dialog
     $("#btn-close-result").click(function () {
         off("#result-dialog");
-        $("#player-1").empty();
-        $("#player-2").empty();
+        $("#player-1").empty().append('<option value="0">Chọn người chơi</option>');
+        $("#player-2").empty().append('<option value="0">Chọn người chơi</option>');
     });
 
     //Add player button
@@ -135,8 +135,8 @@ $(document).ready(function () {
             }
         });
 
-        $("#player-1").empty();
-        $("#player-2").empty();
+        $("#player-1").empty().append('<option value="0">Chọn người chơi</option>');
+        $("#player-2").empty().append('<option value="0">Chọn người chơi</option>');
     });
 
     //Report Player 2 Win
