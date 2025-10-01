@@ -36,28 +36,37 @@ function login() {
         },
         success: function (response) {
             if (response.access) {
-                localStorage.setItem("access_token", response.access);
-            }
-            if (response.refresh) {
-                localStorage.setItem("refresh_token", response.refresh);
-            }
-            if (response.username) {
-                localStorage.setItem("username", response.username);
-            }
-            localStorage.setItem("is_admin", response.is_admin);
-            hideSpinner();
+                localStorage.setItem("access", response.access);  // Changed to match admin panel key
+                // Decode token to check admin status
+                const payload = JSON.parse(atob(response.access.split('.')[1]));
+                const isAdmin = payload.is_staff === true;
+                
+                if (response.refresh) {
+                    localStorage.setItem("refresh", response.refresh);
+                }
+                if (response.username) {
+                    localStorage.setItem("username", response.username);
+                }
+                
+                hideSpinner();
 
-            //Redirect to home
-            if (response.is_admin) {
-                window.location.href = "../admin/"; 
+                // Redirect based on decoded token's is_staff
+                if (isAdmin) {
+                    window.location.href = "/syndoriamiku.github.io/admin/";
+                } else {
+                    window.location.href = "/syndoriamiku.github.io/";
+                }
             } else {
-                window.location.href = "../";
+                showNoticeDialog("Lỗi: Token không hợp lệ!");
+                hideSpinner();
             }
-
-
         },
         error: function (error) {
-            showNoticeDialog("Đăng nhập thất bại!");
+            let errorMessage = "Đăng nhập thất bại!";
+            if (error.responseJSON && error.responseJSON.detail) {
+                errorMessage += " " + error.responseJSON.detail;
+            }
+            showNoticeDialog(errorMessage);
             hideSpinner();
         }
     })

@@ -1,0 +1,30 @@
+$(document).ready(function () {
+    //Check admin
+    if (!isAdmin()) {
+        window.location.href = "/syndoriamiku.github.io/user/login.html";
+        return;
+    }
+});
+
+/**
+ * Check if user is admin by decoding the JWT token and checking is_staff
+ * @returns {boolean}
+ */
+function isAdmin() {
+    const token = localStorage.getItem('access');
+    if (!token) {
+        return false;
+    }
+    
+    try {
+        // Get the payload part of the JWT token (second part)
+        const payload = token.split('.')[1];
+        // Decode the base64 payload
+        const decodedPayload = JSON.parse(atob(payload));
+        // Check if user is staff
+        return decodedPayload.is_staff === true;
+    } catch (error) {
+        console.error('Error decoding token:', error);
+        return false;
+    }
+}

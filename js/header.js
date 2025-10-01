@@ -1,5 +1,5 @@
 $(document).ready(function () {
-    const token = localStorage.getItem("access_token");
+    const token = localStorage.getItem("access");
     const $headerActions = $("#header-actions");
 
     if (token) {
@@ -35,11 +35,11 @@ $(document).ready(function () {
 });
 
 function logout() {
-    const refreshToken = localStorage.getItem("refresh_token");
+    const refreshToken = localStorage.getItem("refresh");
 
     if (!refreshToken) {
-        localStorage.removeItem("access_token");
-        localStorage.removeItem("refresh_token ");
+        localStorage.removeItem("access");
+        localStorage.removeItem("refresh");
         window.location.href = "/syndoriamiku.github.io/user/login.html";
         return;
     }
@@ -55,8 +55,8 @@ function logout() {
             showNoticeDialog(response.message || "Đăng xuất thành công");
 
             // Xóa token ở localStorage
-            localStorage.removeItem("access_token");
-            localStorage.removeItem("refresh_token");
+            localStorage.removeItem("access");
+            localStorage.removeItem("refresh");
 
             // Điều hướng về trang đăng nhập
             window.location.href = "/syndoriamiku.github.io/user/login.html";
@@ -65,8 +65,8 @@ function logout() {
             console.error("Lỗi khi logout:", xhr.responseJSON || xhr.statusText);
 
             // Dù lỗi vẫn xóa token localStorage và điều hướng
-            localStorage.removeItem("access_token");
-            localStorage.removeItem("refresh_token");
+            localStorage.removeItem("access");
+            localStorage.removeItem("refresh");
 
             window.location.href = "/syndoriamiku.github.io/user/login.html";
         }
