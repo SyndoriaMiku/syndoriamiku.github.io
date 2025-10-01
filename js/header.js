@@ -3,9 +3,13 @@ $(document).ready(function () {
     const $headerActions = $("#header-actions");
 
     if (token) {
-        // Nếu đã đăng nhập → Hiển thị Profile & Logout
+        // Decode token to get nickname
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        const nickname = payload.nickname || payload.username; // Use username if nickname is empty
+        
+        // Nếu đã đăng nhập → Hiển thị Hello & Logout
         $headerActions.html(`
-            <button class="header-btn" id="profile-btn">Trang cá nhân</button>
+            <button class="header-btn" id="profile-btn">Xin chào, ${nickname}</button>
             <button class="header-btn" id="logout-btn">Đăng xuất</button>
         `);
 
@@ -14,7 +18,7 @@ $(document).ready(function () {
         });
 
         $("#profile-btn").on("click", function () {
-            window.location.href = "user/profile.html"; // Bạn có thể sửa lại nếu cần
+            window.location.href = "/syndoriamiku.github.io/user/profile.html"; // Fixed path
         });
 
     } else {
@@ -45,7 +49,7 @@ function logout() {
     }
 
     $.ajax({
-        url: "https://gremory.pythonanywhere.com/api/logout/", // Đổi lại nếu URL khác
+        url: "https://gremory.pythonanywhere.com/api/logout/",
         type: "POST",
         contentType: "application/json",
         data: JSON.stringify({
