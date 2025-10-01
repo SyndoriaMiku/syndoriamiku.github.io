@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Path Test</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+</head>
+<body>
+    <h1>Testing JavaScript File Loading</h1>
+    <div id="test-results"></div>
+    
+    <script>
+        $(document).ready(function() {
+            var results = $("#test-results");
+            results.append("<p>jQuery loaded successfully!</p>");
+            
+            // Test if we can access the JS files
+            $.get("js/init.js")
+                .done(function() {
+                    results.append("<p>✅ js/init.js - Found</p>");
+                })
+                .fail(function() {
+                    results.append("<p>❌ js/init.js - Not found</p>");
+                });
+                
+            $.get("js/dialog.js")
+                .done(function() {
+                    results.append("<p>✅ js/dialog.js - Found</p>");
+                })
+                .fail(function() {
+                    results.append("<p>❌ js/dialog.js - Not found</p>");
+                });
+                
+            $.get("js/scripts.js")
+                .done(function() {
+                    results.append("<p>✅ js/scripts.js - Found</p>");
+                })
+                .fail(function() {
+                    results.append("<p>❌ js/scripts.js - Not found</p>");
+                });
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Test</title>
+</head>
+<body>
+    <h1>Debug Information</h1>
+    <div id="debug-info"></div>
+    
+    <script>
+        document.getElementById('debug-info').innerHTML = `
+            <p><strong>Location:</strong> ${window.location.href}</p>
+            <p><strong>Protocol:</strong> ${window.location.protocol}</p>
+            <p><strong>Host:</strong> ${window.location.host}</p>
+            <p><strong>Pathname:</strong> ${window.location.pathname}</p>
+        `;
+        
+        // Test if we can fetch a JS file
+        fetch('./js/init.js')
+            .then(response => {
+                if (response.ok) {
+                    return response.text();
+                } else {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+            })
+            .then(text => {
+                console.log('✅ Successfully fetched init.js');
+                console.log('First 100 characters:', text.substring(0, 100));
+            })
+            .catch(error => {
+                console.error('❌ Failed to fetch init.js:', error);
+            });
+    </script>
+</body>
+</html>
