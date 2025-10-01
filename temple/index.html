@@ -3,34 +3,42 @@
     <head>
         <meta charset="utf-8">
         <title>Home</title>
+
+        <!--jQuery Import-->
+        <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+        
+        <!-- Import -->
+        <script src="../js/init.js"></script>
+        <script src="../js/dialog.js"></script>
+        <script src="../js/spinner.js"></script>
+
         <!-- Stylesheets -->
         <link rel="stylesheet" href="../css/styles.css">
 
         <!-- Scripts -->
-        <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
         <script src="../js/scripts.js"></script>
     </head>
     <body>
         <div class="container">
-            <div class="header">
-                <h1 style="text-align: center;">Syndoria's Website</h1>
+            <div id="header-placeholder">
+                <!-- Header will be loaded here -->
             </div>
             <!-- Add navigation bar here -->
             <nav class="navbar">
                 <ul>
                     <li><a href="../index.html">Home</a></li>
                     <li><a href="../ytg/index.html">YTG Rankings</a></li>
-                    <li><a href="../temple/index.html"  class="active">VN Moon Elo Ranking</a></li>
+                    <li><a href="index.html"  class="active">VN Moon Elo Ranking</a></li>
 
                 </ul>
             </nav>
             <div class="content" style="background-color: #E9EBEE;">
                 <div id="elo" style="display: flex; align-items: center;">
                     <h3 class="title-content">Danh sách người chơi</h3>
-                    <button id="btn-add-player" class="icon-as-btn" style="position: absolute; right: 24px; background-color: transparent;"><img src="static/add.png"</button>
+                    <button id="btn-add-player" class="icon-as-btn" style="position: absolute; right: 24px; background-color: transparent;"><img src="../static/add.png"</button>
                 </div>
                 <div id="find-box" style="padding-bottom: 16px;">
-                    <input type="text" id="find-player" class="input input-icon" style="background-image: url(static/search.png);" placeholder="Tìm kiếm người chơi">
+                    <input type="text" id="find-player" class="input input-icon" style="background-image: url(../static/search.png);" placeholder="Tìm kiếm người chơi">
                 </div>
                 <div id="player-table">
                     <table class="table">

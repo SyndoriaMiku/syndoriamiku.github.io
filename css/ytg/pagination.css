@@ -1,0 +1,90 @@
+/* Container căn giữa (nếu cần) */
+#pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 6px;
+    list-style: none;
+    padding: 0 8px;
+    margin: 0;
+}
+
+/* Reset mặc định Bootstrap */
+#pagination .page-item {
+    margin: 0;
+}
+
+#pagination .page-link {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border-radius: 50%;
+    border: 1px solid #ddd;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 14px;
+    background-color: #fff;
+    color: #333;
+    transition: all 0.2s ease;
+}
+
+/* Active */
+#pagination .page-item.active .page-link {
+    background-color: #019160;
+    color: #fff !important;
+    border-color: #019160;
+}
+
+/* Hover */
+#pagination .page-link:hover {
+    background-color: #f1f1f1;
+    color: #019160;
+    text-decoration: none;
+    border-color: #ccc;
+}
+
+/* Nút mũi tên không tròn nếu muốn khác biệt */
+#pagination .page-item.arrow .page-link {
+    border-radius: 8px; /* Hoặc giữ tròn nếu bạn muốn */
+    width: 36px;
+}
+
+/* Input & nút Go */
+#pagination input#goto-page {
+    height: 36px;
+    padding: 0 8px;
+    font-size: 14px;
+    border-radius: 8px;
+    border: 1px solid #ccc;
+}
+
+#pagination #goto-go {
+    height: 36px;
+    padding: 0 10px;
+    border-radius: 8px;
+    background-color: #fff;
+    border: 1px solid #ddd;
+}
+
+#pagination #goto-go:hover {
+    background-color: #019160;
+    color: #fff;
+    border-color: #019160;
+}
+
+#pagination input#goto-page::-webkit-outer-spin-button,
+#pagination input#goto-page::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+/* Ẩn mũi tên trong Firefox */
+#pagination input#goto-page {
+    -moz-appearance: textfield;
+}
+
+#pagination li input#goto-page {
+    border-radius: 8px !important;   /* hoặc 0 nếu muốn vuông hoàn toàn */
+    width: 20px;
+}
