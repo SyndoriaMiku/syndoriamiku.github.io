@@ -1,0 +1,13 @@
+#find-box p {
+    margin: 0;
+    padding-right: 5px;
+}
+
+#find-box select {
+    margin-right: 15px;
+}
+
+#find-box {
+    display: flex;
+    align-items: center;
+}

@@ -13,85 +13,17 @@
     <body>
         <div class="container">
             <div class="header">
-                <h1 style="text-align: center;">Elo Ranking Grand Temple</h1>
+                <h1 style="text-align: center;">Syndoria's Website</h1>
             </div>
+            <!-- Add navigation bar here -->
+            <nav class="navbar">
+                <ul>
+                    <li><a href="index.html" class="active">Home</a></li>
+                    <li><a href="/ytg/index.html">YTG Rankings</a></li>
+                    <li><a href="/temple/index.html">VN Moon Elo Ranking</a></li>
+                </ul>
+            </nav>
             <div class="content" style="background-color: #E9EBEE;">
-                <div id="elo" style="display: flex; align-items: center;">
-                    <h3 class="title-content">Danh sách người chơi</h3>
-                    <button id="btn-add-player" class="icon-as-btn" style="position: absolute; right: 24px; background-color: transparent;"><img src="static/add.png"</button>
-                </div>
-                <div id="find-box" style="padding-bottom: 16px;">
-                    <input type="text" id="find-player" class="input input-icon" style="background-image: url(static/search.png);" placeholder="Tìm kiếm người chơi">
-                </div>
-                <div id="player-table">
-                    <table class="table">
-                        <thead>
-                            <tr>
-                                <td class="text-left sort">ID</td>
-                                <td class="text-left sort">Tên người chơi</td>
-                                <td class="text-left sort">Elo</td>
-                            </tr>
-                        </thead>
-                        <tbody>
-    
-                        </tbody>
-                    </table>
-                </div>
-                <div id="result-box" style="display: flex;text-align: center; height: 56px; align-items: center; justify-content: center;">
-                    <button id="result" class="btn">Cập nhật kết quả</button>
-                </div>
-            </div>
-            
-            <div class="dialog" id="player-dialog">
-                <div class="dialog-main" style="width: 500px; height: 200px">
-                    <div class="dialog-title">
-                        <h1 class="title-dialog">Thông tin người chơi</h1>
-                    </div>
-                    <div class="dialog-form">
-                        <div class="row field-row">
-                            <div class="col-50">
-                                <label for="player-id" class="title-field">ID <br></label>
-                                <input type="text" id="player-id-input" class="input dialog-input" disabled>
-                            </div>
-                            <div class="col-50">
-                                <label for="player-name" class="title-field">Tên người chơi</label>
-                                <input type="text" id="player-name-input" class="input dialog-input">
-                            </div>
-                        </div>
-                    </div>
-                    <div class="dialog-footer">
-                        <button class="btn btn-icon btn-dialog" id="btn-save-player" style="background-image: url(static/save.png); float: right; right: 24px;">Lưu</button>
-                        <button class="btn  btn-dialog" id="btn-cancel-add" style="float: left; left: 24px;">Hủy</button>
-                    </div>
-                </div>
-            </div>
-            <div class="dialog" id="result-dialog">
-                <div class="dialog-main" style="width: 500px;;">
-                    <div class="dialog-title" style="display: flex; align-items: center;">
-                        <h1 class="title-dialog">Kết quả trận đấu</h1>
-                        <button class="icon-as-btn" id="btn-close-result" style="position: absolute; right: 16px;"><img src="static/cancel.png" style=" width: 24px; height: 24px;"></button>
-                    </div>
-                    <div class="dialog-form">
-                        <div class="row field-row">
-                            <div class="col-50">
-                                <label for="player-1" class="title-field">Người chơi 1</label>
-                                <select id="player-1" class="input dialog-input">
-                                    <option value="0">Chọn người chơi</option>
-                                </select>
-                            </div>
-                            <div class="col-50">
-                                <label for="player-2" class="title-field"  style="float: right;">Người chơi 2</label>
-                                <select id="player-2" class="input dialog-input"  style="float: right;">
-                                    <option value="0">Chọn người chơi</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="dialog-footer">
-                        <button class="btn btn-dialog" id="btn-p1" style="float: left; left: 24px;">Người chơi 1 thắng</button>
-                        <button class="btn btn-dialog" id="btn-p2" style="float: right; right: 24px;">Người chơi 2 thắng</button>
-                    </div>
-                </div>
             </div>
         </div>
     </body>
