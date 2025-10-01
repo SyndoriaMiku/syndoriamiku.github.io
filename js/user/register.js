@@ -38,12 +38,8 @@ function register() {
             password: password
         },
         success: function (response) {
-            hideSpinner(); // Ẩn spinner
-            showNoticeDialog("Đăng ký thành công! Vui lòng đăng nhập.");
-            //Redirect to login after 2 seconds
-            setTimeout(function () {
-                window.location.href = "/syndoriamiku.github.io/user/login.html";
-            }, 2000);
+            // After successful registration, perform login
+            autoLogin(username, password);
         },
         error: function (error) {
             hideSpinner(); // Ẩn spinner
@@ -52,6 +48,62 @@ function register() {
             } else {
                 showNoticeDialog("Đăng ký thất bại! Vui lòng thử lại.");
             }
+        }
+    });
+}
+
+/**
+ * Auto login after successful registration
+ * @param {string} username 
+ * @param {string} password 
+ */
+function autoLogin(username, password) {
+    $.ajax({
+        type: "POST",
+        url: "https://gremory.pythonanywhere.com/api/login/",
+        data: {
+            username: username,
+            password: password
+        },
+        success: function (response) {
+            if (response.access) {
+                localStorage.setItem("access", response.access);
+                // Decode token to check admin status
+                const payload = JSON.parse(atob(response.access.split('.')[1]));
+                const isAdmin = payload.is_staff === true;
+                
+                if (response.refresh) {
+                    localStorage.setItem("refresh", response.refresh);
+                }
+                if (response.username) {
+                    localStorage.setItem("username", response.username);
+                }
+                
+                hideSpinner();
+                showNoticeDialog("Đăng ký và đăng nhập thành công!");
+
+                // Redirect after showing message
+                setTimeout(function() {
+                    if (isAdmin) {
+                        window.location.href = "/syndoriamiku.github.io/admin/";
+                    } else {
+                        window.location.href = "/syndoriamiku.github.io/";
+                    }
+                }, 1000);
+            } else {
+                hideSpinner();
+                showNoticeDialog("Đăng ký thành công nhưng đăng nhập thất bại. Vui lòng đăng nhập thủ công.");
+                setTimeout(function() {
+                    window.location.href = "/syndoriamiku.github.io/user/login.html";
+                }, 2000);
+            }
+        },
+        error: function (error) {
+            hideSpinner();
+            showNoticeDialog("Đăng ký thành công nhưng đăng nhập thất bại. Vui lòng đăng nhập thủ công.");
+            setTimeout(function() {
+                window.location.href = "/syndoriamiku.github.io/user/login.html";
+            }, 2000);
         }
     });
 }

@@ -6,6 +6,12 @@ $(document).ready(function () {
     }
 });
 
+// Listen for nav loaded event
+$(document).on('adminNavLoaded', function() {
+    //Set activate admin nav bar
+    $("#nav-admin-panel").addClass("active");
+});
+
 /**
  * Check if user is admin by decoding the JWT token and checking is_staff
  * @returns {boolean}
