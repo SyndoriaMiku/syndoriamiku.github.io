@@ -6,18 +6,18 @@
 
 @font-face {
     font-family: Google;
-    src: url(../font/GoogleSans-Regular.otf);
+    src: url(../font/GoogleSans-Regular.otf?v=2);
     font-size: 13px;
 }
 
 @font-face {
     font-family: Google Bold;
-    src: url(../font/GoogleSans-Bold.otf);
+    src: url(../font/GoogleSans-Bold.otf?v=2);
 }
 
 @font-face {
     font-family: Google Italic;
-    src: url(../font/GoogleSans-Italic.otf);
+    src: url(../font/GoogleSans-Italic.otf?v=2);
 }
 
 a:visited {
