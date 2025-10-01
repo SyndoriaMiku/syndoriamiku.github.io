@@ -85,16 +85,16 @@ function autoLogin(username, password) {
                 // Redirect after showing message
                 setTimeout(function() {
                     if (isAdmin) {
-                        window.location.href = "/syndoriamiku.github.io/admin/";
+                        navigateToPage("admin/index");
                     } else {
-                        window.location.href = "/syndoriamiku.github.io/";
+                        navigateToPage("index");
                     }
                 }, 1000);
             } else {
                 hideSpinner();
                 showNoticeDialog("Đăng ký thành công nhưng đăng nhập thất bại. Vui lòng đăng nhập thủ công.");
                 setTimeout(function() {
-                    window.location.href = "/syndoriamiku.github.io/user/login.html";
+                    navigateToPage("user/login");
                 }, 2000);
             }
         },
@@ -102,7 +102,7 @@ function autoLogin(username, password) {
             hideSpinner();
             showNoticeDialog("Đăng ký thành công nhưng đăng nhập thất bại. Vui lòng đăng nhập thủ công.");
             setTimeout(function() {
-                window.location.href = "/syndoriamiku.github.io/user/login.html";
+                navigateToPage("user/login");
             }, 2000);
         }
     });
