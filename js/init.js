@@ -39,6 +39,13 @@ $(document).ready(function () {
             console.error("Failed to load header.html:", xhr.status, xhr.statusText);
         } else {
             console.log("Successfully loaded header.html");
+            // Initialize header actions after header is loaded
+            if (typeof initializeHeaderActions === 'function') {
+                console.log("Calling initializeHeaderActions after header load");
+                initializeHeaderActions();
+            } else {
+                console.log("initializeHeaderActions function not found, will try later");
+            }
         }
     });
 });
