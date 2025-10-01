@@ -1,141 +1,136 @@
 // Function to initialize header actions - called after header is loaded
 function initializeHeaderActions() {
-    console.log("Initializing header actions...");
+    console.log("=== initializeHeaderActions called ===");
     const token = localStorage.getItem("access");
     const $headerActions = $("#header-actions");
 
+    console.log("Header actions element found:", $headerActions.length > 0);
+    console.log("Token exists:", token ? "YES" : "NO");
+
     if ($headerActions.length === 0) {
-        console.error("Header actions element not found!");
+        console.error("❌ Header actions element not found!");
         return;
     }
 
-    console.log("Header actions element found, token:", token ? "exists" : "not found");
-
     if (token) {
+        console.log("👤 User is logged in");
         try {
             // Decode token to get nickname
             const payload = JSON.parse(atob(token.split('.')[1]));
-            const nickname = payload.nickname || payload.username; // Use username if nickname is empty
+            const nickname = payload.nickname || payload.username || "User";
             
-            // Nếu đã đăng nhập → Hiển thị Hello & Logout
+            // Show logged in state
             $headerActions.html(`
-                <button class="header-btn" id="profile-btn">Xin chào, ${nickname}</button>
+                <button class="header-btn" id="profile-btn" style="margin-right: 10px;">Xin chào, ${nickname}</button>
                 <button class="header-btn" id="logout-btn">Đăng xuất</button>
             `);
 
-            $("#logout-btn").on("click", function () {
+            console.log("✅ Logged in buttons added for:", nickname);
+
+            // Add event listeners
+            $("#logout-btn").off('click').on("click", function () {
+                console.log("Logout clicked");
                 logout();
             });
 
-            $("#profile-btn").on("click", function () {
-                // Determine correct path based on current location
-                var currentPath = window.location.pathname;
-                var targetPath = "";
-                
-                if (currentPath.includes('/ytg/') || currentPath.includes('/temple/') || 
-                    currentPath.includes('/admin/') || currentPath.includes('/gacha/')) {
-                    targetPath = "../user/profile.html";
-                } else {
-                    targetPath = "user/profile.html";
-                }
+            $("#profile-btn").off('click').on("click", function () {
+                console.log("Profile clicked");
+                var targetPath = getRelativePath("user/profile.html");
                 window.location.href = targetPath;
             });
 
         } catch (error) {
-            console.error("Error decoding token:", error);
-            // If token is invalid, clear it and show login buttons
+            console.error("❌ Error decoding token:", error);
             localStorage.removeItem("access");
             localStorage.removeItem("refresh");
             showLoginButtons($headerActions);
         }
-
     } else {
+        console.log("🔑 User is not logged in");
         showLoginButtons($headerActions);
     }
 }
 
 function showLoginButtons($headerActions) {
-    // Nếu chưa đăng nhập → Hiển thị Login & Register
+    console.log("🔑 Showing login/register buttons");
+    
     $headerActions.html(`
-        <button class="header-btn" id="login-btn">Đăng nhập</button>
+        <button class="header-btn" id="login-btn" style="margin-right: 10px;">Đăng nhập</button>
         <button class="header-btn" id="register-btn">Đăng ký</button>
     `);
 
-    $("#login-btn").on("click", function () {
-        // Determine correct path based on current location
-        var currentPath = window.location.pathname;
-        var targetPath = "";
-        
-        if (currentPath.includes('/ytg/') || currentPath.includes('/temple/') || 
-            currentPath.includes('/admin/') || currentPath.includes('/gacha/')) {
-            targetPath = "../user/login.html";
-        } else {
-            targetPath = "user/login.html";
-        }
+    console.log("✅ Login/register buttons added to DOM");
+
+    // Add event listeners with debugging
+    $("#login-btn").off('click').on("click", function () {
+        console.log("Login button clicked");
+        var targetPath = getRelativePath("user/login.html");
+        console.log("Redirecting to:", targetPath);
         window.location.href = targetPath;
     });
 
-    $("#register-btn").on("click", function () {
-        // Determine correct path based on current location
-        var currentPath = window.location.pathname;
-        var targetPath = "";
-        
-        if (currentPath.includes('/ytg/') || currentPath.includes('/temple/') || 
-            currentPath.includes('/admin/') || currentPath.includes('/gacha/')) {
-            targetPath = "../user/register.html";
-        } else {
-            targetPath = "user/register.html";
-        }
+    $("#register-btn").off('click').on("click", function () {
+        console.log("Register button clicked");
+        var targetPath = getRelativePath("user/register.html");
+        console.log("Redirecting to:", targetPath);
         window.location.href = targetPath;
     });
 }
 
-// Try to initialize when DOM is ready
+function getRelativePath(targetFile) {
+    var currentPath = window.location.pathname;
+    var relativePath = "";
+    
+    if (currentPath.includes('/ytg/') || currentPath.includes('/temple/') || 
+        currentPath.includes('/admin/') || currentPath.includes('/gacha/')) {
+        relativePath = "../" + targetFile;
+    } else {
+        relativePath = targetFile;
+    }
+    
+    console.log("Current path:", currentPath, "→ Target:", relativePath);
+    return relativePath;
+}
+
+// Simple DOM ready approach
 $(document).ready(function () {
-    console.log("header.js DOM ready");
+    console.log("=== header.js DOM ready ===");
     
-    // Try to initialize immediately
-    initializeHeaderActions();
-    
-    // Also set up a mutation observer to watch for when header is loaded
-    const observer = new MutationObserver(function(mutations) {
-        mutations.forEach(function(mutation) {
-            if (mutation.type === 'childList') {
-                const headerActions = document.getElementById('header-actions');
-                if (headerActions && headerActions.innerHTML.includes('<!-- Sẽ được js/header.js tự động render -->')) {
-                    console.log("Header placeholder detected, initializing actions...");
-                    initializeHeaderActions();
-                    observer.disconnect(); // Stop observing once we've initialized
-                }
-            }
-        });
-    });
-    
-    // Start observing
-    observer.observe(document.body, {
-        childList: true,
-        subtree: true
-    });
-    
-    // Fallback: try again after a short delay
-    setTimeout(function() {
-        if ($("#header-actions").length > 0 && $("#header-actions").children().length === 0) {
-            console.log("Fallback: Trying to initialize header actions after delay...");
+    // Try multiple times to initialize
+    function tryInitialize(attempt) {
+        console.log("Attempt", attempt, "to initialize header actions");
+        
+        if ($("#header-actions").length > 0) {
+            console.log("✅ Header actions element found, initializing...");
             initializeHeaderActions();
+            return;
         }
-    }, 1000);
+        
+        if (attempt < 10) {
+            console.log("❌ Header actions not found, retrying in 500ms...");
+            setTimeout(() => tryInitialize(attempt + 1), 500);
+        } else {
+            console.error("❌ Failed to find header actions after 10 attempts");
+        }
+    }
+    
+    // Start trying
+    tryInitialize(1);
 });
 
 function logout() {
+    console.log("🔓 Logout function called");
     const refreshToken = localStorage.getItem("refresh");
 
     if (!refreshToken) {
+        console.log("No refresh token, clearing storage and redirecting");
         localStorage.removeItem("access");
         localStorage.removeItem("refresh");
         redirectToLogin();
         return;
     }
 
+    console.log("Attempting logout via API...");
     $.ajax({
         url: "https://gremory.pythonanywhere.com/api/logout/",
         type: "POST",
@@ -144,40 +139,28 @@ function logout() {
             refresh: refreshToken
         }),
         success: function (response) {
+            console.log("✅ Logout successful:", response);
             if (typeof showNoticeDialog === 'function') {
                 showNoticeDialog(response.message || "Đăng xuất thành công");
             }
 
-            // Xóa token ở localStorage
             localStorage.removeItem("access");
             localStorage.removeItem("refresh");
-
-            // Điều hướng về trang đăng nhập
             redirectToLogin();
         },
         error: function (xhr) {
-            console.error("Lỗi khi logout:", xhr.responseJSON || xhr.statusText);
-
-            // Dù lỗi vẫn xóa token localStorage và điều hướng
+            console.error("❌ Logout error:", xhr.responseJSON || xhr.statusText);
+            // Clear tokens anyway
             localStorage.removeItem("access");
             localStorage.removeItem("refresh");
-
             redirectToLogin();
         }
     });
 }
 
 function redirectToLogin() {
-    // Determine correct path based on current location
-    var currentPath = window.location.pathname;
-    var targetPath = "";
-    
-    if (currentPath.includes('/ytg/') || currentPath.includes('/temple/') || 
-        currentPath.includes('/admin/') || currentPath.includes('/gacha/')) {
-        targetPath = "../user/login.html";
-    } else {
-        targetPath = "user/login.html";
-    }
+    var targetPath = getRelativePath("user/login.html");
+    console.log("🔄 Redirecting to login:", targetPath);
     window.location.href = targetPath;
 }
 
