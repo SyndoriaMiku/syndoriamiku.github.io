@@ -79,11 +79,6 @@
     margin: 0;
 }
 
-/* Ẩn mũi tên trong Firefox */
-#pagination input#goto-page {
-    -moz-appearance: textfield;
-}
-
 #pagination li input#goto-page {
     border-radius: 8px !important;   /* hoặc 0 nếu muốn vuông hoàn toàn */
     width: 20px;

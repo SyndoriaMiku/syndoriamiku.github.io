@@ -1,6 +1,20 @@
+$(document).ready(function() {
+    //Login button click
+    $("#login-button").click(function() {
+        login();
+    });
 
+    //Enter key press in input fields
+    $("#login-username, #login-password").keypress(function(e) {
+        if (e.which === 13) { // Enter key pressed
+            login();
+        }
+    });
+});
 
-
+/**
+ * Login function
+ */
 
 function login() {
     const username = document.getElementById("login-username").value;
