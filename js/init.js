@@ -35,4 +35,25 @@ $(document).ready(function () {
             }
         }
     });
+    
+    // Load navigation and set active state
+    $("#nav-placeholder").load(staticPath + "nav_home.html", function(response, status, xhr) {
+        if (status == "error") {
+            console.error("Failed to load nav_home.html:", xhr.status, xhr.statusText);
+        } else {
+            // Set active navigation item based on current path
+            var $nav = $("#nav-placeholder");
+            
+            if (currentPath.includes('/ytg/')) {
+                // YTG pages
+                $nav.find('a[href="/ytg/"]').addClass('active');
+            } else if (currentPath.includes('/temple/')) {
+                // Temple pages
+                $nav.find('a[href="/temple/"]').addClass('active');
+            } else {
+                // Home page (default for all other pages including root)
+                $nav.find('a[href="/"]').addClass('active');
+            }
+        }
+    });
 });

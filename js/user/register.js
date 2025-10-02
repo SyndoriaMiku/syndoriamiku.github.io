@@ -85,9 +85,9 @@ function autoLogin(username, password) {
                 // Redirect after showing message
                 setTimeout(function() {
                     if (isAdmin) {
-                        navigateToPage("admin/index");
+                        navigateToPage("/admin/index");
                     } else {
-                        navigateToPage("index");
+                        navigateToPage("/");
                     }
                 }, 1000);
             } else {

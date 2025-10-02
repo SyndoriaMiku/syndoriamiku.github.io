@@ -1,9 +1,6 @@
 $(document).ready(function () {
-    //Check admin
-    if (!isAdmin()) {
-        window.location.href = "/syndoriamiku.github.io/user/login.html";
-        return;
-    }
+    // Admin access is already checked in admin-init.js
+    // No additional check needed here
 
     // Load users into select
     loadUsers();
@@ -16,7 +13,7 @@ $(document).ready(function () {
 
     // Handle cancel button
     $("#cancel-button").click(function() {
-        window.location.href = "/syndoriamiku.github.io/admin/";
+        window.location.href = "/admin/";
     });
 
     // Handle add row button
@@ -35,29 +32,6 @@ $(document).on('adminNavLoaded', function() {
     //Set activate tournament nav bar
     $("#nav-admin-tournament").addClass("active");
 });
-
-/**
- * Check if user is admin by decoding the JWT token and checking is_staff
- * @returns {boolean}
- */
-function isAdmin() {
-    const token = localStorage.getItem('access');
-    if (!token) {
-        return false;
-    }
-    
-    try {
-        // Get the payload part of the JWT token (second part)
-        const payload = token.split('.')[1];
-        // Decode the base64 payload
-        const decodedPayload = JSON.parse(atob(payload));
-        // Check if user is staff
-        return decodedPayload.is_staff === true;
-    } catch (error) {
-        console.error('Error decoding token:', error);
-        return false;
-    }
-}
 
 /**
  * Load users into select
