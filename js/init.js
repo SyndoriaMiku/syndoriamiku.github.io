@@ -1,24 +1,18 @@
 $(document).ready(function () {
-    // Determine the correct path to static files based on current location
-    var currentPath = window.location.pathname;
-    var staticPath = "";
-    
-    staticPath = "/static/";
-    
     // Load static components with error handling
-    $("#dialog-placeholder").load(staticPath + "dialog_notice.html", function(response, status, xhr) {
+    $("#dialog-placeholder").load("/static/dialog_notice.html", function(response, status, xhr) {
         if (status == "error") {
             console.error("Failed to load dialog_notice.html:", xhr.status, xhr.statusText);
         }
     });
     
-    $("#spinner-placeholder").load(staticPath + "spinner.html", function(response, status, xhr) {
+    $("#spinner-placeholder").load("/static/spinner.html", function(response, status, xhr) {
         if (status == "error") {
             console.error("Failed to load spinner.html:", xhr.status, xhr.statusText);
         }
     });
     
-    $("#header-placeholder").load(staticPath + "header.html", function(response, status, xhr) {
+    $("#header-placeholder").load("/static/header.html", function(response, status, xhr) {
         if (status == "error") {
             console.error("Failed to load header.html:", xhr.status, xhr.statusText);
         } else {
@@ -30,17 +24,17 @@ $(document).ready(function () {
     });
     
     // Load navigation and set active state
-    $("#nav-placeholder").load(staticPath + "nav_home.html", function(response, status, xhr) {
+    $("#nav-placeholder").load("/static/nav_home.html", function(response, status, xhr) {
         if (status == "error") {
             console.error("Failed to load nav_home.html:", xhr.status, xhr.statusText);
         } else {
             // Set active navigation item based on current path
             var $nav = $("#nav-placeholder");
             
-            if (currentPath.includes('/ytg/')) {
+            if (window.location.pathname.includes('/ytg/')) {
                 // YTG pages
                 $nav.find('a[href="/ytg/"]').addClass('active');
-            } else if (currentPath.includes('/temple/')) {
+            } else if (window.location.pathname.includes('/temple/')) {
                 // Temple pages
                 $nav.find('a[href="/temple/"]').addClass('active');
             } else {
