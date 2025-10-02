@@ -3,14 +3,7 @@ $(document).ready(function () {
     var currentPath = window.location.pathname;
     var staticPath = "";
     
-    // If we're in a subdirectory, we need to go up one level
-    if (currentPath.includes('/ytg/') || currentPath.includes('/temple/') || 
-        currentPath.includes('/user/') || currentPath.includes('/admin/') || 
-        currentPath.includes('/gacha/')) {
-        staticPath = "../static/";
-    } else {
-        staticPath = "./static/";
-    }
+    staticPath = "/static/";
     
     // Load static components with error handling
     $("#dialog-placeholder").load(staticPath + "dialog_notice.html", function(response, status, xhr) {
