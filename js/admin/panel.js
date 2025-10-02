@@ -1,7 +1,7 @@
 $(document).ready(function () {
     //Check admin
     if (!isAdmin()) {
-        window.location.href = "/syndoriamiku.github.io/user/login.html";
+        window.location.href = "/user/login.html";
         return;
     }
 });

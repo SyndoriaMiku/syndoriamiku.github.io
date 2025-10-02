@@ -52,9 +52,9 @@ function login() {
 
                 // Redirect based on decoded token's is_staff
                 if (isAdmin) {
-                    window.location.href = "/syndoriamiku.github.io/admin/";
+                    window.location.href = "/admin/";
                 } else {
-                    window.location.href = "/syndoriamiku.github.io/";
+                    window.location.href = "/";
                 }
             } else {
                 showNoticeDialog("Lỗi: Token không hợp lệ!");
