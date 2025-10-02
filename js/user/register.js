@@ -43,8 +43,8 @@ function register() {
         },
         error: function (error) {
             hideSpinner(); // Ẩn spinner
-            if (error.responseJSON && error.responseJSON.error) {
-                showNoticeDialog("Đăng ký thất bại: " + error.responseJSON.error);
+            if (error.responseJSON) {
+                showNoticeDialog("Đăng ký thất bại: " + error.responseJSON.message);
             } else {
                 showNoticeDialog("Đăng ký thất bại! Vui lòng thử lại.");
             }

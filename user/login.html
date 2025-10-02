@@ -7,17 +7,24 @@
 
     <!--jQuery Import-->
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+    <script>
+        $.ajaxSetup({
+            headers: {
+                'Accept-Language': 'vi'
+            }
+        });
+    </script>
 
     <!-- Import -->
-    <script src="../js/init.js"></script>
-    <script src="../js/dialog.js"></script>
-    <script src="../js/spinner.js"></script>
-    <link rel="stylesheet" href="../css/user/auth.css">
-    <link rel="stylesheet" href="../css/dialog_notice.css">
-    <link rel="stylesheet" href="../css/spinner.css">
+    <script src="/js/init.js"></script>
+    <script src="/js/dialog.js"></script>
+    <script src="/js/spinner.js"></script>
+    <link rel="stylesheet" href="/css/user/auth.css">
+    <link rel="stylesheet" href="/css/dialog_notice.css">
+    <link rel="stylesheet" href="/css/spinner.css">
 
-    <script src="../js/user/auth.js"></script>
-    <script src="../js/user/login.js"></script>
+    <script src="/js/user/auth.js"></script>
+    <script src="/js/user/login.js"></script>
 
 </head>
 <body>
@@ -40,7 +47,7 @@
             <button id="login-button" type="button" class="btn auth-btn">Đăng nhập</button>
 
             <p class="auth-link">
-                Chưa có tài khoản? <a href="register.html">Đăng ký</a>
+                Chưa có tài khoản? <a href="/user/register.html">Đăng ký</a>
             </p>
         </form>
     </div>

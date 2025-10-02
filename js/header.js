@@ -26,7 +26,7 @@ function initializeHeaderActions() {
             });
 
             $("#profile-btn").off('click').on("click", function () {
-                var targetPath = getRelativePath("user/profile.html");
+                var targetPath = getRelativePath("/user/profile.html");
                 window.location.href = targetPath;
             });
 
@@ -49,13 +49,11 @@ function showLoginButtons($headerActions) {
 
     // Add event listeners with debugging
     $("#login-btn").off('click').on("click", function () {
-        var targetPath = getRelativePath("user/login.html");
-        window.location.href = targetPath;
+        window.location.href = "/user/login.html";
     });
 
     $("#register-btn").off('click').on("click", function () {
-        var targetPath = getRelativePath("user/register.html");
-        window.location.href = targetPath;
+        window.location.href = "/user/register.html";
     });
 }
 

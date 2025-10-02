@@ -6,21 +6,28 @@
 
         <!--jQuery Import-->
         <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+        <script>
+            $.ajaxSetup({
+                headers: {
+                    'Accept-Language': 'vi'
+                }
+            });
+        </script>
 
         <!-- Import -->
-        <script src="../js/dialog.js"></script>
-        <script src="../js/spinner.js"></script>
-        <script src="../js/header.js"></script>
-        <script src="../js/init.js"></script>
+        <script src="/js/dialog.js"></script>
+        <script src="/js/spinner.js"></script>
+        <script src="/js/header.js"></script>
+        <script src="/js/init.js"></script>
 
         <!-- Stylesheets -->
-        <link rel="stylesheet" href="../css/styles.css">
-        <link rel="stylesheet" href="../css/header.css">
-        <link rel="stylesheet" href="../css/dialog_notice.css">
-        <link rel="stylesheet" href="../css/spinner.css">
+        <link rel="stylesheet" href="/css/styles.css">
+        <link rel="stylesheet" href="/css/header.css">
+        <link rel="stylesheet" href="/css/dialog_notice.css">
+        <link rel="stylesheet" href="/css/spinner.css">
 
         <!-- Scripts -->
-        <script src="../js/user/profile.js"></script>
+        <script src="/js/user/profile.js"></script>
     </head>
     <body>
         <div class="container">
@@ -40,7 +47,11 @@
                 <div class="user-profile" style="text-align: center; padding: 24px;">
                     <p>Username: <span id="profile-username">Tên Người Dùng</span></p>
                     <p>Nickname: <span id="profile-nickname">Nickname</span></p>
-                    <p>Total point: <span id="profile-total-points">0</span></p>
+                    <p>Total points: <span id="profile-total-points">0</span></p>
+                    <p>This month ranking points: <span id="profile-monthly-points">0</span></p>
+                    <div style="margin-top: 20px; text-align: center;">
+                        <a href="edit_profile.html" class="btn" style="text-decoration: none; display: flex; align-items: center; justify-content: center; width: 120px; margin: 0 auto;">Edit Profile</a>
+                    </div>
                 </div>
             </div>
         </div>

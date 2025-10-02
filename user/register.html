@@ -6,22 +6,31 @@
     <title>Đăng ký</title>
     <!--jQuery Import-->
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+    <script>
+        $.ajaxSetup({
+            headers: {
+                'Accept-Language': 'vi'
+            }
+        });
+    </script>
 
     <!-- Import -->
-    <script src="../js/path-utils.js"></script>
-    <script src="../js/dialog.js"></script>
-    <script src="../js/spinner.js"></script>
-    <script src="../js/header.js"></script>
-    <script src="../js/init.js"></script>
+    <script src="/js/path-utils.js"></script>
+    <script src="/js/dialog.js"></script>
+    <script src="/js/spinner.js"></script>
+    <script src="/js/header.js"></script>
+    <script src="/js/init.js"></script>
 
-    <link rel="stylesheet" href="../css/user/auth.css">
-    <link rel="stylesheet" href="../css/dialog_notice.css">
-    <link rel="stylesheet" href="../css/spinner.css">
-    <script src="../js/user/auth.js"></script>
-    <script src="../js/user/register.js"></script>
+    <link rel="stylesheet" href="/css/user/auth.css">
+    <link rel="stylesheet" href="/css/dialog_notice.css">
+    <link rel="stylesheet" href="/css/spinner.css">
+    <script src="/js/user/auth.js"></script>
+    <script src="/js/user/register.js"></script>
 </head>
 <body>
     <div class="auth-container">
+        <div id="spinner-placeholder"></div>
+        <div id="dialog-placeholder"></div>
         <div style="text-align: left; margin-bottom: 20px;">
             <a href="/" style="text-decoration: none; color: #019160; font-weight: bold; font-size: 14px;">← Trang chủ</a>
         </div>
@@ -45,7 +54,7 @@
             <button id="register-button" type="button" class="btn auth-btn">Đăng ký</button>
 
             <p class="auth-link">
-                Đã có tài khoản? <a href="login.html">Đăng nhập</a>
+                Đã có tài khoản? <a href="/user/login.html">Đăng nhập</a>
             </p>
         </form>
     </div>

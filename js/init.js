@@ -30,17 +30,19 @@ $(document).ready(function () {
         } else {
             // Set active navigation item based on current path
             var $nav = $("#nav-placeholder");
+            var currentPath = window.location.pathname;
             
-            if (window.location.pathname.includes('/ytg/')) {
+            if (currentPath.includes('/ytg/')) {
                 // YTG pages
                 $nav.find('a[href="/ytg/"]').addClass('active');
-            } else if (window.location.pathname.includes('/temple/')) {
+            } else if (currentPath.includes('/temple/')) {
                 // Temple pages
                 $nav.find('a[href="/temple/"]').addClass('active');
-            } else {
-                // Home page (default for all other pages including root)
+            } else if (currentPath === '/' || currentPath === '/index.html') {
+                // Home page (only for root folder)
                 $nav.find('a[href="/"]').addClass('active');
             }
+            // No active class added for other pages (user, admin, gacha, etc.)
         }
     });
 });

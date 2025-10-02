@@ -2,29 +2,28 @@ $(document).ready(function() {
     // Check if user is logged in
     const token = localStorage.getItem("access");
     if (!token) {
-        window.location.href = "/syndoriamiku.github.io/user/login.html";
+        window.location.href = "/user/login.html";
         return;
     }
     
     try {
-        // Decode token to get user info
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        
-        // Get user information from payload
-        const username = payload.username;
-        const nickname = payload.nickname || username; // Use username if nickname is empty
-        const point = payload.point || 0; // Regular points
-        const rankingPoint = payload.ranking_point || 0; // Ranking points
-        const totalPoints = point + rankingPoint; // Calculate total points
-        
-        // Display user info
-        $("#profile-username").text(username);
-        $("#profile-nickname").text(nickname);
-        $("#profile-total-points").text(totalPoints);
-        
+        // Get all user info from API
+        $.ajax({
+            type: "GET",
+            url: "https://gremory.pythonanywhere.com/api/user/",
+            headers: {
+                "Authorization": "Bearer " + token
+            },
+            success: function(response) {
+                // Get the payload part of the JWT token (second part)
+                $("#profile-username").text(response.username);
+                $("#profile-nickname").text(response.nickname || response.username);
+                $("#profile-total-points").text(response.point_balance || "0");
+                $("#profile-monthly-points").text(response.this_month_ranking_points || "0");
+            }
+        });
     } catch (error) {
-        console.error('Error decoding token:', error);
-        showNoticeDialog("Error loading profile information");
-        window.location.href = "/syndoriamiku.github.io/user/login.html";
+        showNoticeDialog("Error loading profile data!");
+        window.location.href = "/";
     }
 });
