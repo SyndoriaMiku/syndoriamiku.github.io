@@ -52,4 +52,22 @@
     position: relative;
     height: 36px;
     margin: 12px 0;
-}  
+}
+
+.add-row-btn, .delete-row-btn {
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background-color: #ffffff;
+    transition: background-color 0.2s;
+}
+
+.add-row-btn:hover {
+    background-color: #e8f5e8;
+    border-color: #019160;
+}
+
+.delete-row-btn:hover {
+    background-color: #ffeaea;
+    border-color: #F65454;
+}

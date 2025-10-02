@@ -25,6 +25,18 @@
     box-sizing: border-box;
 }
 
+/* Hide number input arrows */
+.form-control[type="number"]::-webkit-outer-spin-button,
+.form-control[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.form-control[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
 .form-actions {
     margin-top: 20px;
 }
