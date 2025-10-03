@@ -2,31 +2,6 @@ $(document).ready(function() {
     // Load current user data
     loadCurrentUserData();
     
-    // Function to load current user data
-    function loadCurrentUserData() {
-        const token = localStorage.getItem("access");
-        if (!token) {
-            window.location.href = "/user/login.html";
-            return;
-        }
-        
-        $.ajax({
-            type: "GET",
-            url: "https://gremory.pythonanywhere.com/api/user/",
-            headers: {
-                "Authorization": "Bearer " + token
-            },
-            success: function(response) {
-                // Load current nickname into the form
-                $("#current-username").val(response.nickname || response.username);
-            },
-            error: function(xhr, status, error) {
-                console.error("Failed to load user data:", error);
-                // Don't redirect on error, just leave the current nickname field empty
-            }
-        });
-    }
-    
     // Username change form handler
     $('#username-form').on('submit', function(e) {
         e.preventDefault();
@@ -153,3 +128,32 @@ $(document).ready(function() {
         });
     });
 });
+
+/**
+ * Load current user data into the form fields.
+ * @returns {void}
+ */
+
+function loadCurrentUserData() {
+    const token = localStorage.getItem("access");
+    if (!token) {
+        window.location.href = "/user/login.html";
+        return;
+    }
+    
+    $.ajax({
+        type: "GET",
+        url: "https://gremory.pythonanywhere.com/api/user/",
+        headers: {
+            "Authorization": "Bearer " + token
+        },
+        success: function(response) {
+            // Load current nickname into the form
+            $("#current-username").val(response.nickname || response.username);
+        },
+        error: function(xhr, status, error) {
+            console.error("Failed to load user data:", error);
+            // Don't redirect on error, just leave the current nickname field empty
+        }
+    });
+}
