@@ -31,11 +31,6 @@ $(document).ready(function() {
             return;
         }
         
-        if (!currentUsername) {
-            showNoticeDialog("Unable to get current username. Please refresh the page.");
-            return;
-        }
-        
         const token = localStorage.getItem("access");
         if (!token) {
             showNoticeDialog("You must be logged in to change your username!");
@@ -54,12 +49,11 @@ $(document).ready(function() {
                 "Content-Type": "application/json"
             },
             data: JSON.stringify({
-                "username": currentUsername,
                 "nickname": newUsername
             }),
             success: function(response) {
                 hideSpinner();
-                showNoticeDialog("Username changed successfully!");
+                showNoticeDialog("Thay đổi nickname thành công!");
                 $('#new-username').val(''); // Clear the form
                 
                 // Optional: Update the profile display if needed
@@ -69,7 +63,7 @@ $(document).ready(function() {
             },
             error: function(xhr, status, error) {
                 hideSpinner();
-                let errorMessage = "Failed to change username!";
+                let errorMessage = "Thay đổi nickname thất bại";
                 
                 if (xhr.responseJSON && xhr.responseJSON.message) {
                     errorMessage = xhr.responseJSON.message;
@@ -127,8 +121,7 @@ $(document).ready(function() {
             }),
             success: function(response) {
                 hideSpinner();
-                showNoticeDialog("Password changed successfully!");
-                
+                showNoticeDialog("Thay đổi mật khẩu thành công!");
                 // Clear the form
                 $('#current-password').val('');
                 $('#new-password').val('');
@@ -141,7 +134,7 @@ $(document).ready(function() {
             },
             error: function(xhr, status, error) {
                 hideSpinner();
-                let errorMessage = "Failed to change password!";
+                let errorMessage = "Thay đổi mật khẩu thất bại!";
                 
                 if (xhr.responseJSON && xhr.responseJSON.message) {
                     errorMessage = xhr.responseJSON.message;
