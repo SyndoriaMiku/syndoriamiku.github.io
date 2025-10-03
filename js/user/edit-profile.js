@@ -6,6 +6,9 @@ $(document).ready(function() {
         return;
     }
     
+    // Store current user data
+    let currentUserData = null;
+    
     // Load current user data
     loadCurrentUserData();
     
@@ -17,6 +20,11 @@ $(document).ready(function() {
         
         if (!newUsername) {
             showNoticeDialog("Please enter a new username!");
+            return;
+        }
+        
+        if (!currentUserData) {
+            showNoticeDialog("User data not loaded. Please refresh the page.");
             return;
         }
         
@@ -38,6 +46,7 @@ $(document).ready(function() {
                 "Content-Type": "application/json"
             },
             data: JSON.stringify({
+                "username": currentUserData.username,
                 "nickname": newUsername
             }),
             success: function(response) {
@@ -155,6 +164,8 @@ function loadCurrentUserData() {
             "Authorization": "Bearer " + token
         },
         success: function(response) {
+            // Store user data for later use
+            currentUserData = response;
             // Load current nickname into the form
             $("#current-username").val(response.nickname || response.username);
         },
