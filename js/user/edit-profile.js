@@ -6,8 +6,16 @@ $(document).ready(function() {
         return;
     }
     
-    // Store current user data
-    let currentUserData = null;
+    // Decode JWT token to get username
+    let currentUsername = null;
+    try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        currentUsername = payload.username;
+    } catch (error) {
+        console.error("Failed to decode token:", error);
+        window.location.href = "/user/login.html";
+        return;
+    }
     
     // Load current user data
     loadCurrentUserData();
@@ -23,8 +31,8 @@ $(document).ready(function() {
             return;
         }
         
-        if (!currentUserData) {
-            showNoticeDialog("User data not loaded. Please refresh the page.");
+        if (!currentUsername) {
+            showNoticeDialog("Unable to get current username. Please refresh the page.");
             return;
         }
         
@@ -46,7 +54,7 @@ $(document).ready(function() {
                 "Content-Type": "application/json"
             },
             data: JSON.stringify({
-                "username": currentUserData.username,
+                "username": currentUsername,
                 "nickname": newUsername
             }),
             success: function(response) {
@@ -164,10 +172,8 @@ function loadCurrentUserData() {
             "Authorization": "Bearer " + token
         },
         success: function(response) {
-            // Store user data for later use
-            currentUserData = response;
             // Load current nickname into the form
-            $("#current-username").val(response.nickname || response.username);
+            $("#current-username").val(response.nickname || currentUsername);
         },
         error: function(xhr, status, error) {
             console.error("Failed to load user data:", error);
