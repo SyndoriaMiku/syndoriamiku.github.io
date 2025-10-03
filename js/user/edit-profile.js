@@ -90,17 +90,17 @@ $(document).ready(function() {
         
         // Validation
         if (!currentPassword || !newPassword || !confirmPassword) {
-            showNoticeDialog("Please fill in all password fields!");
+            showNoticeDialog("Vui lòng điền tất cả các trường mật khẩu!");
             return;
         }
         
         if (newPassword !== confirmPassword) {
-            showNoticeDialog("New passwords do not match!");
+            showNoticeDialog("Mật khẩu mới không khớp");
             return;
         }
         
-        if (newPassword.length < 6) {
-            showNoticeDialog("New password must be at least 6 characters long!");
+        if (newPassword.length < 8) {
+            showNoticeDialog("Mật khẩu phải ít nhất 8 ký tự");
             return;
         }
         
