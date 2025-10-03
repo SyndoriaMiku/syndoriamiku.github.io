@@ -128,7 +128,7 @@ function logout() {
 }
 
 function redirectToLogin() {
-    var targetPath = getRelativePath("user/login.html");
+    var targetPath = getRelativePath("/user/login.html");
     window.location.href = targetPath;
 }
 
