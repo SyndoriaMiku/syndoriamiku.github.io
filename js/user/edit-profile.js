@@ -1,4 +1,11 @@
 $(document).ready(function() {
+    // Check if user is logged in first
+    const token = localStorage.getItem("access");
+    if (!token) {
+        window.location.href = "/user/login.html";
+        return;
+    }
+    
     // Load current user data
     loadCurrentUserData();
     
