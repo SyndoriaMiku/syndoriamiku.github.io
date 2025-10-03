@@ -52,16 +52,20 @@
                 </div>
 
                 <div style="display: flex; gap: 40px; justify-content: center; flex-wrap: wrap; padding: 20px;">
-                    <!-- Change Username Form -->
+                    <!-- Change Nickname Form -->
                     <div class="form-container" style="max-width: 400px; width: 100%;">
-                        <h2>Change Username</h2>
+                        <h2>Change Nickname</h2>
                         <form id="username-form">
                             <div class="form-group">
-                                <label for="new-username">New Username:</label>
+                                <label for="current-username">Current Nickname:</label>
+                                <input type="text" id="current-username" class="form-control" disabled>
+                            </div>
+                            <div class="form-group">
+                                <label for="new-username">New Nickname:</label>
                                 <input type="text" id="new-username" class="form-control" required>
                             </div>
                             <div class="form-actions">
-                                <button type="submit" class="btn btn-primary">Change Username</button>
+                                <button type="submit" class="btn btn-primary">Change Nickname</button>
                             </div>
                         </form>
                     </div>
