@@ -49,23 +49,38 @@ $(document).ready(function () {
  */
 function loadRank(year, month, page, pageSize) {
     $("#rank-table tbody").empty();
+    showSpinner(); // Show loading spinner
+    
     $.ajax({
         type: "GET",
         url: `https://gremory.pythonanywhere.com/api/ranking/monthly/?year=${year}&month=${month}&page=${page}&pageSize=${pageSize}`,
         success: function (response) {
+            hideSpinner(); // Hide loading spinner
             for (let i = 0; i < response.results.length; i++) {
                 //Calculate rank
                 let startRank = (response.current_page - 1) * response.page_size + 1;
                 //Get data
                 let rank = startRank + i;
                 let playerName = response.results[i].nickname;
+                let username = response.results[i].username || playerName; // Use username if available, fallback to nickname
                 let totalPoints = response.results[i].ranking_earned;
-                //Build HTML
-                let row = $(`<tr>
+                //Build HTML with double-click functionality
+                let row = $(`<tr class="ranking-row" data-username="${username}" style="cursor: pointer;">
                     <td>${rank}</td>
                     <td>${playerName}</td>
                     <td>${totalPoints}</td>
                 </tr>`);
+                
+                // Add double-click event to redirect to search page
+                row.on('dblclick', function() {
+                    const username = $(this).data('username');
+                    const year = $("#year-select").val();
+                    const month = $("#month-select").val();
+                    
+                    // Redirect to search page with query parameters
+                    window.location.href = `search.html?username=${encodeURIComponent(username)}&year=${year}&month=${month}`;
+                });
+                
                 //Append HTML to table
                 $("#rank-table tbody").append(row);
             }
@@ -73,6 +88,10 @@ function loadRank(year, month, page, pageSize) {
             loadPagination(response.current_page, response.total_pages, response.year, response.month, pageSize);
             
             
+        },
+        error: function(xhr) {
+            hideSpinner(); // Hide spinner on error
+            showNoticeDialog("Có lỗi xảy ra khi tải dữ liệu. Vui lòng thử lại!");
         }
     });
 }

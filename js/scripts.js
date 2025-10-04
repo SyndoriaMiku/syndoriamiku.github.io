@@ -218,10 +218,14 @@ function off(target) {
 
 function loadData(query) {
     $("#player-table tbody").empty();
+    showSpinner(); // Show loading spinner
+    
     $.ajax({
         type: "GET",
         url: `https://syndoria.pythonanywhere.com/api/players/?query=${query}`,
         success: function (response) {
+            hideSpinner(); // Hide loading spinner
+            
             for (let i=0; i<response.length; i++) {
                 let playerId = response[i].id;
                 let playerName = response[i].name;
@@ -235,6 +239,10 @@ function loadData(query) {
                 //Append HTML to table
                 $("#player-table tbody").append(row);
             }
+        },
+        error: function(xhr) {
+            hideSpinner(); // Hide spinner on error
+            showNoticeDialog("Có lỗi xảy ra khi tải dữ liệu. Vui lòng thử lại!");
         }
     })
 

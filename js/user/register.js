@@ -10,6 +10,34 @@ $(document).ready(function () {
             register();
         }
     });
+
+    // Toggle password visibility for main password field
+    $("#toggle-reg-password").click(function() {
+        const passwordField = $("#reg-password");
+        const eyeIcon = $("#reg-eye-icon");
+        
+        if (passwordField.attr("type") === "password") {
+            passwordField.attr("type", "text");
+            eyeIcon.text("🙈"); // Hide eye icon
+        } else {
+            passwordField.attr("type", "password");
+            eyeIcon.text("👁️"); // Show eye icon
+        }
+    });
+
+    // Toggle password visibility for confirm password field
+    $("#toggle-reg-confirm").click(function() {
+        const confirmField = $("#reg-confirm");
+        const eyeIcon = $("#reg-confirm-eye-icon");
+        
+        if (confirmField.attr("type") === "password") {
+            confirmField.attr("type", "text");
+            eyeIcon.text("🙈"); // Hide eye icon
+        } else {
+            confirmField.attr("type", "password");
+            eyeIcon.text("👁️"); // Show eye icon
+        }
+    });
 });
 
 /**

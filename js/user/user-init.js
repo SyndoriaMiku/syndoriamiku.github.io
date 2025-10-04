@@ -7,6 +7,8 @@ $(document).ready(function() {
     }
     
     try {
+        showSpinner(); // Show loading spinner
+        
         // Get all user info from API
         $.ajax({
             type: "GET",
@@ -15,14 +17,22 @@ $(document).ready(function() {
                 "Authorization": "Bearer " + token
             },
             success: function(response) {
+                hideSpinner(); // Hide loading spinner
+                
                 // Get the payload part of the JWT token (second part)
                 $("#profile-username").text(response.username);
                 $("#profile-nickname").text(response.nickname || response.username);
                 $("#profile-total-points").text(response.point_balance || "0");
                 $("#profile-monthly-points").text(response.this_month_ranking_points || "0");
+            },
+            error: function(xhr) {
+                hideSpinner(); // Hide spinner on error
+                showNoticeDialog("Không thể tải thông tin người dùng!");
+                window.location.href = "/user/login.html";
             }
         });
     } catch (error) {
+        hideSpinner(); // Hide spinner on error
         showNoticeDialog("Error loading profile data!");
         window.location.href = "/";
     }

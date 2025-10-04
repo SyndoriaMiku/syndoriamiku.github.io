@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <title>Home</title>
+
+        <!--jQuery Import-->
+        <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+        <script>
+            $.ajaxSetup({
+                headers: {
+                    'Accept-Language': 'vi'
+                }
+            });
+        </script>
+
+        <!-- Import -->
+        <script src="/js/dialog.js"></script>
+        <script src="/js/spinner.js"></script>
+        <script src="/js/header.js"></script>
+        <script src="/js/init.js"></script>
+
+        <!-- Stylesheets -->
+        <link rel="stylesheet" href="/css/styles.css">
+        <link rel="stylesheet" href="/css/header.css">
+        <link rel="stylesheet" href="/css/dialog_notice.css">
+        <link rel="stylesheet" href="/css/spinner.css">
+        
+        <!-- Scripts -->
+        <script src="/js/ytg/search.js"></script>
+    </head>
+    <body>
+        <div class="container">
+            <div id="header-placeholder">
+                <!-- Header will be loaded here -->
+            </div>
+            <div id="dialog-placeholder">
+                <!-- Dialog will be loaded here -->
+            </div>
+            <div id="spinner-placeholder">
+                <!-- Spinner will be loaded here -->
+            </div>
+            <div id="nav-placeholder">
+                <!-- Navigation will be loaded here -->
+            </div>
+            <div class="content" style="background-color: #E9EBEE;">
+                <div class="search-container">
+                    <h3 class="title-content">Tìm kiếm người chơi</h3>
+                    
+                    <!-- Search Form -->
+                    <div class="search-form">
+                        <!-- Text input for player name -->
+                        <div class="form-group">
+                            <label for="player-name">Tên người chơi:</label>
+                            <input type="text" id="player-name" class="input" placeholder="Nhập tên người chơi" />
+                        </div>
+                        
+                        <!-- Year and Month selectors -->
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="year-select">Năm:</label>
+                                <select id="year-select" class="input">
+                                    <option value="2025" selected>2025</option>
+                                    <option value="2024">2024</option>
+                                    <option value="2023">2023</option>
+                                </select>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="month-select">Tháng:</label>
+                                <select id="month-select" class="input">
+                                    <option value="1">Một</option>
+                                    <option value="2">Hai</option>
+                                    <option value="3">Ba</option>
+                                    <option value="4">Bốn</option>
+                                    <option value="5">Năm</option>
+                                    <option value="6">Sáu</option>
+                                    <option value="7">Bảy</option>
+                                    <option value="8">Tám</option>
+                                    <option value="9">Chín</option>
+                                    <option value="10">Mười</option>
+                                    <option value="11">Mười Một</option>
+                                    <option value="12">Mười Hai</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <!-- Search Button -->
+                        <div class="form-group">
+                            <button id="search-btn" class="btn btn-icon" style="background-image: url(/static/search.png);">Tìm kiếm</button>
+                        </div>
+                    </div>
+                    
+                    <!-- Results Display -->
+                    <div class="search-results" id="search-results">
+                        <div class="result-card" id="result-card" style="display: none;">
+                            <h4>Kết quả tìm kiếm</h4>
+                            <div class="player-info">
+                                <div class="info-item">
+                                    <span class="label">Nickname:</span>
+                                    <span class="value" id="player-nickname">-</span>
+                                </div>
+                                <div class="info-item">
+                                    <span class="label">Điểm ranking:</span>
+                                    <span class="value" id="ranking-points">-</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="no-results" id="no-results" style="display: none;">
+                            <p>Không tìm thấy kết quả phù hợp.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </body>
+</html>

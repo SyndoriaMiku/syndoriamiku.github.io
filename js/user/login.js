@@ -10,6 +10,20 @@ $(document).ready(function() {
             login();
         }
     });
+
+    // Toggle password visibility
+    $("#toggle-password").click(function() {
+        const passwordField = $("#login-password");
+        const eyeIcon = $("#eye-icon");
+        
+        if (passwordField.attr("type") === "password") {
+            passwordField.attr("type", "text");
+            eyeIcon.text("🙈"); // Hide eye icon
+        } else {
+            passwordField.attr("type", "password");
+            eyeIcon.text("👁️"); // Show eye icon
+        }
+    });
 });
 
 /**

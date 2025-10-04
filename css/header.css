@@ -12,6 +12,25 @@
     z-index: 1000;
 }
 
+.header-logo-link {
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+}
+
+.header-banner {
+    max-height: 120px;
+    height: auto;
+    width: auto;
+    max-width: 600px;
+    cursor: pointer;
+    transition: opacity 0.3s ease;
+}
+
+.header-banner:hover {
+    opacity: 0.8;
+}
+
 .header-title {
     margin: 0;
     font-size: 20px;
