@@ -1,4 +1,32 @@
-$(document).ready(function () {
+$(document).ready(function() {
+    // Toggle password visibility for main password field
+    $("#toggle-reg-password").click(function() {
+        const passwordField = $("#reg-password");
+        const eyeIcon = $("#reg-eye-icon");
+        
+        if (passwordField.attr("type") === "password") {
+            passwordField.attr("type", "text");
+            eyeIcon.attr("src", "/static/show.png"); // Show eye icon when password is visible
+        } else {
+            passwordField.attr("type", "password");
+            eyeIcon.attr("src", "/static/invisible.png"); // Hide eye icon when password is hidden
+        }
+    });
+    
+    // Toggle password visibility for confirm password field
+    $("#toggle-reg-confirm").click(function() {
+        const confirmField = $("#reg-confirm");
+        const eyeIcon = $("#reg-confirm-eye-icon");
+        
+        if (confirmField.attr("type") === "password") {
+            confirmField.attr("type", "text");
+            eyeIcon.attr("src", "/static/show.png"); // Show eye icon when password is visible
+        } else {
+            confirmField.attr("type", "password");
+            eyeIcon.attr("src", "/static/invisible.png"); // Hide eye icon when password is hidden
+        }
+    });
+    
     //Register button click
     $("#register-button").click(function () {
         register();
@@ -18,10 +46,10 @@ $(document).ready(function () {
         
         if (passwordField.attr("type") === "password") {
             passwordField.attr("type", "text");
-            eyeIcon.text("🙈"); // Hide eye icon
+            eyeIcon.text("�️"); // Show eye icon when password is visible
         } else {
             passwordField.attr("type", "password");
-            eyeIcon.text("👁️"); // Show eye icon
+            eyeIcon.text("�"); // Hide eye icon when password is hidden
         }
     });
 
@@ -32,10 +60,10 @@ $(document).ready(function () {
         
         if (confirmField.attr("type") === "password") {
             confirmField.attr("type", "text");
-            eyeIcon.text("🙈"); // Hide eye icon
+            eyeIcon.text("�️"); // Show eye icon when password is visible
         } else {
             confirmField.attr("type", "password");
-            eyeIcon.text("👁️"); // Show eye icon
+            eyeIcon.text("�"); // Hide eye icon when password is hidden
         }
     });
 });

@@ -43,8 +43,15 @@ body {
     z-index: 1;
 }
 
-.toggle-password-btn:hover {
-    color: #019160;
+.toggle-password-btn img {
+    width: 16px;
+    height: 16px;
+    opacity: 0.7;
+    transition: opacity 0.3s ease;
+}
+
+.toggle-password-btn:hover img {
+    opacity: 1;
 }
 
 .toggle-password-btn:focus {

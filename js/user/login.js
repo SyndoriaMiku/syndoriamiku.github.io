@@ -1,5 +1,5 @@
 $(document).ready(function() {
-    //Login button click
+    // Login button click event
     $("#login-button").click(function() {
         login();
     });
@@ -18,10 +18,10 @@ $(document).ready(function() {
         
         if (passwordField.attr("type") === "password") {
             passwordField.attr("type", "text");
-            eyeIcon.text("🙈"); // Hide eye icon
+            eyeIcon.attr("src", "/static/show.png"); // Show eye icon when password is visible
         } else {
             passwordField.attr("type", "password");
-            eyeIcon.text("👁️"); // Show eye icon
+            eyeIcon.attr("src", "/static/invisible.png"); // Hide eye icon when password is hidden
         }
     });
 });
