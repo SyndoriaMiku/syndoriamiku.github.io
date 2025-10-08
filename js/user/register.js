@@ -33,37 +33,9 @@ $(document).ready(function() {
     });
 
     //Enter key press in input fields
-    $("#register-username, #register-password, #register-confirm-password").keypress(function (e) {
+    $("#reg-username, #reg-password, #reg-confirm").keypress(function (e) {
         if (e.which === 13) { // Enter key pressed
             register();
-        }
-    });
-
-    // Toggle password visibility for main password field
-    $("#toggle-reg-password").click(function() {
-        const passwordField = $("#reg-password");
-        const eyeIcon = $("#reg-eye-icon");
-        
-        if (passwordField.attr("type") === "password") {
-            passwordField.attr("type", "text");
-            eyeIcon.text("�️"); // Show eye icon when password is visible
-        } else {
-            passwordField.attr("type", "password");
-            eyeIcon.text("�"); // Hide eye icon when password is hidden
-        }
-    });
-
-    // Toggle password visibility for confirm password field
-    $("#toggle-reg-confirm").click(function() {
-        const confirmField = $("#reg-confirm");
-        const eyeIcon = $("#reg-confirm-eye-icon");
-        
-        if (confirmField.attr("type") === "password") {
-            confirmField.attr("type", "text");
-            eyeIcon.text("�️"); // Show eye icon when password is visible
-        } else {
-            confirmField.attr("type", "password");
-            eyeIcon.text("�"); // Hide eye icon when password is hidden
         }
     });
 });
