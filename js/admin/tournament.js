@@ -154,14 +154,15 @@ function addParticipantRow() {
             <td>
                 <select class="form-control position-select" required>
                     <option value="">Select Position</option>
-                    <option value="1">1st Place</option>
-                    <option value="2">2nd Place</option>
-                    <option value="3">3rd Place</option>
-                    <option value="4">4th Place</option>
-                    <option value="5">5th Place</option>
-                    <option value="6">6th Place</option>
-                    <option value="7">7th Place</option>
-                    <option value="8">8th Place</option>
+                    <option value="1st">1st Place</option>
+                    <option value="2nd">2nd Place</option>
+                    <option value="3rd">3rd Place</option>
+                    <option value="4th">4th Place</option>
+                    <option value="3rd-4th">3rd-4th Place</option>
+                    <option value="5th-6th">5th-6th Place</option>
+                    <option value="7th-8th">7th-8th Place</option>
+                    <option value="5th-8th">5th-8th Place</option>
+                    <option value="9th-16th">9th-16th Place</option>
                 </select>
             </td>
             <td>
