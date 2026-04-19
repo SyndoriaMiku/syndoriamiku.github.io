@@ -1,45 +1,55 @@
 <!DOCTYPE html>
-<html>
+<html lang="vi">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Thư Viện Truyện</title>
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <title>Thư Viện Cá Nhân</title>
+    <script src="https://code.jquery.com/jquery-4.0.0.js"
+        integrity="sha256-9fsHeVnKBvqh3FB2HYu7g2xseAZ5MlN6Kz/qnkASV8U=" crossorigin="anonymous"></script>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 
-<body class="bg-zinc-950 text-zinc-300 p-6">
+<body class="bg-zinc-950 text-zinc-400 p-6 font-sans">
     <div class="max-w-xl mx-auto">
-        <h1 class="text-2xl font-bold text-white mb-8 border-b border-zinc-800 pb-4">Danh Sách Truyện</h1>
-        <div id="story-list" class="space-y-4">
-            <p class="text-zinc-600">Đang tải danh sách...</p>
+        <header class="mb-12">
+            <h1 class="text-3xl font-bold text-white mb-2">My Stories</h1>
+            <p class="text-zinc-600 text-sm">Kho lưu trữ nội dung cá nhân.</p>
+        </header>
+
+        <div id="story-list" class="space-y-3">
+            <div class="animate-pulse bg-zinc-900 h-16 rounded-lg"></div>
         </div>
     </div>
 
     <script>
-        $(document).ready(function () {
-            // Đọc file list.json (do Python tạo ra)
-            $.getJSON('list.json', function (data) {
-                $('#story-list').empty();
-                if (data.length === 0) {
-                    $('#story-list').html('<p>Chưa có truyện nào.</p>');
+        $(function () {
+            const $list = $('#story-list');
+
+            // Lấy danh sách từ list.json (thêm timestamp để tránh cache)
+            $.getJSON('list.json?v=' + Date.now(), function (data) {
+                $list.empty();
+
+                if (!data || data.length === 0) {
+                    $list.html('<p class="text-center py-10">Chưa có "tài liệu" nào được tải lên.</p>');
                     return;
                 }
 
-                // Sắp xếp truyện mới nhất lên đầu
+                // Sắp xếp: Truyện mới cập nhật lên đầu
                 data.sort((a, b) => b.timestamp - a.timestamp);
 
-                $.each(data, function (i, item) {
-                    const link = `
-                        <a href="./${item.slug}/" class="block p-4 bg-zinc-900 hover:bg-zinc-800 rounded-lg border border-zinc-800 transition-colors">
-                            <div class="text-zinc-100 font-medium">${item.title}</div>
-                            <div class="text-xs text-zinc-500 mt-1">Cập nhật: ${item.date}</div>
+                $.each(data, function (i, story) {
+                    const itemHtml = `
+                        <a href="./${story.slug}/" class="group block p-4 bg-zinc-900/50 hover:bg-zinc-800 border border-zinc-900 hover:border-zinc-700 rounded-xl transition-all">
+                            <div class="flex justify-between items-center">
+                                <h3 class="text-zinc-100 font-medium group-hover:text-blue-400 transition-colors">${story.title}</h3>
+                                <span class="text-[10px] text-zinc-600 uppercase tracking-widest">${story.date}</span>
+                            </div>
                         </a>`;
-                    $('#story-list').append(link);
+                    $list.append(itemHtml);
                 });
             }).fail(function () {
-                $('#story-list').html('<p class="text-red-500">Lỗi: Không tìm thấy file list.json</p>');
+                $list.html('<p class="text-red-900">Không tìm thấy list.json. Hãy chạy builder.py trước.</p>');
             });
         });
     </script>
