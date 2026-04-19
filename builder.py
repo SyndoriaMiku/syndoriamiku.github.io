@@ -45,7 +45,7 @@ def translate(text):
     except: return None
 
 def build_story():
-    txt_path = input("Kéo file .txt tiếng Trung vào: ").strip('"')
+    txt_path = input("Kéo file .txt tiếng Trung vào: ").strip().replace('"', '').replace("'", "")
     slug = input("Nhập slug-name (VD: truyen-hay-01): ").strip()
     
     if not os.path.exists(txt_path) or not slug:
