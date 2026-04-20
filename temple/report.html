@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <title>Home</title>
+
+        <!--jQuery Import-->
+        <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+        <script>
+            $.ajaxSetup({
+                headers: {
+                    'Accept-Language': 'vi'
+                }
+            });
+        </script>
+        
+        <!-- Import -->
+        <script src="/js/dialog.js"></script>
+        <script src="/js/spinner.js"></script>
+        <script src="/js/header.js"></script>
+        <script src="/js/init.js"></script>
+
+        <!-- Stylesheets -->
+        <link rel="stylesheet" href="/css/styles.css">
+        <link rel="stylesheet" href="/css/header.css">
+        <link rel="stylesheet" href="/css/dialog_notice.css">
+        <link rel="stylesheet" href="/css/spinner.css">
+        <link rel="stylesheet" href="/css/temple/report.css">
+
+        <!-- Scripts -->
+        <script src="/js/temple/temple.js"></script>
+        <script src="/js/temple/report.js"></script>
+    </head>
+    <body>
+        <div class="container">
+            <div id="header-placeholder">
+                <!-- Header will be loaded here -->
+            </div>
+            <div id="dialog-placeholder">
+                <!-- Dialog will be loaded here -->
+            </div>
+            <div id="spinner-placeholder">
+                <!-- Spinner will be loaded here -->
+            </div>
+            <!-- Navigation will be loaded here -->
+            <div id="nav-placeholder">
+                <!-- Navigation will be loaded here -->
+            </div>
+            <div class="content" style="background-color: #E9EBEE;">
+                <div class="bulk-report-wrapper" style="padding: 20px; max-width: 1200px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-top: 20px;">
+                    <h2 style="margin-top: 0;">Bulk Match Report</h2>
+                    <form id="bulk-report-form">
+                        <div style="margin-bottom: 20px;">
+                            <label for="tournament-name"><strong>Tournament Name:</strong></label>
+                            <input type="text" id="tournament-name" class="form-control" name="tournament_name" placeholder="Leave blank for none" style="width: 200px; display: inline-block; margin-right: 20px;">
+                            
+                            <label for="stage-type"><strong>Stage Type:</strong></label>
+                            <input type="text" id="stage-type" class="form-control" name="stage_type" value="Round Robin" required style="width: 200px; display: inline-block;">
+                        </div>
+                        
+                        <div id="matches-container">
+                            <!-- Match rows will be injected here by JS -->
+                        </div>
+                        
+                        <div style="margin-top: 15px;">
+                            <button type="button" id="btn-add-match" class="btn btn-secondary" style="margin-right: 10px;">+ Add Match</button>
+                            <button type="submit" class="btn btn-primary" style="background-color: #28a745; border-color: #28a745;">Submit All Matches</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            
+        </div>
+    </body>
+</html>

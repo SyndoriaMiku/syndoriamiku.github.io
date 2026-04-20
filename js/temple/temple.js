@@ -1,5 +1,12 @@
 $(document).ready(function () {
 
+    // Check for login token and update UI
+    if (localStorage.getItem('temple_token')) {
+        let loginReportBtn = $('#btn-login-report');
+        loginReportBtn.text('Report');
+        loginReportBtn.attr('href', 'report.html');
+    }
+
     loadData("0");
 
     //Add player button

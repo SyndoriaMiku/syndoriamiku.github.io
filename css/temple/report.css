@@ -1,0 +1,38 @@
+.bulk-report-wrapper input,
+.bulk-report-wrapper select {
+    font-family: inherit;
+    height: 40px;
+    border-width: 1px;
+    border-radius: 4px;
+    border-color: #bbbbbb;
+    border-style: solid;
+    padding: 0 16px;
+    box-sizing: border-box;
+}
+
+.bulk-report-wrapper input:focus,
+.bulk-report-wrapper select:focus {
+    border-color: #019160;
+    outline: none;
+}
+
+/* Remove up/down spinners from number inputs */
+.bulk-report-wrapper input[type="number"]::-webkit-outer-spin-button,
+.bulk-report-wrapper input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+.bulk-report-wrapper input[type="number"] {
+    -moz-appearance: textfield; /* Firefox */
+    appearance: textfield;
+}
+
+.match-row .btn-danger {
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
