@@ -1,3 +1,12 @@
+$.ajaxPrefilter(function(options, originalOptions, jqXHR) {
+    if ((options.type === "POST" || options.type === "PUT") && !options.url.includes("/login/")) {
+        const token = localStorage.getItem('temple_token');
+        if (token) {
+            jqXHR.setRequestHeader('Authorization', 'Token ' + token);
+        }
+    }
+});
+
 $(document).ready(function () {
 
     // Check for login token and update UI

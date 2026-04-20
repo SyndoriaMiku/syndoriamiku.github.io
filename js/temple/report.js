@@ -126,9 +126,6 @@ $(document).ready(function() {
             url: "https://syndoria.pythonanywhere.com/api/results/bulk/",
             data: JSON.stringify(payload),
             contentType: "application/json",
-            headers: {
-                "Authorization": "Token " + token
-            },
             success: function(response) {
                 alert(response.message || 'Matches created successfully!');
                 $('#matches-container').empty();
