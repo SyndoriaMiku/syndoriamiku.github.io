@@ -1,115 +1,230 @@
-import requests, json, time, os, base64, datetime
+import tkinter as tk
+from tkinter import filedialog, messagebox, scrolledtext
+import requests, json, os, base64, datetime, time, threading
+import unicodedata, re
+from tkinterdnd2 import TkinterDnD, DND_FILES
 
-# --- CẤU HÌNH ---
+# --- CẤU HÌNH API ---
 API_URL = "https://comic.sangtacvietcdn.xyz/tsm.php?cdn=/"
-TEMPLATE_FILE = "reader.html" # File template bạn đã lưu từ bước trước
-DELAY = 1.5                   # Nghỉ để tránh bị ban IP
-CHUNK_LIMIT = 12000           # Mức an toàn để dịch không bị lỗi 413 hoặc timeout
+TEMPLATE_FILE = "reader.html"
+CHUNK_LIMIT = 12000
+DELAY = 1.2
 
-def update_catalog(title, slug):
-    catalog_path = os.path.join("stories", "list.json")
-    catalog = []
-    if os.path.exists(catalog_path):
-        try:
-            with open(catalog_path, "r", encoding="utf-8") as f:
-                catalog = json.load(f)
-        except: catalog = []
+def slugify_vn(text):
+    """Convert a Vietnamese (or any) title into a URL-friendly slug."""
+    # Extra mapping for characters that unicodedata doesn't decompose well
+    _vn_map = str.maketrans(
+        "đĐ",
+        "dD",
+    )
+    text = text.translate(_vn_map)
+    # Normalize to NFD so accents become separate combining characters, then strip them
+    text = unicodedata.normalize("NFD", text)
+    text = "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
+    text = text.lower()
+    text = re.sub(r"[^a-z0-9\s-]", "", text)   # keep only alphanum, spaces, hyphens
+    text = re.sub(r"[\s-]+", "-", text).strip("-")
+    return text
 
-    # Nếu slug chưa có thì thêm mới, nếu có rồi thì cập nhật ngày
-    existing = next((item for item in catalog if item['slug'] == slug), None)
-    now = datetime.datetime.now()
-    
-    if not existing:
-        catalog.append({
-            "title": title,
-            "slug": slug,
-            "date": now.strftime("%d/%m/%Y"),
-            "timestamp": now.timestamp()
-        })
-    else:
-        existing['date'] = now.strftime("%d/%m/%Y")
-        existing['timestamp'] = now.timestamp()
+class TranslatorGUI:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Story Translator Pro - SangTacViet API")
+        self.root.geometry("700x600")
+        self.root.configure(bg="#09090b")
 
-    with open(catalog_path, "w", encoding="utf-8") as f:
-        json.dump(catalog, f, ensure_ascii=False, indent=4)
+        # UI Components
+        self.setup_ui()
 
-def translate(text):
-    headers = {
-        "Origin": "https://www.bilibili.com",
-        "Referer": "https://www.bilibili.com/",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
-    }
-    try:
-        res = requests.post(API_URL, data={"sajax": "trans", "content": text}, headers=headers, timeout=45)
-        return res.text.strip() if res.status_code == 200 else None
-    except: return None
+    def setup_ui(self):
+        # Header
+        tk.Label(self.root, text="DỊCH TRUYỆN TRUNG - VIỆT", font=("Arial", 14, "bold"), fg="#ffffff", bg="#09090b").pack(pady=10)
 
-def build_story():
-    txt_path = input("Kéo file .txt tiếng Trung vào: ").strip().replace('"', '').replace("'", "")
-    slug = input("Nhập slug-name (VD: truyen-hay-01): ").strip()
-    
-    if not os.path.exists(txt_path) or not slug:
-        print("Lỗi đường dẫn hoặc slug!"); return
+        # Story Title Input
+        frame_title = tk.Frame(self.root, bg="#09090b")
+        frame_title.pack(fill="x", padx=20, pady=5)
+        tk.Label(frame_title, text="Story Title:", fg="#a1a1aa", bg="#09090b").pack(side="left")
+        self.ent_title = tk.Entry(frame_title, bg="#18181b", fg="#ffffff", insertbackground="white", borderwidth=0)
+        self.ent_title.pack(side="left", fill="x", expand=True, padx=10, ipady=5)
 
-    output_dir = os.path.join("stories", slug)
-    os.makedirs(output_dir, exist_ok=True)
+        # Text Area for Copy-Paste
+        tk.Label(self.root, text="Nội dung tiếng Trung (hoặc kéo thả / chọn file .txt):", fg="#a1a1aa", bg="#09090b").pack(anchor="w", padx=20, pady=(10, 0))
+        self.txt_area = scrolledtext.ScrolledText(self.root, height=15, bg="#18181b", fg="#e4e4e7", borderwidth=0, font=("Consolas", 10))
+        self.txt_area.pack(fill="both", expand=True, padx=20, pady=5)
 
-    with open(txt_path, "r", encoding="utf-8") as f:
-        all_lines = [l.strip() for l in f.readlines() if l.strip()]
+        # Drop Zone
+        self.drop_zone = tk.Label(
+            self.root, text="📂  Kéo thả file .txt vào đây",
+            bg="#18181b", fg="#71717a", font=("Arial", 10),
+            relief="groove", borderwidth=2, pady=12
+        )
+        self.drop_zone.pack(fill="x", padx=20, pady=(0, 5))
+        self.drop_zone.drop_target_register(DND_FILES)
+        self.drop_zone.dnd_bind("<<Drop>>", self.handle_drop)
+        self.drop_zone.dnd_bind("<<DragEnter>>", lambda e: self.drop_zone.config(bg="#27272a", fg="#3b82f6"))
+        self.drop_zone.dnd_bind("<<DragLeave>>", lambda e: self.drop_zone.config(bg="#18181b", fg="#71717a"))
 
-    story_data = {"title": slug.replace("-", " ").title(), "content": []}
+        # Buttons Frame
+        btn_frame = tk.Frame(self.root, bg="#09090b")
+        btn_frame.pack(fill="x", padx=20, pady=10)
 
-    # Chia nhỏ thành các nhóm dòng (Chunks) dựa trên ký tự
-    chunks = []
-    current_group = []
-    current_len = 0
-    for line in all_lines:
-        if current_len + len(line) < CHUNK_LIMIT:
-            current_group.append(line)
-            current_len += len(line)
+        self.btn_file = tk.Button(btn_frame, text="📁 Chọn File .txt", command=self.load_file, bg="#27272a", fg="white", borderwidth=0, padx=15)
+        self.btn_file.pack(side="left", padx=5)
+
+        self.btn_run = tk.Button(btn_frame, text="🚀 Bắt đầu dịch", command=self.start_thread, bg="#1d4ed8", fg="white", borderwidth=0, padx=25)
+        self.btn_run.pack(side="right", padx=5)
+
+        self.btn_clear = tk.Button(btn_frame, text="🗑️ Xóa tất cả", command=self.clear_all, bg="#dc2626", fg="white", borderwidth=0, padx=15)
+        # Hidden by default, shown after completion
+
+        # Progress Label
+        self.lbl_status = tk.Label(self.root, text="Sẵn sàng", fg="#71717a", bg="#09090b")
+        self.lbl_status.pack(pady=5)
+
+    def clear_all(self):
+        """Clear all inputs and reset the UI."""
+        self.ent_title.delete(0, tk.END)
+        self.txt_area.delete(1.0, tk.END)
+        self.lbl_status.config(text="Sẵn sàng", fg="#71717a")
+        self.btn_clear.pack_forget()
+
+    def handle_drop(self, event):
+        """Handle files dropped onto the drop zone."""
+        # Reset drop zone appearance
+        self.drop_zone.config(bg="#18181b", fg="#71717a")
+        # tkdnd wraps paths with spaces in {}, parse them
+        raw = event.data
+        if raw.startswith("{"):
+            file_path = raw.strip("{}") 
         else:
-            chunks.append(current_group)
-            current_group = [line]
-            current_len = len(line)
-    chunks.append(current_group)
+            file_path = raw.strip()
+        if not file_path.lower().endswith(".txt"):
+            messagebox.showwarning("Chú ý", "Chỉ hỗ trợ file .txt!")
+            return
+        self._load_from_path(file_path)
 
-    print(f"--- Đang xử lý {len(chunks)} đợt dịch ---")
-    
-    for i, group in enumerate(chunks):
-        input_text = "\n".join(group)
-        vi_result = translate(input_text)
-        
-        if not vi_result:
-            print(f"\n[!] Đợt {i+1} lỗi, đang nghỉ 5s rồi thử lại...")
-            time.sleep(5)
-            vi_result = translate(input_text) or ("[Lỗi dịch]\n" * len(group))
+    def load_file(self):
+        file_path = filedialog.askopenfilename(filetypes=[("Text files", "*.txt")])
+        if file_path:
+            self._load_from_path(file_path)
 
-        vi_lines = vi_result.split('\n')
-        
-        # Ghép cặp từng dòng Trung - Việt
-        for j in range(len(group)):
-            cn = group[j]
-            vi = vi_lines[j] if j < len(vi_lines) else ""
+    def _load_from_path(self, file_path):
+        """Load a .txt file into the text area and suggest the title."""
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                self.txt_area.delete(1.0, tk.END)
+                self.txt_area.insert(tk.END, f.read())
+        except Exception as e:
+            messagebox.showerror("Lỗi", f"Không thể đọc file:\n{e}")
+            return
+
+        # Tự động gợi ý title từ tên file
+        title_suggest = os.path.basename(file_path).replace(".txt", "")
+        self.ent_title.delete(0, tk.END)
+        self.ent_title.insert(0, title_suggest)
+        self.lbl_status.config(text=f"Đã tải: {os.path.basename(file_path)}", fg="#10b981")
+
+    def update_catalog(self, title, slug):
+        catalog_path = os.path.join("stories", "list.json")
+        os.makedirs("stories", exist_ok=True)
+        catalog = []
+        if os.path.exists(catalog_path):
+            try:
+                with open(catalog_path, "r", encoding="utf-8") as f:
+                    catalog = json.load(f)
+            except: pass
+
+        existing = next((item for item in catalog if item['slug'] == slug), None)
+        now = datetime.datetime.now()
+        if not existing:
+            catalog.append({"title": title, "slug": slug, "date": now.strftime("%d/%m/%Y"), "timestamp": now.timestamp()})
+        else:
+            existing['date'] = now.strftime("%d/%m/%Y")
+            existing['timestamp'] = now.timestamp()
+
+        with open(catalog_path, "w", encoding="utf-8") as f:
+            json.dump(catalog, f, ensure_ascii=False, indent=4)
+
+    def translate_api(self, text):
+        headers = {"Origin": "https://www.bilibili.com", "Referer": "https://www.bilibili.com/", "User-Agent": "Mozilla/5.0"}
+        try:
+            res = requests.post(API_URL, data={"sajax": "trans", "content": text}, headers=headers, timeout=45)
+            return res.text.strip() if res.status_code == 200 else None
+        except: return None
+
+    def start_thread(self):
+        # Chạy trong thread riêng để không bị treo UI
+        threading.Thread(target=self.run_process, daemon=True).start()
+
+    def run_process(self):
+        title = self.ent_title.get().strip()
+        content = self.txt_area.get(1.0, tk.END).strip()
+
+        if not title or not content:
+            messagebox.showwarning("Chú ý", "Vui lòng nhập tiêu đề và nội dung!")
+            return
+
+        slug = slugify_vn(title)
+        if not slug:
+            messagebox.showwarning("Chú ý", "Tiêu đề không hợp lệ, không thể tạo slug!")
+            return
+
+        self.btn_run.config(state="disabled")
+        self.btn_clear.pack_forget()
+        self.lbl_status.config(text=f"Slug: {slug} — Đang xử lý dữ liệu...", fg="#3b82f6")
+
+        output_dir = os.path.join("stories", slug)
+        os.makedirs(output_dir, exist_ok=True)
+
+        lines = [l.strip() for l in content.split("\n") if l.strip()]
+        story_data = {"title": title, "content": []}
+
+        # Chunking
+        chunks = []
+        cur_g, cur_l = [], 0
+        for line in lines:
+            if cur_l + len(line) < CHUNK_LIMIT:
+                cur_g.append(line)
+                cur_l += len(line)
+            else:
+                chunks.append(cur_g)
+                cur_g, cur_l = [line], len(line)
+        chunks.append(cur_g)
+
+        for i, group in enumerate(chunks):
+            self.lbl_status.config(text=f"Đang dịch đợt {i+1}/{len(chunks)}...")
+            input_text = "\n".join(group)
+            vi_res = self.translate_api(input_text)
             
-            story_data["content"].append({
-                "cn": base64.b64encode(cn.encode('utf-8')).decode('utf-8'),
-                "vi": base64.b64encode(vi.encode('utf-8')).decode('utf-8')
-            })
+            if not vi_res:
+                time.sleep(3)
+                vi_res = self.translate_api(input_text) or ("[Lỗi]\n" * len(group))
 
-        print(f"Tiến độ: {i+1}/{len(chunks)}", end="\r")
-        time.sleep(DELAY)
+            vi_lines = vi_res.split("\n")
+            for j in range(len(group)):
+                cn = group[j]
+                vi = vi_lines[j] if j < len(vi_lines) else ""
+                story_data["content"].append({
+                    "cn": base64.b64encode(cn.encode('utf-8')).decode('utf-8'),
+                    "vi": base64.b64encode(vi.encode('utf-8')).decode('utf-8')
+                })
+            time.sleep(DELAY)
 
-    # Xuất file
-    with open(os.path.join(output_dir, "data.json"), "w", encoding="utf-8") as f:
-        json.dump(story_data, f, ensure_ascii=False)
+        # Save files
+        with open(os.path.join(output_dir, "data.json"), "w", encoding="utf-8") as f:
+            json.dump(story_data, f, ensure_ascii=False)
 
-    with open(TEMPLATE_FILE, "r", encoding="utf-8") as f_temp:
-        with open(os.path.join(output_dir, "index.html"), "w", encoding="utf-8") as f_idx:
-            f_idx.write(f_temp.read())
-            
-    update_catalog(story_data["title"], slug)
-    print(f"\n✅ Hoàn thành! Đã cập nhật stories/{slug} và list.json")
+        if os.path.exists(TEMPLATE_FILE):
+            with open(TEMPLATE_FILE, "r", encoding="utf-8") as f_t, open(os.path.join(output_dir, "index.html"), "w", encoding="utf-8") as f_i:
+                f_i.write(f_t.read())
+
+        self.update_catalog(story_data["title"], slug)
+        self.lbl_status.config(text="✅ Hoàn thành!", fg="#10b981")
+        self.btn_run.config(state="normal")
+        self.btn_clear.pack(side="right", padx=5)
+        messagebox.showinfo("Thành công", f"Đã dịch xong truyện: {slug}")
 
 if __name__ == "__main__":
-    if not os.path.exists("stories"): os.makedirs("stories")
-    build_story()
+    root = TkinterDnD.Tk()
+    app = TranslatorGUI(root)
+    root.mainloop()
