@@ -1,12 +1,20 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext
-import requests, json, os, base64, datetime, time, threading
+import requests, json, os, sys, base64, datetime, time, threading
 import unicodedata, re
 from tkinterdnd2 import TkinterDnD, DND_FILES
 
+# --- XÁC ĐỊNH THƯ MỤC GỐC ---
+if getattr(sys, 'frozen', False):
+    BASE_DIR = os.path.dirname(sys.executable)
+    if os.path.basename(BASE_DIR).lower() == 'dist':
+        BASE_DIR = os.path.dirname(BASE_DIR)
+else:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 # --- CẤU HÌNH API ---
 API_URL = "https://comic.sangtacvietcdn.xyz/tsm.php?cdn=/"
-TEMPLATE_FILE = "reader.html"
+TEMPLATE_FILE = os.path.join(BASE_DIR, "reader.html")
 CHUNK_LIMIT = 12000
 DELAY = 1.2
 
@@ -125,8 +133,9 @@ class TranslatorGUI:
         self.lbl_status.config(text=f"Đã tải: {os.path.basename(file_path)}", fg="#10b981")
 
     def update_catalog(self, title, slug):
-        catalog_path = os.path.join("stories", "list.json")
-        os.makedirs("stories", exist_ok=True)
+        stories_dir = os.path.join(BASE_DIR, "stories")
+        catalog_path = os.path.join(stories_dir, "list.json")
+        os.makedirs(stories_dir, exist_ok=True)
         catalog = []
         if os.path.exists(catalog_path):
             try:
@@ -173,7 +182,7 @@ class TranslatorGUI:
         self.btn_clear.pack_forget()
         self.lbl_status.config(text=f"Slug: {slug} — Đang xử lý dữ liệu...", fg="#3b82f6")
 
-        output_dir = os.path.join("stories", slug)
+        output_dir = os.path.join(BASE_DIR, "stories", slug)
         os.makedirs(output_dir, exist_ok=True)
 
         lines = [l.strip() for l in content.split("\n") if l.strip()]
