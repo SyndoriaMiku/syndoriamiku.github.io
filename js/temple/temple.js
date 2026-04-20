@@ -9,8 +9,11 @@ $(document).ready(function () {
 
     loadData("0");
 
+    let currentDialogMode = 'add';
+
     //Add player button
     $("#btn-add-player").click(function () {
+        currentDialogMode = 'add';
         //Show dialog
         on("#player-dialog");
 
@@ -31,6 +34,24 @@ $(document).ready(function () {
         $("#player-name-input").focus();
     });
 
+    // Double click row to edit
+    $(document).on("dblclick", ".player-row", function () {
+        currentDialogMode = 'edit';
+        let row = $(this);
+        let id = row.children("td").eq(0).text();
+        let name = row.children("td").eq(1).text();
+        
+        // Show dialog
+        on("#player-dialog");
+        
+        // Fill input
+        $("#player-id-input").val(id);
+        $("#player-name-input").val(name);
+        
+        // Focus on name input
+        $("#player-name-input").focus();
+    });
+
     //Cancel player dialog
     $("#btn-cancel-add").click(function () {
         off("#player-dialog");
@@ -40,7 +61,11 @@ $(document).ready(function () {
     $(".sort").click(function () {
         var table = $(this).parents("table").eq(0);
         var rows = table.find("tr:gt(0)").toArray().sort(comparer($(this).index()));
-        this.asc = !this.asc;
+        if (this.asc === undefined) {
+            this.asc = false; // first click: Z to A
+        } else {
+            this.asc = !this.asc;
+        }
         if (!this.asc){rows = rows.reverse()}
         for (var i=0; i<rows.length; i++) {table.append(rows[i])}
     });
@@ -81,7 +106,7 @@ $(document).ready(function () {
         $("#player-2").empty().append('<option value="0">Chọn người chơi</option>');
     });
 
-    //Add player button
+    //Add/Edit player button
     $("#btn-save-player").click(function () {
         //Get data
         let playerId = parseInt($("#player-id-input").val());
@@ -92,13 +117,19 @@ $(document).ready(function () {
         let data = {
             "id": playerId,
             "name": playerName,
-            "elo": playerElo
         };
+        
+        if (currentDialogMode === 'add') {
+            data["elo"] = playerElo;
+        }
 
-        //Post data
+        let requestType = currentDialogMode === 'edit' ? "PUT" : "POST";
+        let requestUrl = currentDialogMode === 'edit' ? `https://syndoria.pythonanywhere.com/api/editPlayer/${playerId}` : "https://syndoria.pythonanywhere.com/api/players/";
+
+        //Post/Put data
         $.ajax({
-            type: "POST",
-            url: "https://syndoria.pythonanywhere.com/api/players/",
+            type: requestType,
+            url: requestUrl,
             data: JSON.stringify(data),
             dataType: "json",
             contentType: "application/json",
@@ -108,6 +139,10 @@ $(document).ready(function () {
 
                 //Reload table
                 loadData("0");
+            },
+            error: function (xhr) {
+                console.error("Error saving player.", xhr);
+                alert("Failed to save player.");
             }
         });
 
