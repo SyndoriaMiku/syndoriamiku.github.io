@@ -52,13 +52,18 @@
                 </div>
                 <div id="find-box" style="padding-bottom: 16px;">
                     <input type="text" id="find-player" class="input input-icon" style="background-image: url(/static/search.png);" placeholder="Tìm kiếm người chơi">
+                    <label style="margin-left: 16px; cursor: pointer;">
+                        <input type="checkbox" id="recently-active-checkbox"> Recently active
+                    </label>
                 </div>
                 <div id="player-table">
                     <table class="table">
                         <thead>
                             <tr>
+                                <td class="text-left sort">Ranking</td>
                                 <td class="text-left sort">ID</td>
                                 <td class="text-left sort">Tên người chơi</td>
+                                <td class="text-left">Thứ hạng thay đổi</td>
                                 <td class="text-left sort">Elo</td>
                             </tr>
                         </thead>

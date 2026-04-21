@@ -16,6 +16,15 @@ $(document).ready(function () {
         loginReportBtn.attr('href', 'report.html');
     }
 
+    // Load recently active checkbox state
+    let isRecentlyActive = localStorage.getItem('recently_active') === 'true';
+    $('#recently-active-checkbox').prop('checked', isRecentlyActive);
+
+    $('#recently-active-checkbox').change(function() {
+        localStorage.setItem('recently_active', this.checked);
+        loadData("0");
+    });
+
     loadData("0");
 
     let currentDialogMode = 'add';
@@ -235,18 +244,36 @@ function off(target) {
 
 function loadData(query) {
     $("#player-table tbody").empty();
+    
+    let url = `https://syndoria.pythonanywhere.com/api/players/?query=${query}&sort=high`;
+    if (localStorage.getItem('recently_active') === 'true') {
+        url += '&updated_within_days=30';
+    }
+
     $.ajax({
         type: "GET",
-        url: `https://syndoria.pythonanywhere.com/api/players/?query=${query}`,
+        url: url,
         success: function (response) {
             for (let i=0; i<response.length; i++) {
+                let playerRank = response[i].rank || (i + 1);
                 let playerId = response[i].id;
                 let playerName = response[i].name;
+                let playerRankDelta = response[i].rank_delta || 0;
                 let playerElo = response[i].elo;
+
+                let deltaHtml = "-";
+                if (playerRankDelta > 0) {
+                    deltaHtml = `<img src="/static/up-16.png" alt="Up" style="width: 16px; height: 16px;"> <span style="color: green;">${playerRankDelta}</span>`;
+                } else if (playerRankDelta < 0) {
+                    deltaHtml = `<img src="/static/down-16.png" alt="Down" style="width: 16px; height: 16px;"> <span style="color: red;">${Math.abs(playerRankDelta)}</span>`;
+                }
+
                 //Build HTML
                 var row = $(`<tr class="player-row">
+                <td class="text-left">${playerRank}</td>
                 <td class="text-left">${playerId}</td>
                 <td class="text-left">${playerName}</td>
+                <td class="text-left">${deltaHtml}</td>
                 <td class="text-left">${playerElo}</td>
                 </tr>`);
                 //Append HTML to table
