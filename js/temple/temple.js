@@ -56,8 +56,8 @@ $(document).ready(function () {
     $(document).on("dblclick", ".player-row", function () {
         currentDialogMode = 'edit';
         let row = $(this);
-        let id = row.children("td").eq(0).text();
-        let name = row.children("td").eq(1).text();
+        let id = row.children("td").eq(1).text();
+        let name = row.children("td").eq(2).text();
         
         // Show dialog
         on("#player-dialog");
