@@ -1,3 +1,6 @@
+let currentPage = 1;
+let pageSize = 20;
+
 $.ajaxPrefilter(function(options, originalOptions, jqXHR) {
     if ((options.type === "POST" || options.type === "PUT") && !options.url.includes("/login/")) {
         const token = localStorage.getItem('temple_token');
@@ -22,6 +25,24 @@ $(document).ready(function () {
 
     $('#recently-active-checkbox').change(function() {
         localStorage.setItem('recently_active', this.checked);
+        loadData("0");
+    });
+
+    $('#page-size-select').change(function() {
+        pageSize = $(this).val();
+        currentPage = 1;
+        loadData("0");
+    });
+
+    $('#btn-prev-page').click(function() {
+        if (currentPage > 1) {
+            currentPage--;
+            loadData("0");
+        }
+    });
+
+    $('#btn-next-page').click(function() {
+        currentPage++;
         loadData("0");
     });
 
@@ -245,7 +266,11 @@ function off(target) {
 function loadData(query) {
     $("#player-table tbody").empty();
     
-    let url = `https://syndoria.pythonanywhere.com/api/players/?query=${query}&sort=high`;
+    // Fallback if pageSize or currentPage isn't defined yet (e.g. initial calls)
+    let size = typeof pageSize !== 'undefined' ? pageSize : 20;
+    let page = typeof currentPage !== 'undefined' ? currentPage : 1;
+
+    let url = `https://syndoria.pythonanywhere.com/api/players/?query=${query}&sort=high&page=${page}&page_size=${size}`;
     if (localStorage.getItem('recently_active') === 'true') {
         url += '&updated_within_days=30';
     }
@@ -254,12 +279,28 @@ function loadData(query) {
         type: "GET",
         url: url,
         success: function (response) {
-            for (let i=0; i<response.length; i++) {
-                let playerRank = response[i].rank || (i + 1);
-                let playerId = response[i].id;
-                let playerName = response[i].name;
-                let playerRankDelta = response[i].rank_delta || 0;
-                let playerElo = response[i].elo;
+            // Handle both paginated (response.results) and non-paginated arrays
+            let players = response.results ? response.results : response;
+
+            // Update Pagination UI if 'count' exists in response (DRF default pagination)
+            if (response.count !== undefined) {
+                let totalPages = Math.ceil(response.count / size);
+                $('#page-info').text(`Page ${page} of ${totalPages}`);
+                $('#btn-prev-page').prop('disabled', !response.previous);
+                $('#btn-next-page').prop('disabled', !response.next);
+            } else {
+                $('#page-info').text(`Page ${page}`);
+                $('#btn-prev-page').prop('disabled', page === 1);
+                // If it isn't returning next/previous links, safely guess disable condition
+                $('#btn-next-page').prop('disabled', players.length < size);
+            }
+
+            for (let i=0; i<players.length; i++) {
+                let playerRank = players[i].rank || ((page - 1) * size + i + 1);
+                let playerId = players[i].id;
+                let playerName = players[i].name;
+                let playerRankDelta = players[i].rank_delta || 0;
+                let playerElo = players[i].elo;
 
                 let deltaHtml = "-";
                 if (playerRankDelta > 0) {

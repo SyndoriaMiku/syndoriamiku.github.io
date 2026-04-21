@@ -61,7 +61,7 @@
                         <thead>
                             <tr>
                                 <td class="text-left sort">Ranking</td>
-                                <td class="text-left sort">ID</td>
+                                <td class="text-left sort">UID</td>
                                 <td class="text-left sort">Tên người chơi</td>
                                 <td class="text-left">Thứ hạng thay đổi</td>
                                 <td class="text-left sort">Elo</td>
@@ -71,6 +71,21 @@
     
                         </tbody>
                     </table>
+                </div>
+                <div id="pagination-controls" style="display: flex; align-items: center; padding-top: 16px; position: relative;">
+                    <div style="display: flex; align-items: center;">
+                        <label style="margin-right: 10px;">Số lượng hiển thị:</label>
+                        <select id="page-size-select" class="input" style="width: auto;">
+                            <option value="20">20</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </div>
+                    <div style="position: absolute; left: 50%; transform: translateX(-50%); display: flex; align-items: center;">
+                        <button id="btn-prev-page" class="btn" style="margin-right: 10px;" disabled>Trang trước</button>
+                        <span id="page-info" style="margin-right: 10px;">Trang 1</span>
+                        <button id="btn-next-page" class="btn" disabled>Trang sau</button>
+                    </div>
                 </div>
                 <div id="result-box" style="display: flex;text-align: center; height: 56px; align-items: center; justify-content: center;">
                     <button id="result" class="btn">Cập nhật kết quả</button>
