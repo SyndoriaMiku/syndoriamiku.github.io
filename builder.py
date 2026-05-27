@@ -154,6 +154,40 @@ class TranslatorGUI:
         with open(catalog_path, "w", encoding="utf-8") as f:
             json.dump(catalog, f, ensure_ascii=False, indent=4)
 
+    def load_name_config(self):
+        """Load name combinations from name.cfg if it exists, otherwise create it."""
+        if getattr(sys, 'frozen', False):
+            cfg_dir = os.path.dirname(sys.executable)
+        else:
+            cfg_dir = BASE_DIR
+            
+        cfg_path = os.path.join(cfg_dir, "name.cfg")
+        
+        # Auto-create if not exists
+        if not os.path.exists(cfg_path):
+            try:
+                with open(cfg_path, "w", encoding="utf-8") as f:
+                    f.write("# Thêm tên cần dịch cố định vào đây theo định dạng Trung=Việt, ví dụ:\n")
+                    f.write("# 轩辕=Hiên Viên\n")
+            except Exception as e:
+                print(f"Lỗi khi tạo file name.cfg: {e}")
+
+        name_dict = {}
+        if os.path.exists(cfg_path):
+            try:
+                with open(cfg_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line or line.startswith("#"):
+                            continue
+                        if "=" in line:
+                            cn, vi = line.split("=", 1)
+                            if cn.strip() and vi.strip():
+                                name_dict[cn.strip()] = vi.strip()
+            except Exception as e:
+                print(f"Lỗi khi đọc file name.cfg: {e}")
+        return name_dict
+
     def translate_api(self, text):
         headers = {"Origin": "https://www.bilibili.com", "Referer": "https://www.bilibili.com/", "User-Agent": "Mozilla/5.0"}
         try:
@@ -188,21 +222,35 @@ class TranslatorGUI:
         lines = [l.strip() for l in content.split("\n") if l.strip()]
         story_data = {"title": title, "content": []}
 
+        # Load name replacements and order by length descending
+        name_dict = self.load_name_config()
+        sorted_names = sorted(name_dict.keys(), key=len, reverse=True)
+
+        # Apply replacements
+        processed_lines = []
+        for line in lines:
+            replaced_line = line
+            for cn in sorted_names:
+                if cn in replaced_line:
+                    replaced_line = replaced_line.replace(cn, name_dict[cn])
+            processed_lines.append((line, replaced_line))
+
         # Chunking
         chunks = []
         cur_g, cur_l = [], 0
-        for line in lines:
-            if cur_l + len(line) < CHUNK_LIMIT:
-                cur_g.append(line)
-                cur_l += len(line)
+        for orig_line, rep_line in processed_lines:
+            if cur_l + len(rep_line) < CHUNK_LIMIT:
+                cur_g.append((orig_line, rep_line))
+                cur_l += len(rep_line)
             else:
                 chunks.append(cur_g)
-                cur_g, cur_l = [line], len(line)
-        chunks.append(cur_g)
+                cur_g, cur_l = [(orig_line, rep_line)], len(rep_line)
+        if cur_g:
+            chunks.append(cur_g)
 
         for i, group in enumerate(chunks):
             self.lbl_status.config(text=f"Đang dịch đợt {i+1}/{len(chunks)}...")
-            input_text = "\n".join(group)
+            input_text = "\n".join([rep for _, rep in group])
             vi_res = self.translate_api(input_text)
             
             if not vi_res:
@@ -211,10 +259,10 @@ class TranslatorGUI:
 
             vi_lines = vi_res.split("\n")
             for j in range(len(group)):
-                cn = group[j]
+                orig_cn, rep_cn = group[j]
                 vi = vi_lines[j] if j < len(vi_lines) else ""
                 story_data["content"].append({
-                    "cn": base64.b64encode(cn.encode('utf-8')).decode('utf-8'),
+                    "cn": base64.b64encode(orig_cn.encode('utf-8')).decode('utf-8'),
                     "vi": base64.b64encode(vi.encode('utf-8')).decode('utf-8')
                 })
             time.sleep(DELAY)
