@@ -8,7 +8,7 @@ This website is deployed using GitHub Pages.
 - `/temple/` - VN Moon Elo Ranking section  
 - `/user/` - User authentication pages
 - `/admin/` - Admin panel (requires authentication)
-- `/gacha/` - Gacha simulation pages
+- `/stories/` - Storage NSFW Chinese novel
 
 ## Deployment
 This site is automatically deployed to GitHub Pages when changes are pushed to the main branch.
