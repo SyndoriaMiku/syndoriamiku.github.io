@@ -183,7 +183,8 @@ class TranslatorGUI:
                         if "=" in line:
                             cn, vi = line.split("=", 1)
                             if cn.strip() and vi.strip():
-                                name_dict[cn.strip()] = vi.strip()
+                                # Automatically title-case the Vietnamese name (capitalize first letter of each word)
+                                name_dict[cn.strip()] = vi.strip().title()
             except Exception as e:
                 print(f"Lỗi khi đọc file name.cfg: {e}")
         return name_dict
@@ -258,9 +259,19 @@ class TranslatorGUI:
                 vi_res = self.translate_api(input_text) or ("[Lỗi]\n" * len(group))
 
             vi_lines = vi_res.split("\n")
+            vi_names = list(name_dict.values())
+            
             for j in range(len(group)):
                 orig_cn, rep_cn = group[j]
                 vi = vi_lines[j] if j < len(vi_lines) else ""
+                
+                # Capitalize the first letter of the word immediately following the translated name
+                for v_name in vi_names:
+                    if v_name in vi:
+                        # Match the name, optional spaces, and the next word character
+                        pattern = re.compile(re.escape(v_name) + r'(\s*)([^\W\d_])', re.UNICODE)
+                        vi = pattern.sub(lambda m: v_name + m.group(1) + m.group(2).upper(), vi)
+                
                 story_data["content"].append({
                     "cn": base64.b64encode(orig_cn.encode('utf-8')).decode('utf-8'),
                     "vi": base64.b64encode(vi.encode('utf-8')).decode('utf-8')
