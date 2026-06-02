@@ -27,6 +27,10 @@
     <main class="library-container">
         <div class="library-header">
             <h2>📚 Thư Viện Truyện</h2>
+            <div style="display: flex; gap: 10px;">
+                <button class="tab-btn" style="background:#10b981; color:#fff;" onclick="location.href='../builder.py'">➕ Thêm Truyện Mới</button>
+                <button class="tab-btn" style="background:#3b82f6; color:#fff;" onclick="location.href='editor.html'">➕ Thêm Chapter</button>
+            </div>
             <div class="search-box"><input type="text" id="searchInput" placeholder="🔍 Tìm kiếm truyện..."></div>
             <div class="tabs">
                 <button class="tab-btn active" id="tabAll">Tất cả truyện</button>
@@ -48,7 +52,7 @@
 
         async function loadStories() {
             try {
-                const response = await fetch('../stories/list.json');
+                const response = await fetch('./list.json');
                 if (response.ok) allStories = await response.json();
                 renderStories();
             } catch (error) { console.error('Lỗi khi tải:', error); }
@@ -69,7 +73,7 @@
                 filtered.forEach(story => {
                     const isBookmarked = bookmarkedSlugs.includes(story.slug);
                     const card = document.createElement('a');
-                    card.href = '../stories/' + story.slug + '/';
+                    card.href = './' + story.slug + '/';
                     card.className = 'story-card';
                     let badgeHtml = isBookmarked ? '<span class="bookmark-badge">🔖 Đã lưu</span>' : '';
                     card.innerHTML = badgeHtml + '<h3 class="story-title">' + story.title + '</h3><div class="story-meta">📅 Cập nhật: ' + (story.date || 'Chưa rõ') + '</div>';

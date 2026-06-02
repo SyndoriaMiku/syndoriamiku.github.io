@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chapter Editor</title>
+    <link rel="stylesheet" href="../css/styles.css">
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #09090b; color: #e4e4e7; margin: 0; padding: 20px; }
+        .container { display: flex; gap: 20px; max-width: 1400px; margin: 0 auto; height: calc(100vh - 80px); }
+        .pane { flex: 1; background: #18181b; padding: 20px; border-radius: 8px; border: 1px solid #27272a; display: flex; flex-direction: column; }
+        h2 { margin-top: 0; padding-bottom: 10px; border-bottom: 1px solid #27272a; color: #fff; }
+        
+        .form-group { margin-bottom: 15px; display: flex; flex-direction: column; }
+        label { margin-bottom: 5px; color: #a1a1aa; font-size: 0.9em; }
+        input[type="text"], textarea { width: 100%; box-sizing: border-box; padding: 10px; border-radius: 6px; border: 1px solid #27272a; background-color: #09090b; color: #fff; outline: none; font-family: inherit; }
+        textarea { flex: 1; min-height: 200px; resize: none; font-size: 1.05rem; line-height: 1.6; }
+        
+        button { background: #3b82f6; color: #fff; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.2s; display: inline-flex; align-items: center; justify-content: center; gap: 5px;}
+        button:hover { background: #2563eb; }
+        
+        input[type="file"] { margin-bottom: 15px; color: #a1a1aa; }
+        input[type="file"]::file-selector-button { background: #3b82f6; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; margin-right: 10px; }
+        
+        .file-info { margin-top: 15px; font-size: 0.9em; color: #71717a; white-space: pre-wrap; word-wrap: break-word; overflow-y: auto; flex: 1; background: #09090b; padding: 10px; border-radius: 6px; border: 1px solid #27272a; }
+        
+        .header-controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; max-width: 1400px; margin: 0 auto 20px auto;}
+        .back-link { color: #3b82f6; text-decoration: none; font-weight: bold; }
+        .back-link:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="header-controls">
+        <a href="index.html" class="back-link">← Về Thư Viện</a>
+        <h3 style="margin:0; color:#fff;">Trình Chỉnh Sửa Chapter</h3>
+    </div>
+    
+    <div class="container">
+        <!-- Window 1: Editor -->
+        <div class="pane">
+            <h2>📝 Text Editor (Chỉnh sửa nội dung)</h2>
+            <div class="form-group">
+                <label for="storySelect">Cập nhật cho truyện nào? (Tìm kiếm)</label>
+                <input type="text" id="storySelect" list="storyList" placeholder="Nhập để tìm tên truyện...">
+                <datalist id="storyList"></datalist>
+            </div>
+            <div class="form-group">
+                <label for="chapTitle">Chapter Title / Slug (Tiêu đề hoặc URL, VD: chapter-001)</label>
+                <input type="text" id="chapTitle" placeholder="VD: chapter-001">
+            </div>
+            <div class="form-group" style="flex: 1;">
+                <label for="chapContent">Nội dung Tiếng Việt</label>
+                <textarea id="chapContent" placeholder="Nội dung sẽ hiện ở đây, bạn có thể chỉnh sửa tự do..."></textarea>
+            </div>
+            <div>
+                <button onclick="downloadChapter()">💾 Xuất ra file TXT</button>
+                <button onclick="clearEditor()" style="background: #dc2626; margin-left: 10px;">🗑 Làm mới</button>
+            </div>
+        </div>
+
+        <!-- Window 2: Importer -->
+        <div class="pane">
+            <h2>📂 Giải mã JSON (Từ stories/)</h2>
+            <p style="color: #a1a1aa; font-size: 0.9em; margin-bottom: 15px;">Chọn định dạng file .json từ bộ dịch (Data.json) để giải mã lấy phần chữ tiếng Việt đã dịch.</p>
+            
+            <input type="file" id="jsonFile" accept=".json">
+            <button onclick="processJSON()" style="background: #10b981; width: 100%;">Thêm toàn bộ Tiếng Việt sang Editor ←</button>
+            
+            <div class="file-info" id="filePreview">Trạng thái: Chưa chọn file...</div>
+        </div>
+    </div>
+
+    <script>
+        // Hàm decode chuỗi utf-8 Base64 an toàn
+        const decodeToBase64 = (str) => {
+            try {
+                return decodeURIComponent(escape(atob(str)));
+            } catch (e) {
+                return "[Lỗi giải mã]";
+            }
+        };
+
+        let loadedJsonData = null;
+
+        // Fetch story list for combo box
+        fetch('./list.json').then(r => r.json()).then(data => {
+            const datalist = document.getElementById('storyList');
+            data.forEach(s => {
+                const option = document.createElement('option');
+                option.value = s.title;
+                datalist.appendChild(option);
+            });
+        }).catch(err => console.error("Không tải được list truyện:", err));
+
+        // Bắt sự kiện chọn file
+        document.getElementById('jsonFile').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                try {
+                    loadedJsonData = JSON.parse(evt.target.result);
+                    let info = `Tên File: ${file.name}\n`;
+                    info += `Tiêu đề phát hiện: ${loadedJsonData.title || 'Không có'}\n`;
+                    info += `Số lượng đoạn văn: ${loadedJsonData.content ? loadedJsonData.content.length : 0} đoạn\n\n`;
+                    info += `Trạng thái: ✅ Đọc JSON thành công. Trích xuất ngay ->`;
+                    document.getElementById('filePreview').innerText = info;
+                } catch (err) {
+                    alert("Lỗi: File JSON không hợp lệ!");
+                    document.getElementById('filePreview').innerText = "Trạng thái: ❌ Lỗi đọc file.";
+                    console.error(err);
+                }
+            };
+            reader.readAsText(file);
+        });
+
+        // Bắn text tiếng Việt sang editor
+        function processJSON() {
+            if (!loadedJsonData) {
+                alert("Bạn chưa chọn và load file JSON hợp lệ!");
+                return;
+            }
+            
+            // Gán title nếu editor trống
+            const currentTitle = document.getElementById('chapTitle').value;
+            if(!currentTitle && loadedJsonData.title) {
+                document.getElementById('chapTitle').value = loadedJsonData.title;
+            }
+
+            // Gắn content
+            if(loadedJsonData.content && Array.isArray(loadedJsonData.content)) {
+                let viTextArr = [];
+                for(let item of loadedJsonData.content) {
+                    if (item.vi) {
+                        viTextArr.push(decodeToBase64(item.vi));
+                    }
+                }
+                // Nối các đoạn văn
+                let resultText = viTextArr.join('\n\n'); 
+                
+                const textArea = document.getElementById('chapContent');
+                if (textArea.value.trim() !== '') {
+                    // Nếu đã có text, hỏi người dùng xem muốn ghi đè hay viết tiếp
+                    if (confirm("Editor đang có sẵn dữ liệu. Bạn muốn viết tiếp xuống dưới không? (Nhấn Hủy để Ghi Đè hoàn toàn)")) {
+                        textArea.value = textArea.value + '\n\n' + resultText;
+                    } else {
+                        textArea.value = resultText;
+                    }
+                } else {
+                    textArea.value = resultText;
+                }
+                
+            } else {
+                alert("Lỗi: Không tìm thấy đối tượng 'content' trong file JSON của bạn.");
+            }
+        }
+
+        // Tải xuống file Text
+        function downloadChapter() {
+            const storyName = document.getElementById('storySelect').value.trim();
+            const chapTitle = document.getElementById('chapTitle').value.trim() || 'chapter-new';
+            const content = document.getElementById('chapContent').value;
+            
+            if(!content.trim()) {
+                alert("Chưa có nội dung để tải!");
+                return;
+            }
+
+            const blob = new Blob([content], {type: "text/plain;charset=utf-8"});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            // Gợi ý lưu kèm slug để dễ phân biệt
+            const safeStory = storyName.replace(/[\\/:*?"<>|]/g, '');
+            const safeChap = chapTitle.replace(/[\\/:*?"<>|]/g, '');
+            a.download = (safeStory ? safeStory + "_" : "") + safeChap + ".txt"; 
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function clearEditor() {
+            if(confirm("Bạn có chắc chắn muốn xóa sạch dữ liệu trong Editor?")) {
+                document.getElementById('chapTitle').value = '';
+                document.getElementById('chapContent').value = '';
+            }
+        }
+    </script>
+</body>
+</html>
