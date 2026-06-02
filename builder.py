@@ -14,9 +14,7 @@ else:
 
 # --- CẤU HÌNH API ---
 API_URL = "https://comic.sangtacvietcdn.xyz/tsm.php?cdn=/"
-LIBRARY_DIR = os.path.join(BASE_DIR, "library")
 TEMPLATE_FILE = os.path.join(BASE_DIR, "reader.html")
-STORY_TEMPLATE_FILE = os.path.join(LIBRARY_DIR, "story.html")
 CHUNK_LIMIT = 12000
 DELAY = 1.2
 
@@ -53,17 +51,9 @@ class TranslatorGUI:
         # Story Title Input
         frame_title = tk.Frame(self.root, bg="#09090b")
         frame_title.pack(fill="x", padx=20, pady=5)
-        tk.Label(frame_title, text="Tên Truyện:", fg="#a1a1aa", bg="#09090b", width=12, anchor="w").pack(side="left")
+        tk.Label(frame_title, text="Story Title:", fg="#a1a1aa", bg="#09090b").pack(side="left")
         self.ent_title = tk.Entry(frame_title, bg="#18181b", fg="#ffffff", insertbackground="white", borderwidth=0)
         self.ent_title.pack(side="left", fill="x", expand=True, padx=10, ipady=5)
-
-        # Chapter Title Input
-        frame_chap = tk.Frame(self.root, bg="#09090b")
-        frame_chap.pack(fill="x", padx=20, pady=(0, 5))
-        tk.Label(frame_chap, text="Tên Chương:", fg="#a1a1aa", bg="#09090b", width=12, anchor="w").pack(side="left")
-        self.ent_chap = tk.Entry(frame_chap, bg="#18181b", fg="#ffffff", insertbackground="white", borderwidth=0)
-        self.ent_chap.insert(0, "Chương 1")
-        self.ent_chap.pack(side="left", fill="x", expand=True, padx=10, ipady=5)
 
         # Text Area for Copy-Paste
         tk.Label(self.root, text="Nội dung tiếng Trung (hoặc kéo thả / chọn file .txt):", fg="#a1a1aa", bg="#09090b").pack(anchor="w", padx=20, pady=(10, 0))
@@ -102,8 +92,6 @@ class TranslatorGUI:
     def clear_all(self):
         """Clear all inputs and reset the UI."""
         self.ent_title.delete(0, tk.END)
-        self.ent_chap.delete(0, tk.END)
-        self.ent_chap.insert(0, "Chương 1")
         self.txt_area.delete(1.0, tk.END)
         self.lbl_status.config(text="Sẵn sàng", fg="#71717a")
         self.btn_clear.pack_forget()
@@ -144,9 +132,10 @@ class TranslatorGUI:
         self.ent_title.insert(0, title_suggest)
         self.lbl_status.config(text=f"Đã tải: {os.path.basename(file_path)}", fg="#10b981")
 
-    def update_catalog(self, title, slug, chap_title, chap_slug):
-        catalog_path = os.path.join(LIBRARY_DIR, "list.json")
-        os.makedirs(LIBRARY_DIR, exist_ok=True)
+    def update_catalog(self, title, slug):
+        stories_dir = os.path.join(BASE_DIR, "stories")
+        catalog_path = os.path.join(stories_dir, "list.json")
+        os.makedirs(stories_dir, exist_ok=True)
         catalog = []
         if os.path.exists(catalog_path):
             try:
@@ -154,32 +143,13 @@ class TranslatorGUI:
                     catalog = json.load(f)
             except: pass
 
-        existing = next((item for item in catalog if item.get('slug') == slug), None)
+        existing = next((item for item in catalog if item['slug'] == slug), None)
         now = datetime.datetime.now()
-        
-        chap_data = {"id": chap_slug, "name": chap_title, "date": now.strftime("%d/%m/%Y")}
-
         if not existing:
-            catalog.append({
-                "title": title, 
-                "slug": slug, 
-                "date": now.strftime("%d/%m/%Y"), 
-                "timestamp": now.timestamp(),
-                "chapters": [chap_data]
-            })
+            catalog.append({"title": title, "slug": slug, "date": now.strftime("%d/%m/%Y"), "timestamp": now.timestamp()})
         else:
             existing['date'] = now.strftime("%d/%m/%Y")
             existing['timestamp'] = now.timestamp()
-            if 'chapters' not in existing:
-                existing['chapters'] = []
-            
-            # Update chapter if exists, else append
-            chap_exists = next((c for c in existing['chapters'] if c['id'] == chap_slug), None)
-            if chap_exists:
-                chap_exists['name'] = chap_title
-                chap_exists['date'] = chap_data['date']
-            else:
-                existing['chapters'].append(chap_data)
 
         with open(catalog_path, "w", encoding="utf-8") as f:
             json.dump(catalog, f, ensure_ascii=False, indent=4)
@@ -232,28 +202,22 @@ class TranslatorGUI:
 
     def run_process(self):
         title = self.ent_title.get().strip()
-        chap_title = self.ent_chap.get().strip()
         content = self.txt_area.get(1.0, tk.END).strip()
 
-        if not title or not chap_title or not content:
-            messagebox.showwarning("Chú ý", "Vui lòng nhập tên truyện, tên chương và nội dung!")
+        if not title or not content:
+            messagebox.showwarning("Chú ý", "Vui lòng nhập tiêu đề và nội dung!")
             return
 
         slug = slugify_vn(title)
-        chap_slug = slugify_vn(chap_title)
-        
-        if not slug or not chap_slug:
-            messagebox.showwarning("Chú ý", "Tên truyện hoặc tên chương không hợp lệ!")
+        if not slug:
+            messagebox.showwarning("Chú ý", "Tiêu đề không hợp lệ, không thể tạo slug!")
             return
 
         self.btn_run.config(state="disabled")
         self.btn_clear.pack_forget()
-        self.lbl_status.config(text=f"Đang xử lý: {slug} / {chap_slug}...", fg="#3b82f6")
+        self.lbl_status.config(text=f"Slug: {slug} — Đang xử lý dữ liệu...", fg="#3b82f6")
 
-        # Lưu dưới dạng library/{story_slug}/{chap_slug}/
-        # Để thư mục truyện gọn gàng và độc giả đọc qua github pages
-        story_dir = os.path.join(LIBRARY_DIR, slug)
-        output_dir = os.path.join(story_dir, chap_slug)
+        output_dir = os.path.join(BASE_DIR, "stories", slug)
         os.makedirs(output_dir, exist_ok=True)
 
         lines = [l.strip() for l in content.split("\n") if l.strip()]
@@ -322,15 +286,11 @@ class TranslatorGUI:
             with open(TEMPLATE_FILE, "r", encoding="utf-8") as f_t, open(os.path.join(output_dir, "index.html"), "w", encoding="utf-8") as f_i:
                 f_i.write(f_t.read())
 
-        if os.path.exists(STORY_TEMPLATE_FILE) and not os.path.exists(os.path.join(story_dir, "index.html")):
-            with open(STORY_TEMPLATE_FILE, "r", encoding="utf-8") as f_s, open(os.path.join(story_dir, "index.html"), "w", encoding="utf-8") as f_o:
-                f_o.write(f_s.read())
-
-        self.update_catalog(story_data["title"], slug, chap_title, chap_slug)
+        self.update_catalog(story_data["title"], slug)
         self.lbl_status.config(text="✅ Hoàn thành!", fg="#10b981")
         self.btn_run.config(state="normal")
         self.btn_clear.pack(side="right", padx=5)
-        messagebox.showinfo("Thành công", f"Đã xuất ra: library/{slug}/{chap_slug}")
+        messagebox.showinfo("Thành công", f"Đã dịch xong truyện: {slug}")
 
 if __name__ == "__main__":
     root = TkinterDnD.Tk()

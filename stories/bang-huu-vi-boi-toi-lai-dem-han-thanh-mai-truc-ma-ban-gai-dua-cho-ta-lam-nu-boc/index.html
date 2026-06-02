@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reader Pro</title>
+    <script src="https://code.jquery.com/jquery-4.0.0.js"
+        integrity="sha256-9fsHeVnKBvqh3FB2HYu7g2xseAZ5MlN6Kz/qnkASV8U=" crossorigin="anonymous"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #09090b;
+        }
+
+        .active {
+            background-color: #1d4ed8 !important;
+            border-color: #3b82f6 !important;
+            color: white !important;
+        }
+
+        .cn-text {
+            color: #71717a;
+            font-style: italic;
+            font-size: 0.9rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .vi-text {
+            color: #e4e4e7;
+            font-size: 1.1rem;
+            line-height: 1.7;
+        }
+
+        /* Điều khiển hiển thị bằng Class tại Body */
+        body.mode-vi .cn-text {
+            display: none;
+        }
+
+        body.mode-cn .vi-text {
+            display: none;
+        }
+    </style>
+</head>
+
+<body class="text-zinc-400 pb-20 mode-vi">
+    <div class="sticky top-0 z-50 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800 p-3">
+        <div class="max-w-2xl mx-auto">
+            <div class="flex items-center justify-between mb-3">
+                <a href="../" class="text-xs text-zinc-500 hover:text-zinc-300">← Quay lại</a>
+                <span id="title" class="text-sm font-medium text-zinc-200 truncate ml-4">Đang tải...</span>
+            </div>
+            <div class="flex bg-zinc-900 p-1 rounded-lg border border-zinc-800">
+                <button data-mode="vi" class="btn-m flex-1 py-1.5 text-xs rounded-md active">Việt</button>
+                <button data-mode="both" class="btn-m flex-1 py-1.5 text-xs rounded-md">Song Ngữ</button>
+                <button data-mode="cn" class="btn-m flex-1 py-1.5 text-xs rounded-md">Trung</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="max-w-2xl mx-auto p-4 mt-4">
+        <div id="content" class="space-y-6"></div>
+        
+        <!-- Pagination -->
+        <div class="border-t border-zinc-800 pt-8 mt-12 mb-6">
+            <div class="flex items-center justify-between gap-4" id="pagination">
+                <a id="prevBtn" href="#" class="hidden flex-1 text-center py-2.5 px-4 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-sm font-medium text-zinc-300 transition-colors">← Đọc chương trước</a>
+                <a id="homeBtn" href="../" class="flex-1 text-center py-2.5 px-4 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-sm font-medium text-zinc-300 transition-colors">Về trang chủ truyện</a>
+                <a id="nextBtn" href="#" class="hidden flex-1 text-center py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors">Đọc trang sau →</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        $(function () {
+            const $body = $('body');
+            const $content = $('#content');
+
+            // Hàm giải mã Unicode Base64
+            const decode = (str) => decodeURIComponent(escape(atob(str)));
+
+            // Xử lý chuyển chế độ
+            $('.btn-m').on('click', function () {
+                const mode = $(this).data('mode');
+
+                // Cập nhật giao diện
+                $('.btn-m').removeClass('active');
+                $(this).addClass('active');
+
+                // Thay đổi class ở body để điều khiển CSS
+                $body.removeClass('mode-vi mode-cn mode-both').addClass('mode-' + mode);
+                localStorage.setItem('reader-mode', mode);
+            });
+
+            // Load dữ liệu
+            $.getJSON('./data.json', function (data) {
+                $('#title').text(data.title);
+
+                let html = data.content.map(item => `
+                    <div class="story-block border-l-2 border-transparent hover:border-blue-900 pl-4 transition-all">
+                        <p class="cn-text">${decode(item.cn)}</p>
+                        <p class="vi-text">${decode(item.vi)}</p>
+                    </div>
+                `).join('');
+
+                $content.html(html);
+
+                // Khôi phục chế độ đã lưu
+                const savedMode = localStorage.getItem('reader-mode') || 'vi';
+                $(`.btn-m[data-mode="${savedMode}"]`).trigger('click');
+
+                // Xử lý Pagination động
+                setupPagination();
+            }).fail(() => $content.html('<p class="text-red-500">Lỗi: Không tìm thấy data.json</p>'));
+
+            function setupPagination() {
+                try {
+                    const pathParts = window.location.pathname.split('/').filter(Boolean);
+                    let chapterId = '';
+                    let storyId = '';
+                    
+                    if (pathParts.length > 0) {
+                        const lastPart = pathParts[pathParts.length - 1];
+                        if (lastPart.endsWith('.html')) {
+                            chapterId = pathParts[pathParts.length - 2];
+                            storyId = pathParts[pathParts.length - 3];
+                        } else {
+                            chapterId = pathParts[pathParts.length - 1];
+                            storyId = pathParts[pathParts.length - 2];
+                        }
+                    }
+
+                    if (storyId && chapterId) {
+                        $.getJSON('../../list.json', function (list) {
+                            const story = list.find(s => s.slug === storyId);
+                            if (story && story.chapters) {
+                                const chapters = story.chapters;
+                                const currentIdx = chapters.findIndex(c => c.id === chapterId);
+                                
+                                if (currentIdx !== -1) {
+                                    // Đọc chương trước
+                                    if (currentIdx > 0) {
+                                        const prevChap = chapters[currentIdx - 1];
+                                        $('#prevBtn').attr('href', `../${prevChap.id}/`).removeClass('hidden');
+                                    }
+                                    
+                                    // Đọc trang sau
+                                    if (currentIdx < chapters.length - 1) {
+                                        const nextChap = chapters[currentIdx + 1];
+                                        $('#nextBtn').attr('href', `../${nextChap.id}/`).removeClass('hidden');
+                                    }
+                                }
+                            }
+                        });
+                    }
+                } catch (err) {
+                    console.error("Lỗi khi tải pagination:", err);
+                }
+            }
+        });
+    </script>
+</body>
+
+</html>
