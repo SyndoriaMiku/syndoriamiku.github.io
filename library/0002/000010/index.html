@@ -46,14 +46,15 @@
 <body class="text-zinc-400 pb-20 mode-vi">
     <div class="sticky top-0 z-50 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800 p-3">
         <div class="max-w-2xl mx-auto">
-            <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center justify-between mb-2">
                 <a href="../" class="text-xs text-zinc-500 hover:text-zinc-300">← Quay lại</a>
                 <span id="title" class="text-sm font-medium text-zinc-200 truncate ml-4">Đang tải...</span>
             </div>
-            <div class="flex bg-zinc-900 p-1 rounded-lg border border-zinc-800">
-                <button data-mode="vi" class="btn-m flex-1 py-1.5 text-xs rounded-md active">Việt</button>
-                <button data-mode="both" class="btn-m flex-1 py-1.5 text-xs rounded-md">Song Ngữ</button>
-                <button data-mode="cn" class="btn-m flex-1 py-1.5 text-xs rounded-md">Trung</button>
+            <!-- Top Pagination -->
+            <div class="flex items-center justify-between gap-2 mt-2" id="paginationTop">
+                <a id="prevBtnTop" href="#" class="hidden flex-1 text-center py-1.5 px-3 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-xs font-medium text-zinc-300 transition-colors">← Chương trước</a>
+                <a id="homeBtnTop" href="../" class="flex-1 text-center py-1.5 px-3 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-xs font-medium text-zinc-300 transition-colors">Trang chủ</a>
+                <a id="nextBtnTop" href="#" class="hidden flex-1 text-center py-1.5 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors">Chương sau →</a>
             </div>
         </div>
     </div>
@@ -61,7 +62,7 @@
     <div class="max-w-2xl mx-auto p-4 mt-4">
         <div id="content" class="space-y-6"></div>
         
-        <!-- Pagination -->
+        <!-- Bottom Pagination -->
         <div class="border-t border-zinc-800 pt-8 mt-12 mb-6">
             <div class="flex items-center justify-between gap-4" id="pagination">
                 <a id="prevBtn" href="#" class="hidden flex-1 text-center py-2.5 px-4 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-sm font-medium text-zinc-300 transition-colors">← Đọc chương trước</a>
@@ -71,26 +72,21 @@
         </div>
     </div>
 
+    <!-- Floating Scroll to Top button under bottom-left corner -->
+    <button id="scrollToTopBtn" class="fixed bottom-6 left-6 z-50 p-3 rounded-full bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white shadow-lg transition-all transform scale-0 cursor-pointer">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-5 h-5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 10.5 12 3m0 0 7.5 7.5M12 3v18" />
+        </svg>
+    </button>
+
     <script>
         $(function () {
             const $body = $('body');
             const $content = $('#content');
+            const $scrollToTopBtn = $('#scrollToTopBtn');
 
             // Hàm giải mã Unicode Base64
             const decode = (str) => decodeURIComponent(escape(atob(str)));
-
-            // Xử lý chuyển chế độ
-            $('.btn-m').on('click', function () {
-                const mode = $(this).data('mode');
-
-                // Cập nhật giao diện
-                $('.btn-m').removeClass('active');
-                $(this).addClass('active');
-
-                // Thay đổi class ở body để điều khiển CSS
-                $body.removeClass('mode-vi mode-cn mode-both').addClass('mode-' + mode);
-                localStorage.setItem('reader-mode', mode);
-            });
 
             // Load dữ liệu
             $.getJSON('./data.json', function (data) {
@@ -105,13 +101,22 @@
 
                 $content.html(html);
 
-                // Khôi phục chế độ đã lưu
-                const savedMode = localStorage.getItem('reader-mode') || 'vi';
-                $(`.btn-m[data-mode="${savedMode}"]`).trigger('click');
-
                 // Xử lý Pagination động
                 setupPagination();
             }).fail(() => $content.html('<p class="text-red-500">Lỗi: Không tìm thấy data.json</p>'));
+
+            // Floating Button Scroll to Top
+            $(window).on('scroll', function () {
+                if ($(window).scrollTop() > 300) {
+                    $scrollToTopBtn.removeClass('scale-0').addClass('scale-100');
+                } else {
+                    $scrollToTopBtn.removeClass('scale-100').addClass('scale-0');
+                }
+            });
+
+            $scrollToTopBtn.on('click', function () {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            });
 
             function setupPagination() {
                 try {
@@ -141,13 +146,17 @@
                                     // Đọc chương trước
                                     if (currentIdx > 0) {
                                         const prevChap = chapters[currentIdx - 1];
-                                        $('#prevBtn').attr('href', `../${prevChap.id}/`).removeClass('hidden');
+                                        const prevUrl = `../${prevChap.id}/`;
+                                        $('#prevBtn').attr('href', prevUrl).removeClass('hidden');
+                                        $('#prevBtnTop').attr('href', prevUrl).removeClass('hidden');
                                     }
                                     
                                     // Đọc trang sau
                                     if (currentIdx < chapters.length - 1) {
                                         const nextChap = chapters[currentIdx + 1];
-                                        $('#nextBtn').attr('href', `../${nextChap.id}/`).removeClass('hidden');
+                                        const nextUrl = `../${nextChap.id}/`;
+                                        $('#nextBtn').attr('href', nextUrl).removeClass('hidden');
+                                        $('#nextBtnTop').attr('href', nextUrl).removeClass('hidden');
                                     }
                                 }
                             }
