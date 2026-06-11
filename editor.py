@@ -31,6 +31,111 @@ def slugify_vn(text):
 	return text
 
 
+def setup_text_shortcuts(widget):
+	def select_all(event):
+		widget.tag_add("sel", "1.0", "end")
+		return "break"
+
+	def copy(event):
+		try:
+			selected = widget.get("sel.first", "sel.last")
+			widget.clipboard_clear()
+			widget.clipboard_append(selected)
+		except tk.TclError:
+			pass
+		return "break"
+
+	def cut(event):
+		try:
+			selected = widget.get("sel.first", "sel.last")
+			widget.clipboard_clear()
+			widget.clipboard_append(selected)
+			widget.delete("sel.first", "sel.last")
+		except tk.TclError:
+			pass
+		return "break"
+
+	def paste(event):
+		try:
+			text = widget.clipboard_get()
+			if widget.tag_ranges("sel"):
+				widget.delete("sel.first", "sel.last")
+			widget.insert(tk.INSERT, text)
+		except tk.TclError:
+			pass
+		return "break"
+
+	def undo(event):
+		try:
+			widget.edit_undo()
+		except tk.TclError:
+			pass
+		return "break"
+
+	def redo(event):
+		try:
+			widget.edit_redo()
+		except tk.TclError:
+			pass
+		return "break"
+
+	widget.bind("<Control-a>", select_all)
+	widget.bind("<Control-A>", select_all)
+	widget.bind("<Control-c>", copy)
+	widget.bind("<Control-C>", copy)
+	widget.bind("<Control-x>", cut)
+	widget.bind("<Control-X>", cut)
+	widget.bind("<Control-v>", paste)
+	widget.bind("<Control-V>", paste)
+	widget.bind("<Control-z>", undo)
+	widget.bind("<Control-Z>", undo)
+	widget.bind("<Control-y>", redo)
+	widget.bind("<Control-Y>", redo)
+
+
+def setup_entry_shortcuts(widget):
+	def select_all(event):
+		widget.select_range(0, tk.END)
+		widget.icursor(tk.END)
+		return "break"
+
+	def copy(event):
+		if widget.select_present():
+			widget.clipboard_clear()
+			widget.clipboard_append(widget.selection_get())
+		return "break"
+
+	def cut(event):
+		if widget.select_present():
+			widget.clipboard_clear()
+			widget.clipboard_append(widget.selection_get())
+			first = widget.index("sel.first")
+			last = widget.index("sel.last")
+			widget.delete(first, last)
+		return "break"
+
+	def paste(event):
+		try:
+			text = widget.clipboard_get()
+			if widget.select_present():
+				first = widget.index("sel.first")
+				last = widget.index("sel.last")
+				widget.delete(first, last)
+			widget.insert(tk.INSERT, text)
+		except tk.TclError:
+			pass
+		return "break"
+
+	widget.bind("<Control-a>", select_all)
+	widget.bind("<Control-A>", select_all)
+	widget.bind("<Control-c>", copy)
+	widget.bind("<Control-C>", copy)
+	widget.bind("<Control-x>", cut)
+	widget.bind("<Control-X>", cut)
+	widget.bind("<Control-v>", paste)
+	widget.bind("<Control-V>", paste)
+
+
 class ChapterEditorApp:
 	def __init__(self, root):
 		self.root = root
@@ -125,6 +230,7 @@ class ChapterEditorApp:
 
 		self.chap_entry = tk.Entry(chap_id_frame, bg="#09090b", fg="#ffffff", insertbackground="white", font=("Arial", 10))
 		self.chap_entry.pack(fill="x", pady=(4, 0), ipady=4)
+		setup_entry_shortcuts(self.chap_entry)
 
 		# Right side: Chapter Title (Tên chương)
 		chap_title_frame = tk.Frame(chap_meta_frame, bg="#18181b")
@@ -139,6 +245,7 @@ class ChapterEditorApp:
 
 		self.chap_title_entry = tk.Entry(chap_title_frame, bg="#09090b", fg="#ffffff", insertbackground="white", font=("Arial", 10))
 		self.chap_title_entry.pack(fill="x", pady=(4, 0), ipady=4)
+		setup_entry_shortcuts(self.chap_title_entry)
 
 		# Vietnamese content
 		tk.Label(
@@ -155,9 +262,11 @@ class ChapterEditorApp:
 			fg="#e4e4e7",
 			insertbackground="white",
 			font=("Consolas", 11),
-			wrap=tk.WORD
+			wrap=tk.WORD,
+			undo=True
 		)
 		self.content_text.pack(fill="both", expand=True, pady=(4, 12))
+		setup_text_shortcuts(self.content_text)
 
 		btns = tk.Frame(form, bg="#18181b")
 		btns.pack(fill="x", pady=(0, 16))
@@ -263,6 +372,7 @@ class ChapterEditorApp:
 		
 		self.search_entry = tk.Entry(self.search_frame, bg="#09090b", fg="#ffffff", insertbackground="white", font=("Arial", 9))
 		self.search_entry.pack(side="left", fill="x", expand=True, pady=4, padx=4)
+		setup_entry_shortcuts(self.search_entry)
 		
 		self.regex_var = tk.BooleanVar(value=False)
 		self.regex_check = tk.Checkbutton(
@@ -326,9 +436,11 @@ class ChapterEditorApp:
 			fg="#e4e4e7",
 			insertbackground="white",
 			font=("Consolas", 10),
-			wrap=tk.WORD
+			wrap=tk.WORD,
+			undo=True
 		)
 		self.temp_text.pack(fill="both", expand=True, padx=16, pady=(0, 16))
+		setup_text_shortcuts(self.temp_text)
 		
 		# Configure match tags
 		self.temp_text.tag_configure("match", background="#b45309", foreground="#ffffff")

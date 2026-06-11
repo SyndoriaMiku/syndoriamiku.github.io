@@ -20,20 +20,163 @@ DELAY = 1.2
 
 def slugify_vn(text):
     """Convert a Vietnamese (or any) title into a URL-friendly slug."""
-    # Extra mapping for characters that unicodedata doesn't decompose well
-    _vn_map = str.maketrans(
-        "đĐ",
-        "dD",
-    )
+    _vn_map = str.maketrans("đĐ", "dD")
     text = text.translate(_vn_map)
-    # Normalize to NFD so accents become separate combining characters, then strip them
     text = unicodedata.normalize("NFD", text)
     text = "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
     text = text.lower()
-    text = re.sub(r"[^a-z0-9\s-]", "", text)   # keep only alphanum, spaces, hyphens
+    text = re.sub(r"[^a-z0-9\s-]", "", text)
     text = re.sub(r"[\s-]+", "-", text).strip("-")
     return text
 
+# --- CLASS REVIEW WINDOW MỚI ---
+class ReviewWindow:
+    def __init__(self, parent, title, slug, cn_lines, vi_lines, app_instance):
+        self.top = tk.Toplevel(parent)
+        self.top.title(f"Review & Edit Name: {title}")
+        self.top.geometry("900x700")
+        self.top.configure(bg="#09090b")
+        
+        self.title = title
+        self.slug = slug
+        self.cn_lines = cn_lines
+        self.vi_lines = vi_lines
+        self.app = app_instance
+
+        self.setup_ui()
+        self.load_content()
+
+    def setup_ui(self):
+        ctrl_frame = tk.Frame(self.top, bg="#09090b")
+        ctrl_frame.pack(fill="x", padx=10, pady=10)
+        
+        tk.Label(ctrl_frame, text="Bôi đen chữ bên dưới ➡️ Click chuột phải để Thêm Name", fg="#a1a1aa", bg="#09090b").pack(side="left")
+        
+        btn_save = tk.Button(ctrl_frame, text="💾 Lưu vào data.json", command=self.save_data, bg="#10b981", fg="white", borderwidth=0, padx=15)
+        btn_save.pack(side="right")
+
+        self.text_editor = scrolledtext.ScrolledText(self.top, wrap=tk.WORD, bg="#18181b", fg="#e4e4e7", font=("Consolas", 11), borderwidth=0)
+        self.text_editor.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        self.text_editor.tag_config("cn", foreground="#71717a")
+        self.text_editor.tag_config("vi", foreground="#ffffff")
+        
+        self.menu = tk.Menu(self.top, tearoff=0, bg="#27272a", fg="white", borderwidth=0)
+        self.menu.add_command(label="Sửa lỗi & Thêm Name", command=self.prompt_add_name)
+        
+        self.text_editor.bind("<Button-3>", self.show_context_menu)
+
+    def load_content(self):
+        # Lưu lại vị trí cuộn chuột (scrollbar) hiện tại để khi update UI không bị giật lên đầu trang
+        scroll_pos = self.text_editor.yview()
+        
+        self.text_editor.config(state=tk.NORMAL)
+        self.text_editor.delete(1.0, tk.END)
+        for i in range(len(self.cn_lines)):
+            self.text_editor.insert(tk.END, f"{self.cn_lines[i]}\n", "cn")
+            self.text_editor.insert(tk.END, f"{self.vi_lines[i]}\n\n", "vi")
+        self.text_editor.config(state=tk.DISABLED)
+        
+        # Phục hồi vị trí cuộn
+        self.text_editor.yview_moveto(scroll_pos[0])
+
+    def show_context_menu(self, event):
+        try:
+            self.text_editor.get(tk.SEL_FIRST, tk.SEL_LAST)
+            self.menu.tk_popup(event.x_root, event.y_root)
+        except tk.TclError:
+            pass
+
+    def prompt_add_name(self):
+        try:
+            selected_text = self.text_editor.get(tk.SEL_FIRST, tk.SEL_LAST).strip()
+        except tk.TclError:
+            selected_text = ""
+
+        # Check xem chuỗi bôi đen có chứa ký tự CJK (Tiếng Trung) không
+        is_cn = any('\u4e00' <= char <= '\u9fff' for char in selected_text)
+
+        dialog = tk.Toplevel(self.top)
+        dialog.title("Sửa lỗi & Thêm Name Mới")
+        dialog.geometry("420x350")
+        dialog.configure(bg="#18181b")
+        dialog.transient(self.top)
+        dialog.grab_set()
+
+        # 1. Ô Tiếng Trung
+        tk.Label(dialog, text="1. Tiếng Trung gốc (để lưu Name dùng vĩnh viễn):", fg="#a1a1aa", bg="#18181b").pack(pady=(10,0), anchor="w", padx=20)
+        ent_cn = tk.Entry(dialog, bg="#27272a", fg="white", borderwidth=0, insertbackground="white")
+        ent_cn.pack(fill="x", padx=20, pady=5, ipady=5)
+        if is_cn and selected_text:
+            ent_cn.insert(0, selected_text)
+
+        # 2. Ô Từ sai
+        tk.Label(dialog, text="2. Cụm từ VN bị dịch sai (để thay thế trong bài này):", fg="#a1a1aa", bg="#18181b").pack(pady=(10,0), anchor="w", padx=20)
+        ent_wrong = tk.Entry(dialog, bg="#27272a", fg="white", borderwidth=0, insertbackground="white")
+        ent_wrong.pack(fill="x", padx=20, pady=5, ipady=5)
+        if not is_cn and selected_text:
+            ent_wrong.insert(0, selected_text)
+
+        # 3. Ô Name đúng
+        tk.Label(dialog, text="3. Sửa thành (Name đúng):", fg="#10b981", bg="#18181b", font=("Arial", 10, "bold")).pack(pady=(10,0), anchor="w", padx=20)
+        ent_right = tk.Entry(dialog, bg="#27272a", fg="white", borderwidth=0, insertbackground="white")
+        ent_right.pack(fill="x", padx=20, pady=5, ipady=5)
+
+        def apply_name():
+            cn_val = ent_cn.get().strip()
+            wrong_val = ent_wrong.get().strip()
+            right_val = ent_right.get().strip()
+
+            if not right_val:
+                messagebox.showwarning("Chú ý", "Vui lòng nhập 'Name đúng'!", parent=dialog)
+                return
+
+            # Replace toàn bộ chữ sai thành chữ đúng trên mảng RAM (áp dụng cho TOÀN BỘ file truyện)
+            if wrong_val:
+                for i in range(len(self.vi_lines)):
+                    self.vi_lines[i] = self.vi_lines[i].replace(wrong_val, right_val)
+
+            # Ghi Tiếng Trung = Name đúng vào file config
+            if cn_val:
+                self.save_name_to_cfg(cn_val, right_val)
+
+            self.load_content() # Render lại giao diện ngay lập tức
+            dialog.destroy()
+
+        tk.Button(dialog, text="🚀 Lưu Name & Cập nhật toàn bộ", command=apply_name, bg="#3b82f6", fg="white", borderwidth=0).pack(pady=20, ipadx=10, ipady=5)
+
+    def save_name_to_cfg(self, cn, vi):
+        cfg_path = os.path.join(BASE_DIR, "name.cfg")
+        with open(cfg_path, "a", encoding="utf-8") as f:
+            f.write(f"\n{cn}={vi}")
+
+    def save_data(self):
+        output_dir = os.path.join(BASE_DIR, "stories", self.slug)
+        os.makedirs(output_dir, exist_ok=True)
+        
+        story_data = {"title": self.title, "content": []}
+        
+        for i in range(len(self.cn_lines)):
+            story_data["content"].append({
+                "cn": base64.b64encode(self.cn_lines[i].encode('utf-8')).decode('utf-8'),
+                "vi": base64.b64encode(self.vi_lines[i].encode('utf-8')).decode('utf-8')
+            })
+
+        with open(os.path.join(output_dir, "data.json"), "w", encoding="utf-8") as f:
+            json.dump(story_data, f, ensure_ascii=False)
+
+        if os.path.exists(TEMPLATE_FILE):
+            with open(TEMPLATE_FILE, "r", encoding="utf-8") as f_t, open(os.path.join(output_dir, "index.html"), "w", encoding="utf-8") as f_i:
+                f_i.write(f_t.read())
+
+        self.app.update_catalog(self.title, self.slug)
+        self.app.lbl_status.config(text="✅ Đã lưu data.json thành công!", fg="#10b981")
+        self.app.btn_run.config(state="normal")
+        self.app.btn_clear.pack(side="right", padx=5)
+        messagebox.showinfo("Thành công", f"Đã xuất dữ liệu truyện: {self.slug}")
+        self.top.destroy()
+
+# --- CLASS GIAO DIỆN CHÍNH ---
 class TranslatorGUI:
     def __init__(self, root):
         self.root = root
@@ -83,24 +226,19 @@ class TranslatorGUI:
         self.btn_run.pack(side="right", padx=5)
 
         self.btn_clear = tk.Button(btn_frame, text="🗑️ Xóa tất cả", command=self.clear_all, bg="#dc2626", fg="white", borderwidth=0, padx=15)
-        # Hidden by default, shown after completion
 
         # Progress Label
         self.lbl_status = tk.Label(self.root, text="Sẵn sàng", fg="#71717a", bg="#09090b")
         self.lbl_status.pack(pady=5)
 
     def clear_all(self):
-        """Clear all inputs and reset the UI."""
         self.ent_title.delete(0, tk.END)
         self.txt_area.delete(1.0, tk.END)
         self.lbl_status.config(text="Sẵn sàng", fg="#71717a")
         self.btn_clear.pack_forget()
 
     def handle_drop(self, event):
-        """Handle files dropped onto the drop zone."""
-        # Reset drop zone appearance
         self.drop_zone.config(bg="#18181b", fg="#71717a")
-        # tkdnd wraps paths with spaces in {}, parse them
         raw = event.data
         if raw.startswith("{"):
             file_path = raw.strip("{}") 
@@ -117,7 +255,6 @@ class TranslatorGUI:
             self._load_from_path(file_path)
 
     def _load_from_path(self, file_path):
-        """Load a .txt file into the text area and suggest the title."""
         try:
             with open(file_path, "r", encoding="utf-8") as f:
                 self.txt_area.delete(1.0, tk.END)
@@ -126,7 +263,6 @@ class TranslatorGUI:
             messagebox.showerror("Lỗi", f"Không thể đọc file:\n{e}")
             return
 
-        # Tự động gợi ý title từ tên file
         title_suggest = os.path.basename(file_path).replace(".txt", "")
         self.ent_title.delete(0, tk.END)
         self.ent_title.insert(0, title_suggest)
@@ -143,7 +279,7 @@ class TranslatorGUI:
                     catalog = json.load(f)
             except: pass
 
-        existing = next((item for item in catalog if item['slug'] == slug), None)
+        existing = next((item for item in catalog if item.get('slug') == slug), None)
         now = datetime.datetime.now()
         if not existing:
             catalog.append({"title": title, "slug": slug, "date": now.strftime("%d/%m/%Y"), "timestamp": now.timestamp()})
@@ -155,7 +291,6 @@ class TranslatorGUI:
             json.dump(catalog, f, ensure_ascii=False, indent=4)
 
     def load_name_config(self):
-        """Load name combinations from name.cfg if it exists, otherwise create it."""
         if getattr(sys, 'frozen', False):
             cfg_dir = os.path.dirname(sys.executable)
         else:
@@ -163,7 +298,6 @@ class TranslatorGUI:
             
         cfg_path = os.path.join(cfg_dir, "name.cfg")
         
-        # Auto-create if not exists
         if not os.path.exists(cfg_path):
             try:
                 with open(cfg_path, "w", encoding="utf-8") as f:
@@ -183,7 +317,6 @@ class TranslatorGUI:
                         if "=" in line:
                             cn, vi = line.split("=", 1)
                             if cn.strip() and vi.strip():
-                                # Automatically title-case the Vietnamese name (capitalize first letter of each word)
                                 name_dict[cn.strip()] = vi.strip().title()
             except Exception as e:
                 print(f"Lỗi khi đọc file name.cfg: {e}")
@@ -197,7 +330,6 @@ class TranslatorGUI:
         except: return None
 
     def start_thread(self):
-        # Chạy trong thread riêng để không bị treo UI
         threading.Thread(target=self.run_process, daemon=True).start()
 
     def run_process(self):
@@ -217,17 +349,11 @@ class TranslatorGUI:
         self.btn_clear.pack_forget()
         self.lbl_status.config(text=f"Slug: {slug} — Đang xử lý dữ liệu...", fg="#3b82f6")
 
-        output_dir = os.path.join(BASE_DIR, "stories", slug)
-        os.makedirs(output_dir, exist_ok=True)
-
         lines = [l.strip() for l in content.split("\n") if l.strip()]
-        story_data = {"title": title, "content": []}
 
-        # Load name replacements and order by length descending
         name_dict = self.load_name_config()
         sorted_names = sorted(name_dict.keys(), key=len, reverse=True)
 
-        # Apply replacements
         processed_lines = []
         for line in lines:
             replaced_line = line
@@ -236,7 +362,6 @@ class TranslatorGUI:
                     replaced_line = replaced_line.replace(cn, name_dict[cn])
             processed_lines.append((line, replaced_line))
 
-        # Chunking
         chunks = []
         cur_g, cur_l = [], 0
         for orig_line, rep_line in processed_lines:
@@ -248,6 +373,10 @@ class TranslatorGUI:
                 cur_g, cur_l = [(orig_line, rep_line)], len(rep_line)
         if cur_g:
             chunks.append(cur_g)
+
+        # Mảng để lưu trữ dữ liệu truyền sang màn hình Review
+        final_cn_lines = []
+        final_vi_lines = []
 
         for i, group in enumerate(chunks):
             self.lbl_status.config(text=f"Đang dịch đợt {i+1}/{len(chunks)}...")
@@ -265,32 +394,16 @@ class TranslatorGUI:
                 orig_cn, rep_cn = group[j]
                 vi = vi_lines[j] if j < len(vi_lines) else ""
                 
-                # Capitalize the first letter of the word immediately following the translated name
-                for v_name in vi_names:
-                    if v_name in vi:
-                        # Match the name, optional spaces, and the next word character
-                        pattern = re.compile(re.escape(v_name) + r'(\s*)([^\W\d_])', re.UNICODE)
-                        vi = pattern.sub(lambda m: v_name + m.group(1) + m.group(2).upper(), vi)
+                # Chỉ lấy nguyên bản đoạn dịch và đẩy vào mảng, không tự ép viết hoa nữa
+                final_cn_lines.append(orig_cn)
+                final_vi_lines.append(vi)
                 
-                story_data["content"].append({
-                    "cn": base64.b64encode(orig_cn.encode('utf-8')).decode('utf-8'),
-                    "vi": base64.b64encode(vi.encode('utf-8')).decode('utf-8')
-                })
             time.sleep(DELAY)
 
-        # Save files
-        with open(os.path.join(output_dir, "data.json"), "w", encoding="utf-8") as f:
-            json.dump(story_data, f, ensure_ascii=False)
-
-        if os.path.exists(TEMPLATE_FILE):
-            with open(TEMPLATE_FILE, "r", encoding="utf-8") as f_t, open(os.path.join(output_dir, "index.html"), "w", encoding="utf-8") as f_i:
-                f_i.write(f_t.read())
-
-        self.update_catalog(story_data["title"], slug)
-        self.lbl_status.config(text="✅ Hoàn thành!", fg="#10b981")
-        self.btn_run.config(state="normal")
-        self.btn_clear.pack(side="right", padx=5)
-        messagebox.showinfo("Thành công", f"Đã dịch xong truyện: {slug}")
+        self.lbl_status.config(text="Hoàn tất dịch API. Đang mở cửa sổ Review...", fg="#f59e0b")
+        
+        # Gọi UI Review trong main thread
+        self.root.after(0, lambda: ReviewWindow(self.root, title, slug, final_cn_lines, final_vi_lines, self))
 
 if __name__ == "__main__":
     root = TkinterDnD.Tk()
