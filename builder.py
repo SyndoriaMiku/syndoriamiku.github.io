@@ -157,9 +157,11 @@ class ReviewWindow:
         story_data = {"title": self.title, "content": []}
         
         for i in range(len(self.cn_lines)):
+            cn_nfc = unicodedata.normalize('NFC', self.cn_lines[i])
+            vi_nfc = unicodedata.normalize('NFC', self.vi_lines[i])
             story_data["content"].append({
-                "cn": base64.b64encode(self.cn_lines[i].encode('utf-8')).decode('utf-8'),
-                "vi": base64.b64encode(self.vi_lines[i].encode('utf-8')).decode('utf-8')
+                "cn": base64.b64encode(cn_nfc.encode('utf-8')).decode('utf-8'),
+                "vi": base64.b64encode(vi_nfc.encode('utf-8')).decode('utf-8')
             })
 
         with open(os.path.join(output_dir, "data.json"), "w", encoding="utf-8") as f:
@@ -387,6 +389,7 @@ class TranslatorGUI:
                 time.sleep(3)
                 vi_res = self.translate_api(input_text) or ("[Lỗi]\n" * len(group))
 
+            vi_res = unicodedata.normalize('NFC', vi_res)
             vi_lines = vi_res.split("\n")
             vi_names = list(name_dict.values())
             

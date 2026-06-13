@@ -14,7 +14,8 @@ CATALOG_PATH = os.path.join(LIBRARY_DIR, "list.json")
 def safe_decode_b64(value):
 	try:
 		raw = base64.b64decode(value)
-		return raw.decode("utf-8")
+		text = raw.decode("utf-8")
+		return unicodedata.normalize('NFC', text)
 	except Exception:
 		return "[Loi giai ma]"
 
@@ -661,9 +662,10 @@ class ChapterEditorApp:
 		}
 
 		for p in paragraphs:
+			p_nfc = unicodedata.normalize('NFC', p)
 			story_data["content"].append({
 				"cn": base64.b64encode("".encode('utf-8')).decode('utf-8'),
-				"vi": base64.b64encode(p.encode('utf-8')).decode('utf-8')
+				"vi": base64.b64encode(p_nfc.encode('utf-8')).decode('utf-8')
 			})
 
 		# Save data.json

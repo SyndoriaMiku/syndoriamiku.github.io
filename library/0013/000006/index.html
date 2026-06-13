@@ -85,8 +85,22 @@
             const $content = $('#content');
             const $scrollToTopBtn = $('#scrollToTopBtn');
 
-            // Hàm giải mã Unicode Base64
-            const decode = (str) => decodeURIComponent(escape(atob(str)));
+            // Hàm giải mã Unicode Base64 an toàn bằng TextDecoder + NFC Normalization
+            const decode = (str) => {
+                try {
+                    const binString = atob(str);
+                    const len = binString.length;
+                    const bytes = new Uint8Array(len);
+                    for (let i = 0; i < len; i++) {
+                        bytes[i] = binString.charCodeAt(i);
+                    }
+                    const decodedText = new TextDecoder('utf-8').decode(bytes);
+                    return decodedText.normalize('NFC');
+                } catch (err) {
+                    console.error("Lỗi giải mã Base64:", err);
+                    return "[Lỗi giải mã]";
+                }
+            };
 
             // Load dữ liệu
             $.getJSON('./data.json', function (data) {
