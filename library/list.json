@@ -520,5 +520,31 @@
                 "date": "13/06/2026"
             }
         ]
+    },
+    {
+        "title": "Bị tử địch thuần phục vì kiều thê siêu cấp nữ anh hùng",
+        "slug": "0015",
+        "date": "13/06/2026",
+        "timestamp": 1781342638.719001,
+        "chapters": [
+            {
+                "id": "000001",
+                "name": "Oneshot",
+                "date": "13/06/2026"
+            }
+        ]
+    },
+    {
+        "title": "Cao ngạo Liên Bang thục nữ nghị trưởng kiêm siêu cấp đặc công, lại bị nghĩa tử tổng thống tử địch dạy dỗ trở thành thư thục mẫu heo",
+        "slug": "0016",
+        "date": "13/06/2026",
+        "timestamp": 1781342664.016473,
+        "chapters": [
+            {
+                "id": "000001",
+                "name": "Oneshot",
+                "date": "13/06/2026"
+            }
+        ]
     }
 ]
