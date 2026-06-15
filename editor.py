@@ -287,19 +287,6 @@ class ChapterEditorApp:
 
 		tk.Button(
 			btns,
-			text="💾 Xuất ra file TXT",
-			bg="#3b82f6",
-			fg="#ffffff",
-			command=self.download_txt,
-			borderwidth=0,
-			padx=16,
-			pady=8,
-			font=("Arial", 10),
-			cursor="hand2"
-		).pack(side="left", padx=(10, 0))
-
-		tk.Button(
-			btns,
 			text="🗑️ Làm mới",
 			bg="#dc2626",
 			fg="#ffffff",
@@ -416,6 +403,18 @@ class ChapterEditorApp:
 			font=("Arial", 8),
 			cursor="hand2"
 		).pack(side="left", padx=2)
+		
+		tk.Button(
+			self.search_frame,
+			text="⬆️ Chọn Lên",
+			bg="#8b5cf6",
+			fg="#ffffff",
+			command=self.select_above_match,
+			borderwidth=0,
+			padx=8,
+			font=("Arial", 8, "bold"),
+			cursor="hand2"
+		).pack(side="left", padx=(2, 4))
 		
 		tk.Button(
 			self.search_frame,
@@ -547,9 +546,14 @@ class ChapterEditorApp:
 		self.chap_entry.insert(0, next_chap_id)
 
 	def add_new_story(self):
+		default_title = ""
+		if self.loaded_json and "title" in self.loaded_json:
+			default_title = self.loaded_json.get("title", "")
+
 		title = simpledialog.askstring(
 			"Thêm Truyện Mới",
 			"Nhập Tên hiển thị của truyện mới:",
+			initialvalue=default_title,
 			parent=self.root
 		)
 		if not title or not title.strip():
@@ -624,8 +628,7 @@ class ChapterEditorApp:
 			messagebox.showwarning("Chú ý", "Vui lòng chọn Truyện!")
 			return
 		if not chap_title:
-			messagebox.showwarning("Chú ý", "Vui lòng nhập Tên Chương!")
-			return
+			chap_title = "Oneshot"
 		if not content:
 			messagebox.showwarning("Chú ý", "Nội dung chương không được để trống!")
 			return
@@ -741,7 +744,6 @@ class ChapterEditorApp:
 			messagebox.showerror("Lỗi", f"Không thể cập nhật list.json:\n{e}")
 			return
 
-		messagebox.showinfo("Thành công", f"Đã lưu Chương trực tiếp vào thư viện!\n\nĐường dẫn: library/{story_slug}/{chap_slug}")
 		self.load_story_list()
 
 		# Auto pre-fill with the next chapter ID for convenience!
@@ -878,39 +880,7 @@ class ChapterEditorApp:
 			self.content_text.delete("1.0", tk.END)
 			self.content_text.insert("1.0", new_text)
 
-	def download_txt(self):
-		story_value = self.story_combo.get().strip()
-		chap_value = self.chap_entry.get().strip() or "chapter-new"
-		content = self.content_text.get("1.0", tk.END).strip()
-
-		if not content:
-			messagebox.showwarning("Chú ý", "Chưa có nội dung để xuất.")
-			return
-
-		story_id = story_value.split("|")[0].strip() if story_value else ""
-		safe_story = "".join(ch for ch in story_id if ch not in "\\/:*?\"<>|")
-		safe_chap = "".join(ch for ch in chap_value if ch not in "\\/:*?\"<>|")
-
-		default_name = f"{safe_story + '_' if safe_story else ''}{safe_chap}.txt"
-		save_path = filedialog.asksaveasfilename(
-			defaultextension=".txt",
-			initialfile=default_name,
-			filetypes=[("Text files", "*.txt")],
-		)
-		if not save_path:
-			return
-
-		try:
-			with open(save_path, "w", encoding="utf-8") as f:
-				f.write(content)
-			messagebox.showinfo("Thành công", "Đã xuất file TXT thành công.")
-		except Exception:
-			messagebox.showerror("Lỗi", "Không thể ghi file TXT.")
-
 	def clear_editor(self):
-		if not messagebox.askyesno("Xác nhận", "Bạn muốn xóa sạch dữ liệu trên Editor?"):
-			return
-
 		# Giữ lại chapter ID tự động
 		story_value = self.story_combo.get().strip()
 		next_chap_id = ""
@@ -930,10 +900,13 @@ class ChapterEditorApp:
 			self.chap_entry.insert(0, next_chap_id)
 
 	# --- HỆ THỐNG TÌM KIẾM CHO CỬA SỔ TEMP ---
+	def get_match_coords(self):
+		ranges = self.temp_text.tag_ranges("match")
+		return [(str(ranges[i]), str(ranges[i+1])) for i in range(0, len(ranges), 2)]
+
 	def perform_search(self, event=None):
 		self.temp_text.tag_remove("match", "1.0", tk.END)
 		self.temp_text.tag_remove("active_match", "1.0", tk.END)
-		self.match_coords = []
 		self.current_match_idx = -1
 
 		query = self.search_entry.get()
@@ -957,15 +930,14 @@ class ChapterEditorApp:
 					start = f"{pos}+1c"
 					continue
 				end_pos = f"{pos}+{length}c"
-				self.match_coords.append((pos, end_pos))
 				self.temp_text.tag_add("match", pos, end_pos)
 				start = end_pos
 		except Exception:
 			self.search_status.config(text="Regex lỗi", fg="#ef4444")
 			return
 
-		total = len(self.match_coords)
-		if total > 0:
+		coords = self.get_match_coords()
+		if coords:
 			self.current_match_idx = 0
 			self.highlight_active_match()
 		else:
@@ -973,28 +945,54 @@ class ChapterEditorApp:
 
 	def highlight_active_match(self):
 		self.temp_text.tag_remove("active_match", "1.0", tk.END)
-		if not self.match_coords or self.current_match_idx < 0:
+		coords = self.get_match_coords()
+		
+		if not coords:
+			self.current_match_idx = -1
+			self.search_status.config(text="0/0", fg="#ef4444")
 			return
 
-		start, end = self.match_coords[self.current_match_idx]
+		if self.current_match_idx >= len(coords):
+			self.current_match_idx = len(coords) - 1
+		elif self.current_match_idx < 0:
+			self.current_match_idx = 0
+
+		start, end = coords[self.current_match_idx]
 		self.temp_text.tag_add("active_match", start, end)
 		self.temp_text.see(start)
 		
-		total = len(self.match_coords)
+		total = len(coords)
 		self.search_status.config(text=f"{self.current_match_idx + 1}/{total}", fg="#10b981")
 
 	def find_next(self, event=None):
-		if not self.match_coords:
+		coords = self.get_match_coords()
+		if not coords:
 			return "break"
-		self.current_match_idx = (self.current_match_idx + 1) % len(self.match_coords)
+		self.current_match_idx = (self.current_match_idx + 1) % len(coords)
 		self.highlight_active_match()
 		return "break"
 
 	def find_prev(self, event=None):
-		if not self.match_coords:
+		coords = self.get_match_coords()
+		if not coords:
 			return "break"
-		self.current_match_idx = (self.current_match_idx - 1) % len(self.match_coords)
+		self.current_match_idx = (self.current_match_idx - 1) % len(coords)
 		self.highlight_active_match()
+		return "break"
+
+	def select_above_match(self, event=None):
+		coords = self.get_match_coords()
+		if not coords or self.current_match_idx < 0 or self.current_match_idx >= len(coords):
+			return "break"
+		
+		start, end = coords[self.current_match_idx]
+		
+		self.temp_text.tag_remove("sel", "1.0", tk.END)
+		self.temp_text.tag_add("sel", "1.0", start)
+		
+		self.temp_text.mark_set("insert", "1.0")
+		self.temp_text.see("1.0")
+		self.temp_text.focus_set()
 		return "break"
 
 	def show_search_dialog(self, event=None):
@@ -1014,7 +1012,6 @@ class ChapterEditorApp:
 			self.temp_text.focus_set()
 		self.temp_text.tag_remove("match", "1.0", tk.END)
 		self.temp_text.tag_remove("active_match", "1.0", tk.END)
-		self.match_coords = []
 		self.current_match_idx = -1
 		return "break"
 

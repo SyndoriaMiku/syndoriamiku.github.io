@@ -93,6 +93,14 @@ class ReviewWindow:
         except tk.TclError:
             selected_text = ""
 
+        import re
+        extracted_vi = ""
+        # Nếu người dùng bôi đen nhầm cả thẻ HTML của API, tự động bóc tách
+        match_tag = re.search(r"<i[^>]*t=['\"]([^'\"]+)['\"][^>]*>([^<]+)</i>", selected_text, re.IGNORECASE)
+        if match_tag:
+            selected_text = match_tag.group(1).strip() # Lấy tiếng Trung làm gốc
+            extracted_vi = match_tag.group(2).strip()  # Lấy tiếng Việt làm từ sai
+
         # Check xem chuỗi bôi đen có chứa ký tự CJK (Tiếng Trung) không
         is_cn = any('\u4e00' <= char <= '\u9fff' for char in selected_text)
 
@@ -116,6 +124,8 @@ class ReviewWindow:
         ent_wrong.pack(fill="x", padx=20, pady=5, ipady=5)
         if not is_cn and selected_text:
             ent_wrong.insert(0, selected_text)
+        elif extracted_vi:
+            ent_wrong.insert(0, extracted_vi)
 
         # 3. Ô Name đúng
         tk.Label(dialog, text="3. Sửa thành (Name đúng):", fg="#10b981", bg="#18181b", font=("Arial", 10, "bold")).pack(pady=(10,0), anchor="w", padx=20)
@@ -127,14 +137,57 @@ class ReviewWindow:
             wrong_val = ent_wrong.get().strip()
             right_val = ent_right.get().strip()
 
+            # Chuẩn hóa NFC để so sánh chính xác các ký tự tiếng Việt
+            if cn_val: cn_val = unicodedata.normalize('NFC', cn_val)
+            if wrong_val: wrong_val = unicodedata.normalize('NFC', wrong_val)
+            if right_val: right_val = unicodedata.normalize('NFC', right_val)
+
             if not right_val:
                 messagebox.showwarning("Chú ý", "Vui lòng nhập 'Name đúng'!", parent=dialog)
                 return
 
+            import re
+            
+            # Kiểm tra xem có thẻ tag của cn_val do API trả về không
+            has_tag = False
+            if cn_val:
+                pattern_tag_find = re.compile(r"<i[^>]*t=['\"]" + re.escape(cn_val) + r"['\"][^>]*>", re.IGNORECASE)
+                for line in self.vi_lines:
+                    if pattern_tag_find.search(line):
+                        has_tag = True
+                        break
+
+            # Tự động gọi API để tìm từ bị dịch sai nếu người dùng để trống Ô 2
+            if not wrong_val and cn_val:
+                try:
+                    self.app.lbl_status.config(text="Đang tự động tìm từ dịch sai qua API...", fg="#f59e0b")
+                    self.app.root.update()
+                    auto_vi = self.app.translate_api(cn_val)
+                    if auto_vi:
+                        wrong_val = unicodedata.normalize('NFC', auto_vi.strip())
+                except Exception:
+                    pass
+
+            if not wrong_val and not cn_val:
+                messagebox.showwarning("Chú ý", "Vui lòng nhập ít nhất 'Tiếng Trung' hoặc 'Từ sai'!", parent=dialog)
+                return
+
+            if not wrong_val and not has_tag:
+                if not messagebox.askyesno("Xác nhận", "Bạn chưa nhập 'Cụm từ VN bị dịch sai' (Ô số 2) và hệ thống không thể tự động nhận diện.\n\nHệ thống sẽ lưu Name vào từ điển để áp dụng cho các chương sau, nhưng SẼ KHÔNG THỂ thay thế tự động trong đoạn text hiện tại.\n\nBạn có muốn tiếp tục?", parent=dialog):
+                    return
+
             # Replace toàn bộ chữ sai thành chữ đúng trên mảng RAM (áp dụng cho TOÀN BỘ file truyện)
-            if wrong_val:
-                for i in range(len(self.vi_lines)):
-                    self.vi_lines[i] = self.vi_lines[i].replace(wrong_val, right_val)
+            for i in range(len(self.vi_lines)):
+                # 1. Thay thế global nếu người dùng có nhập wrong_val
+                if wrong_val:
+                    # Dùng Regex để thay thế không phân biệt hoa thường (case-insensitive)
+                    pattern_wrong = re.compile(re.escape(wrong_val), re.IGNORECASE)
+                    self.vi_lines[i] = pattern_wrong.sub(right_val, self.vi_lines[i])
+
+                # 2. Xóa và thay thế trực tiếp các thẻ HTML chứa cn_val thành Name đúng
+                if cn_val:
+                    pattern_tag_replace = re.compile(r"<i[^>]*t=['\"]" + re.escape(cn_val) + r"['\"][^>]*>[^<]*</i>", re.IGNORECASE)
+                    self.vi_lines[i] = pattern_tag_replace.sub(right_val, self.vi_lines[i])
 
             # Ghi Tiếng Trung = Name đúng vào file config
             if cn_val:

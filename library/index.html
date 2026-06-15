@@ -53,7 +53,11 @@
         async function loadStories() {
             try {
                 const response = await fetch('./list.json');
-                if (response.ok) allStories = await response.json();
+                if (response.ok) {
+                    allStories = await response.json();
+                    // Sắp xếp theo timestamp giảm dần (truyện mới nhất / mới cập nhật nhất lên đầu)
+                    allStories.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+                }
                 renderStories();
             } catch (error) { console.error('Lỗi khi tải:', error); }
         }
