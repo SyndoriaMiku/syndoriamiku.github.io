@@ -285,18 +285,7 @@ class ChapterEditorApp:
 			cursor="hand2"
 		).pack(side="left")
 
-		tk.Button(
-			btns,
-			text="🗑️ Làm mới",
-			bg="#dc2626",
-			fg="#ffffff",
-			command=self.clear_editor,
-			borderwidth=0,
-			padx=16,
-			pady=8,
-			font=("Arial", 10),
-			cursor="hand2"
-		).pack(side="left", padx=(10, 0))
+
 
 	def build_right(self, parent):
 		tk.Label(
@@ -450,7 +439,7 @@ class ChapterEditorApp:
 		self.temp_text.bind("<Control-f>", self.show_search_dialog)
 		self.temp_text.bind("<Control-F>", self.show_search_dialog)
 		
-		self.search_entry.bind("<KeyRelease>", self.perform_search)
+		self.search_entry.bind("<KeyRelease>", self.schedule_search)
 		self.search_entry.bind("<Return>", self.find_next)
 		self.search_entry.bind("<Shift-Return>", self.find_prev)
 		self.search_entry.bind("<Escape>", self.hide_search_dialog)
@@ -746,11 +735,12 @@ class ChapterEditorApp:
 
 		self.load_story_list()
 
-		# Auto pre-fill with the next chapter ID for convenience!
+		# Dọn dẹp editor và điền sẵn ID chương tiếp theo
 		next_chap_id = self.get_next_chapter_id(story_slug)
 		self.chap_entry.delete(0, tk.END)
 		self.chap_entry.insert(0, next_chap_id)
 		self.chap_title_entry.delete(0, tk.END)
+		self.content_text.delete("1.0", tk.END)
 
 	def pick_json(self):
 		file_path = filedialog.askopenfilename(
@@ -880,29 +870,17 @@ class ChapterEditorApp:
 			self.content_text.delete("1.0", tk.END)
 			self.content_text.insert("1.0", new_text)
 
-	def clear_editor(self):
-		# Giữ lại chapter ID tự động
-		story_value = self.story_combo.get().strip()
-		next_chap_id = ""
-		if story_value:
-			if "|" in story_value:
-				story_slug, _ = story_value.split("|", 1)
-				story_slug = story_slug.strip()
-			else:
-				story_slug = slugify_vn(story_value)
-			next_chap_id = self.get_next_chapter_id(story_slug)
 
-		self.chap_title_entry.delete(0, tk.END)
-		self.content_text.delete("1.0", tk.END)
-
-		if next_chap_id:
-			self.chap_entry.delete(0, tk.END)
-			self.chap_entry.insert(0, next_chap_id)
 
 	# --- HỆ THỐNG TÌM KIẾM CHO CỬA SỔ TEMP ---
 	def get_match_coords(self):
 		ranges = self.temp_text.tag_ranges("match")
 		return [(str(ranges[i]), str(ranges[i+1])) for i in range(0, len(ranges), 2)]
+
+	def schedule_search(self, event=None):
+		if hasattr(self, '_search_timer') and self._search_timer:
+			self.root.after_cancel(self._search_timer)
+		self._search_timer = self.root.after(300, self.perform_search)
 
 	def perform_search(self, event=None):
 		self.temp_text.tag_remove("match", "1.0", tk.END)

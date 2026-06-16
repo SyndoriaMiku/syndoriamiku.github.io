@@ -54,6 +54,9 @@ class ReviewWindow:
         
         btn_save = tk.Button(ctrl_frame, text="💾 Lưu vào data.json", command=self.save_data, bg="#10b981", fg="white", borderwidth=0, padx=15)
         btn_save.pack(side="right")
+        
+        btn_add = tk.Button(ctrl_frame, text="✏️ Thêm Name thủ công", command=self.prompt_add_name, bg="#3b82f6", fg="white", borderwidth=0, padx=15)
+        btn_add.pack(side="right", padx=(0, 10))
 
         self.text_editor = scrolledtext.ScrolledText(self.top, wrap=tk.WORD, bg="#18181b", fg="#e4e4e7", font=("Consolas", 11), borderwidth=0)
         self.text_editor.pack(fill="both", expand=True, padx=10, pady=5)
@@ -67,8 +70,9 @@ class ReviewWindow:
         self.text_editor.bind("<Button-3>", self.show_context_menu)
 
     def load_content(self):
-        # Lưu lại vị trí cuộn chuột (scrollbar) hiện tại để khi update UI không bị giật lên đầu trang
+        # Lưu lại vị trí cuộn chuột (scrollbar) và con trỏ hiện tại
         scroll_pos = self.text_editor.yview()
+        insert_pos = self.text_editor.index("insert")
         
         self.text_editor.config(state=tk.NORMAL)
         self.text_editor.delete(1.0, tk.END)
@@ -77,8 +81,17 @@ class ReviewWindow:
             self.text_editor.insert(tk.END, f"{self.vi_lines[i]}\n\n", "vi")
         self.text_editor.config(state=tk.DISABLED)
         
-        # Phục hồi vị trí cuộn
+        # Bắt buộc Tkinter tính toán lại giao diện trước khi cuộn
+        self.text_editor.update_idletasks()
+        
+        # Phục hồi vị trí con trỏ (để tránh Tkinter auto-scroll về dòng 1 khi focus)
+        self.text_editor.mark_set("insert", insert_pos)
+        
+        # Phục hồi vị trí cuộn (kết hợp after để chống hiện tượng giật muộn của Tkinter)
         self.text_editor.yview_moveto(scroll_pos[0])
+        self.text_editor.after(10, lambda: self.text_editor.yview_moveto(scroll_pos[0]))
+        self.text_editor.after(50, lambda: self.text_editor.yview_moveto(scroll_pos[0]))
+        self.text_editor.after(100, lambda: self.text_editor.yview_moveto(scroll_pos[0]))
 
     def show_context_menu(self, event):
         try:
@@ -95,7 +108,13 @@ class ReviewWindow:
 
         import re
         extracted_vi = ""
+        extracted_h = ""
+        
         # Nếu người dùng bôi đen nhầm cả thẻ HTML của API, tự động bóc tách
+        match_h = re.search(r"h=['\"]([^'\"]+)['\"]", selected_text, re.IGNORECASE)
+        if match_h:
+            extracted_h = match_h.group(1).strip().title()
+
         match_tag = re.search(r"<i[^>]*t=['\"]([^'\"]+)['\"][^>]*>([^<]+)</i>", selected_text, re.IGNORECASE)
         if match_tag:
             selected_text = match_tag.group(1).strip() # Lấy tiếng Trung làm gốc
@@ -131,6 +150,35 @@ class ReviewWindow:
         tk.Label(dialog, text="3. Sửa thành (Name đúng):", fg="#10b981", bg="#18181b", font=("Arial", 10, "bold")).pack(pady=(10,0), anchor="w", padx=20)
         ent_right = tk.Entry(dialog, bg="#27272a", fg="white", borderwidth=0, insertbackground="white")
         ent_right.pack(fill="x", padx=20, pady=5, ipady=5)
+        
+        if extracted_h:
+            ent_right.insert(0, extracted_h)
+        elif is_cn and selected_text:
+            # Gợi ý ngầm từ API nếu chưa có
+            import threading
+            def fetch_suggestion(cn_text):
+                try:
+                    res = self.app.translate_api(cn_text)
+                    if res:
+                        suggestion = ""
+                        m_tag = re.search(r"<i[^>]*>([^<]+)</i>", res, re.IGNORECASE)
+                        if m_tag:
+                            m_h = re.search(r"h=['\"]([^'\"]+)['\"]", res, re.IGNORECASE)
+                            if m_h:
+                                suggestion = m_h.group(1).strip().title()
+                            else:
+                                suggestion = m_tag.group(1).strip().title()
+                        else:
+                            suggestion = res.strip().title()
+                        
+                        if suggestion:
+                            def safe_insert():
+                                if not ent_right.get():
+                                    ent_right.insert(0, suggestion)
+                            dialog.after(0, safe_insert)
+                except Exception:
+                    pass
+            threading.Thread(target=fetch_suggestion, args=(selected_text,), daemon=True).start()
 
         def apply_name():
             cn_val = ent_cn.get().strip()
@@ -193,7 +241,14 @@ class ReviewWindow:
             if cn_val:
                 self.save_name_to_cfg(cn_val, right_val)
 
-            self.load_content() # Render lại giao diện ngay lập tức
+            # Cập nhật trực tiếp lên màn hình mà không xóa đi nạp lại, CHỐNG NHẢY CHUỘT 100%
+            self.text_editor.config(state=tk.NORMAL)
+            for i in range(len(self.vi_lines)):
+                line_idx = i * 3 + 2
+                self.text_editor.delete(f"{line_idx}.0", f"{line_idx}.end")
+                self.text_editor.insert(f"{line_idx}.0", self.vi_lines[i], "vi")
+            self.text_editor.config(state=tk.DISABLED)
+            
             dialog.destroy()
 
         tk.Button(dialog, text="🚀 Lưu Name & Cập nhật toàn bộ", command=apply_name, bg="#3b82f6", fg="white", borderwidth=0).pack(pady=20, ipadx=10, ipady=5)

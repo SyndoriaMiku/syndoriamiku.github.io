@@ -988,5 +988,157 @@
                 "date": "16/06/2026"
             }
         ]
+    },
+    {
+        "title": "Cửu Châu Vẫn Ngọc lục",
+        "slug": "0026",
+        "date": "16/06/2026",
+        "timestamp": 1781591714.656696,
+        "chapters": [
+            {
+                "id": "000001",
+                "name": "Xuống núi",
+                "date": "16/06/2026"
+            },
+            {
+                "id": "000002",
+                "name": "Tâm ma",
+                "date": "16/06/2026"
+            },
+            {
+                "id": "000003",
+                "name": "Nhìn trộm",
+                "date": "16/06/2026"
+            },
+            {
+                "id": "000004",
+                "name": "Khu lạnh",
+                "date": "16/06/2026"
+            },
+            {
+                "id": "000005",
+                "name": "Dâm tặc",
+                "date": "16/06/2026"
+            },
+            {
+                "id": "000006",
+                "name": "Chất vấn",
+                "date": "16/06/2026"
+            },
+            {
+                "id": "000007",
+                "name": "Lão đạo",
+                "date": "16/06/2026"
+            },
+            {
+                "id": "000008",
+                "name": "Đột phá",
+                "date": "16/06/2026"
+            },
+            {
+                "id": "000009",
+                "name": "Dục hỏa",
+                "date": "16/06/2026"
+            },
+            {
+                "id": "000010",
+                "name": "Sư muội",
+                "date": "16/06/2026"
+            },
+            {
+                "id": "000011",
+                "name": "Bí mật",
+                "date": "16/06/2026"
+            },
+            {
+                "id": "000012",
+                "name": "Nhạc đệm",
+                "date": "16/06/2026"
+            },
+            {
+                "id": "000013",
+                "name": "Yêu đương vụng trộm",
+                "date": "16/06/2026"
+            },
+            {
+                "id": "000014",
+                "name": "Song phi",
+                "date": "16/06/2026"
+            },
+            {
+                "id": "000015",
+                "name": "Trấn an",
+                "date": "16/06/2026"
+            },
+            {
+                "id": "000016",
+                "name": "Nhập quan",
+                "date": "16/06/2026"
+            },
+            {
+                "id": "000017",
+                "name": "Cửu Châu phiên ngoại",
+                "date": "16/06/2026"
+            }
+        ]
+    },
+    {
+        "title": "Danh môn chi hậu nuốt tinh",
+        "slug": "0027",
+        "date": "16/06/2026",
+        "timestamp": 1781591745.252674,
+        "chapters": [
+            {
+                "id": "000001",
+                "name": "Oneshot",
+                "date": "16/06/2026"
+            }
+        ]
+    },
+    {
+        "title": "Ôn nhu hiền huệ luật sư thê tử bị muốn đối phó thân phu xã hội đen lão đại dạy dỗ thành thấp hèn chó cái",
+        "slug": "0028",
+        "date": "16/06/2026",
+        "timestamp": 1781591770.877872,
+        "chapters": [
+            {
+                "id": "000001",
+                "name": "Oneshot",
+                "date": "16/06/2026"
+            }
+        ]
+    },
+    {
+        "title": "Tỷ tỷ của ta là đại minh tinh đồng nhân chi cá ướp muối trạch hậu cung luân hãm",
+        "slug": "0029",
+        "date": "16/06/2026",
+        "timestamp": 1781591867.657369,
+        "chapters": [
+            {
+                "id": "000001",
+                "name": "Song mỹ cùng nhập Hứa gia trấn, Tống thị phụ tử phẩm thiếu phụ",
+                "date": "16/06/2026"
+            },
+            {
+                "id": "000002",
+                "name": "Năm đó diễn hôn không được hôn, hí kịch bá ảnh Đế Chiến song mẫu",
+                "date": "16/06/2026"
+            },
+            {
+                "id": "000003",
+                "name": "Tam hữu vào uyển lấn vợ bạn, ném xúc xắc đánh cờ nhạc vô tận",
+                "date": "16/06/2026"
+            },
+            {
+                "id": "000004",
+                "name": "Cô phụ biểu đệ ừm phòng thủ bí mật mới nô nhị mỹ vào điệp đoàn",
+                "date": "16/06/2026"
+            },
+            {
+                "id": "000005",
+                "name": "Tân dược khai phát thân thể dị mẫu gáy hùng gào tình sóng triều",
+                "date": "16/06/2026"
+            }
+        ]
     }
 ]
