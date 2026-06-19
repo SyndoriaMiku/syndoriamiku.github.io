@@ -108,17 +108,21 @@ class ReviewWindow:
 
         import re
         extracted_vi = ""
-        extracted_h = ""
+        extracted_hanviet = ""
         
-        # Nếu người dùng bôi đen nhầm cả thẻ HTML của API, tự động bóc tách
-        match_h = re.search(r"h=['\"]([^'\"]+)['\"]", selected_text, re.IGNORECASE)
-        if match_h:
-            extracted_h = match_h.group(1).strip().title()
-
+        # Nếu người dùng bôi đen nhầm cả thẻ HTML của API (nếu có), tự động bóc tách
         match_tag = re.search(r"<i[^>]*t=['\"]([^'\"]+)['\"][^>]*>([^<]+)</i>", selected_text, re.IGNORECASE)
         if match_tag:
             selected_text = match_tag.group(1).strip() # Lấy tiếng Trung làm gốc
             extracted_vi = match_tag.group(2).strip()  # Lấy tiếng Việt làm từ sai
+            # Tìm thuộc tính v (Hán Việt) nếu có
+            match_v = re.search(r"v=['\"]([^'\"]+)['\"]", match_tag.group(0), re.IGNORECASE)
+            if match_v:
+                v_val = match_v.group(1).strip()
+                if '/' in v_val:
+                    extracted_hanviet = v_val.split('/')[-1].strip()
+                else:
+                    extracted_hanviet = v_val.strip().title()
 
         # Check xem chuỗi bôi đen có chứa ký tự CJK (Tiếng Trung) không
         is_cn = any('\u4e00' <= char <= '\u9fff' for char in selected_text)
@@ -151,25 +155,17 @@ class ReviewWindow:
         ent_right = tk.Entry(dialog, bg="#27272a", fg="white", borderwidth=0, insertbackground="white")
         ent_right.pack(fill="x", padx=20, pady=5, ipady=5)
         
-        if extracted_h:
-            ent_right.insert(0, extracted_h)
+        if extracted_hanviet:
+            ent_right.insert(0, extracted_hanviet)
         elif is_cn and selected_text:
-            # Gợi ý ngầm từ API nếu chưa có
+            # Gợi ý Name bằng cách gọi API dịch tiếng Trung và tự title-case
             import threading
             def fetch_suggestion(cn_text):
                 try:
                     res = self.app.translate_api(cn_text)
                     if res:
-                        suggestion = ""
-                        m_tag = re.search(r"<i[^>]*>([^<]+)</i>", res, re.IGNORECASE)
-                        if m_tag:
-                            m_h = re.search(r"h=['\"]([^'\"]+)['\"]", res, re.IGNORECASE)
-                            if m_h:
-                                suggestion = m_h.group(1).strip().title()
-                            else:
-                                suggestion = m_tag.group(1).strip().title()
-                        else:
-                            suggestion = res.strip().title()
+                        # API trả về text thuần (VD: 'Lâm Vũ hân'), chỉ cần title-case
+                        suggestion = res.strip().title()
                         
                         if suggestion:
                             def safe_insert():
@@ -267,9 +263,15 @@ class ReviewWindow:
         for i in range(len(self.cn_lines)):
             cn_nfc = unicodedata.normalize('NFC', self.cn_lines[i])
             vi_nfc = unicodedata.normalize('NFC', self.vi_lines[i])
+            
+            # Xóa sạch thẻ HTML (<i>...</i>) từ API trước khi lưu base64
+            vi_clean = re.sub(r'<i[^>]*>([^<]*)</i>', r'\1', vi_nfc)
+            # Loại bỏ dấu cách kép (nếu có)
+            vi_clean = re.sub(r'  +', ' ', vi_clean).strip()
+            
             story_data["content"].append({
                 "cn": base64.b64encode(cn_nfc.encode('utf-8')).decode('utf-8'),
-                "vi": base64.b64encode(vi_nfc.encode('utf-8')).decode('utf-8')
+                "vi": base64.b64encode(vi_clean.encode('utf-8')).decode('utf-8')
             })
 
         with open(os.path.join(output_dir, "data.json"), "w", encoding="utf-8") as f:
@@ -504,6 +506,9 @@ class TranslatorGUI:
             for j in range(len(group)):
                 orig_cn, rep_cn = group[j]
                 vi = vi_lines[j] if j < len(vi_lines) else ""
+                
+                # Loại bỏ dấu cách kép do từ không có kết quả dịch
+                vi = re.sub(r'  +', ' ', vi).strip()
                 
                 # Chỉ lấy nguyên bản đoạn dịch và đẩy vào mảng, không tự ép viết hoa nữa
                 final_cn_lines.append(orig_cn)
