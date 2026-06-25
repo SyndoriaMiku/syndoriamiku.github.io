@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Thông Tin Truyện</title>
+    <link rel="stylesheet" href="../css/styles.css">
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #09090b; color: #e4e4e7; margin: 0; padding: 0; }
+        .container { max-width: 800px; margin: 0 auto; padding: 20px; }
+        .back-link { color: #3b82f6; text-decoration: none; margin-bottom: 20px; display: inline-block; }
+        .story-header { background: #18181b; padding: 20px; border-radius: 8px; border: 1px solid #27272a; margin-bottom: 20px; }
+        .title { margin: 0 0 10px 0; color: #fff; }
+        .meta { color: #a1a1aa; font-size: 0.9em; margin-bottom: 15px; }
+        .action-btn { background: #eab308; color: #000; border: none; padding: 8px 16px; border-radius: 6px; font-weight: bold; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
+        .chapter-list { display: flex; flex-direction: column; gap: 10px; }
+        .chap-item { background: #18181b; padding: 15px; border-radius: 8px; border: 1px solid #27272a; text-decoration: none; color: #e4e4e7; display: flex; justify-content: space-between; transition: 0.2s; }
+        .chap-item:hover { border-color: #3b82f6; background: #27272a; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="#" class="back-link" id="backLink">← Thư Viện</a>
+        
+        <div class="story-header">
+            <h1 class="title" id="sTitle">Đang tải...</h1>
+            <div class="meta" id="sMeta"></div>
+            <button class="action-btn" id="btnBookmark">🔖 Lưu truyện</button>
+        </div>
+
+        <div class="chapter-list" id="chapList">
+            <!-- Render via JS -->
+        </div>
+    </div>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const isStoryTemplate = window.location.pathname.endsWith('/story.html');
+        const basePath = isStoryTemplate ? './' : '../';
+        let storyId = urlParams.get('id');
+        let storyInfo = null;
+
+        if (!storyId && !isStoryTemplate) {
+            const parts = window.location.pathname.split('/').filter(Boolean);
+            const last = parts[parts.length - 1];
+            storyId = last === 'index.html' ? parts[parts.length - 2] : last;
+        }
+
+        const backLink = document.getElementById('backLink');
+        backLink.href = isStoryTemplate ? './index.html' : '../index.html';
+
+        if (!storyId) {
+            document.querySelector('.container').innerHTML = '<p>Không tìm thấy truyện.</p>';
+        } else {
+            loadStoryInfo();
+        }
+
+        async function loadStoryInfo() {
+            try {
+                // Tạm thời lấy info từ thư viện chung
+                const res = await fetch(basePath + 'list.json');
+                const list = await res.json();
+                storyInfo = list.find(s => s.slug === storyId);
+
+                if (storyInfo) {
+                    document.getElementById('sTitle').innerText = storyInfo.title;
+                    document.getElementById('sMeta').innerText = '📅 Cập nhật: ' + (storyInfo.date || '...');
+                    
+                    checkBookmark();
+                    document.getElementById('btnBookmark').onclick = toggleBookmark;
+
+                    // Giả lập danh sách chapter (Sau này bạn có thể tạo chapter.json)
+                    // Mặc định hiện tại builder.py xuất ra data.json
+                    const chapters = storyInfo.chapters || [];
+                    const chapBase = isStoryTemplate ? './' + storyId + '/' : './';
+                    const listHtml = chapters.map(chap => `
+                        <a href="${chapBase}${chap.id}/" class="chap-item">
+                            <span>📖 ${chap.name}</span>
+                            <span style="color: #71717a;">Đọc →</span>
+                        </a>
+                    `).join('');
+                    document.getElementById('chapList').innerHTML = listHtml;
+
+                } else {
+                    document.getElementById('sTitle').innerText = 'Không tồn tại';
+                }
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        function checkBookmark() {
+            let marks = JSON.parse(localStorage.getItem('bookmarked_stories') || '[]');
+            const btn = document.getElementById('btnBookmark');
+            if (marks.includes(storyId)) {
+                btn.innerText = '🔖 Bỏ lưu truyện';
+                btn.style.background = '#27272a';
+                btn.style.color = '#fff';
+            } else {
+                btn.innerText = '🔖 Lưu truyện';
+                btn.style.background = '#eab308';
+                btn.style.color = '#000';
+            }
+        }
+
+        function toggleBookmark() {
+            let marks = JSON.parse(localStorage.getItem('bookmarked_stories') || '[]');
+            if (marks.includes(storyId)) {
+                marks = marks.filter(m => m !== storyId);
+            } else {
+                marks.push(storyId);
+            }
+            localStorage.setItem('bookmarked_stories', JSON.stringify(marks));
+            checkBookmark();
+        }
+    </script>
+</body>
+</html>

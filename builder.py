@@ -227,11 +227,13 @@ class ReviewWindow:
                     # Dùng Regex để thay thế không phân biệt hoa thường (case-insensitive)
                     pattern_wrong = re.compile(re.escape(wrong_val), re.IGNORECASE)
                     self.vi_lines[i] = pattern_wrong.sub(right_val, self.vi_lines[i])
+                    self.vi_lines[i] = unicodedata.normalize('NFC', self.vi_lines[i])
 
                 # 2. Xóa và thay thế trực tiếp các thẻ HTML chứa cn_val thành Name đúng
                 if cn_val:
                     pattern_tag_replace = re.compile(r"<i[^>]*t=['\"]" + re.escape(cn_val) + r"['\"][^>]*>[^<]*</i>", re.IGNORECASE)
                     self.vi_lines[i] = pattern_tag_replace.sub(right_val, self.vi_lines[i])
+                    self.vi_lines[i] = unicodedata.normalize('NFC', self.vi_lines[i])
 
             # Ghi Tiếng Trung = Name đúng vào file config
             if cn_val:
@@ -268,6 +270,8 @@ class ReviewWindow:
             vi_clean = re.sub(r'<i[^>]*>([^<]*)</i>', r'\1', vi_nfc)
             # Loại bỏ dấu cách kép (nếu có)
             vi_clean = re.sub(r'  +', ' ', vi_clean).strip()
+            # Re-normalize NFC sau regex để đảm bảo ký tự tiếng Việt không bị decomposed
+            vi_clean = unicodedata.normalize('NFC', vi_clean)
             
             story_data["content"].append({
                 "cn": base64.b64encode(cn_nfc.encode('utf-8')).decode('utf-8'),
@@ -438,7 +442,10 @@ class TranslatorGUI:
         headers = {"Origin": "https://www.bilibili.com", "Referer": "https://www.bilibili.com/", "User-Agent": "Mozilla/5.0"}
         try:
             res = requests.post(API_URL, data={"sajax": "trans", "content": text}, headers=headers, timeout=45)
-            return res.text.strip() if res.status_code == 200 else None
+            if res.status_code == 200:
+                # Normalize NFC ngay khi nhận response để đảm bảo ký tự tiếng Việt đúng chuẩn
+                return unicodedata.normalize('NFC', res.text.strip())
+            return None
         except: return None
 
     def start_thread(self):
