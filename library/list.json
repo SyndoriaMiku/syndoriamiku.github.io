@@ -1144,8 +1144,8 @@
     {
         "title": "Lục sắc thần hào",
         "slug": "0030",
-        "date": "19/06/2026",
-        "timestamp": 1781873968.605067,
+        "date": "27/06/2026",
+        "timestamp": 1782546372.727577,
         "chapters": [
             {
                 "id": "000001",
@@ -1166,6 +1166,16 @@
                 "id": "000004",
                 "name": "Chương 4",
                 "date": "19/06/2026"
+            },
+            {
+                "id": "000005",
+                "name": "Chương 05",
+                "date": "27/06/2026"
+            },
+            {
+                "id": "000006",
+                "name": "Chương 06",
+                "date": "27/06/2026"
             }
         ]
     },
@@ -1915,6 +1925,19 @@
                 "id": "000007",
                 "name": "Thanh thuần rơi xuống",
                 "date": "25/06/2026"
+            }
+        ]
+    },
+    {
+        "title": "Mệt nhọc về nhà Lưu Bị ngoài ý muốn phát hiện, thê tử Tôn Thượng Hương thua trận trò chơi muốn làm hùng hài tử một ngày nhục tiện khí",
+        "slug": "0044",
+        "date": "27/06/2026",
+        "timestamp": 1782546333.149377,
+        "chapters": [
+            {
+                "id": "000001",
+                "name": "Oneshot",
+                "date": "27/06/2026"
             }
         ]
     }
