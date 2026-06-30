@@ -121,11 +121,12 @@ $(document).ready(function () {
 
         $.ajax({
             type: "GET",
-            url: "https://syndoria.pythonanywhere.com/api/players/",
+            url: "https://syndoria.pythonanywhere.com/api/players/?page_size=1000",
             success: function (response) {
-                for (let i=0; i<response.length; i++) {
-                    let playerId = response[i].id;
-                    let playerName = response[i].name;
+                let players = response.results ? response.results : response;
+                for (let i=0; i<players.length; i++) {
+                    let playerId = players[i].id;
+                    let playerName = players[i].name;
 
                     //Build HTML
                     var option = $(`<option value="${playerId}">${playerName}</option>`);
