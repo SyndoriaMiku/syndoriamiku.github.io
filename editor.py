@@ -893,23 +893,21 @@ class ChapterEditorApp:
 			return
 
 		is_regex = self.regex_var.get()
-		nocase = True
-
-		start = "1.0"
-		count_var = tk.IntVar()
-
+		
 		try:
-			while True:
-				pos = self.temp_text.search(query, start, stopindex=tk.END, regexp=is_regex, nocase=nocase, count=count_var)
-				if not pos:
-					break
-				length = count_var.get()
-				if length == 0:
-					start = f"{pos}+1c"
-					continue
-				end_pos = f"{pos}+{length}c"
-				self.temp_text.tag_add("match", pos, end_pos)
-				start = end_pos
+			if not is_regex:
+				query = re.escape(query)
+			
+			pattern = re.compile(query, re.IGNORECASE)
+			text_content = self.temp_text.get("1.0", tk.END)
+			
+			for match in pattern.finditer(text_content):
+				if match.start() == match.end():
+					continue # Bỏ qua các match rỗng
+				start_idx = f"1.0+{match.start()}c"
+				end_idx = f"1.0+{match.end()}c"
+				self.temp_text.tag_add("match", start_idx, end_idx)
+				
 		except Exception:
 			self.search_status.config(text="Regex lỗi", fg="#ef4444")
 			return

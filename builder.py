@@ -43,8 +43,14 @@ class ReviewWindow:
         self.vi_lines = vi_lines
         self.app = app_instance
 
+        self.top.protocol("WM_DELETE_WINDOW", self.on_closing)
+
         self.setup_ui()
         self.load_content()
+
+    def on_closing(self):
+        self.app.btn_run.config(state="normal")
+        self.top.destroy()
 
     def setup_ui(self):
         ctrl_frame = tk.Frame(self.top, bg="#09090b")
@@ -107,22 +113,6 @@ class ReviewWindow:
             selected_text = ""
 
         import re
-        extracted_vi = ""
-        extracted_hanviet = ""
-        
-        # Nếu người dùng bôi đen nhầm cả thẻ HTML của API (nếu có), tự động bóc tách
-        match_tag = re.search(r"<i[^>]*t=['\"]([^'\"]+)['\"][^>]*>([^<]+)</i>", selected_text, re.IGNORECASE)
-        if match_tag:
-            selected_text = match_tag.group(1).strip() # Lấy tiếng Trung làm gốc
-            extracted_vi = match_tag.group(2).strip()  # Lấy tiếng Việt làm từ sai
-            # Tìm thuộc tính v (Hán Việt) nếu có
-            match_v = re.search(r"v=['\"]([^'\"]+)['\"]", match_tag.group(0), re.IGNORECASE)
-            if match_v:
-                v_val = match_v.group(1).strip()
-                if '/' in v_val:
-                    extracted_hanviet = v_val.split('/')[-1].strip()
-                else:
-                    extracted_hanviet = v_val.strip().title()
 
         # Check xem chuỗi bôi đen có chứa ký tự CJK (Tiếng Trung) không
         is_cn = any('\u4e00' <= char <= '\u9fff' for char in selected_text)
@@ -147,17 +137,13 @@ class ReviewWindow:
         ent_wrong.pack(fill="x", padx=20, pady=5, ipady=5)
         if not is_cn and selected_text:
             ent_wrong.insert(0, selected_text)
-        elif extracted_vi:
-            ent_wrong.insert(0, extracted_vi)
 
         # 3. Ô Name đúng
         tk.Label(dialog, text="3. Sửa thành (Name đúng):", fg="#10b981", bg="#18181b", font=("Arial", 10, "bold")).pack(pady=(10,0), anchor="w", padx=20)
         ent_right = tk.Entry(dialog, bg="#27272a", fg="white", borderwidth=0, insertbackground="white")
         ent_right.pack(fill="x", padx=20, pady=5, ipady=5)
         
-        if extracted_hanviet:
-            ent_right.insert(0, extracted_hanviet)
-        elif is_cn and selected_text:
+        if is_cn and selected_text:
             # Gợi ý Name bằng cách gọi API dịch tiếng Trung và tự title-case
             import threading
             def fetch_suggestion(cn_text):
@@ -176,7 +162,7 @@ class ReviewWindow:
                     pass
             threading.Thread(target=fetch_suggestion, args=(selected_text,), daemon=True).start()
 
-        def apply_name():
+        def apply_name(retranslate=False):
             cn_val = ent_cn.get().strip()
             wrong_val = ent_wrong.get().strip()
             right_val = ent_right.get().strip()
@@ -190,17 +176,19 @@ class ReviewWindow:
                 messagebox.showwarning("Chú ý", "Vui lòng nhập 'Name đúng'!", parent=dialog)
                 return
 
+            if retranslate:
+                if not cn_val:
+                    messagebox.showwarning("Chú ý", "Để dịch lại từ đầu, bắt buộc phải có 'Tiếng Trung gốc'!", parent=dialog)
+                    return
+                self.save_name_to_cfg(cn_val, right_val)
+                self.app.btn_run.config(state="normal")
+                dialog.destroy()
+                self.top.destroy()
+                self.app.start_thread()
+                return
+
             import re
             
-            # Kiểm tra xem có thẻ tag của cn_val do API trả về không
-            has_tag = False
-            if cn_val:
-                pattern_tag_find = re.compile(r"<i[^>]*t=['\"]" + re.escape(cn_val) + r"['\"][^>]*>", re.IGNORECASE)
-                for line in self.vi_lines:
-                    if pattern_tag_find.search(line):
-                        has_tag = True
-                        break
-
             # Tự động gọi API để tìm từ bị dịch sai nếu người dùng để trống Ô 2
             if not wrong_val and cn_val:
                 try:
@@ -216,8 +204,8 @@ class ReviewWindow:
                 messagebox.showwarning("Chú ý", "Vui lòng nhập ít nhất 'Tiếng Trung' hoặc 'Từ sai'!", parent=dialog)
                 return
 
-            if not wrong_val and not has_tag:
-                if not messagebox.askyesno("Xác nhận", "Bạn chưa nhập 'Cụm từ VN bị dịch sai' (Ô số 2) và hệ thống không thể tự động nhận diện.\n\nHệ thống sẽ lưu Name vào từ điển để áp dụng cho các chương sau, nhưng SẼ KHÔNG THỂ thay thế tự động trong đoạn text hiện tại.\n\nBạn có muốn tiếp tục?", parent=dialog):
+            if not wrong_val:
+                if not messagebox.askyesno("Xác nhận", "Bạn chưa nhập 'Cụm từ VN bị dịch sai' (Ô số 2) và hệ thống không thể tự động nhận diện.\n\nHệ thống sẽ lưu Name vào từ điển để áp dụng cho các chương sau, nhưng SẼ KHÔNG THỂ cập nhật nhanh trong đoạn text hiện tại.\n\nBạn có muốn tiếp tục?", parent=dialog):
                     return
 
             # Replace toàn bộ chữ sai thành chữ đúng trên mảng RAM (áp dụng cho TOÀN BỘ file truyện)
@@ -229,11 +217,7 @@ class ReviewWindow:
                     self.vi_lines[i] = pattern_wrong.sub(right_val, self.vi_lines[i])
                     self.vi_lines[i] = unicodedata.normalize('NFC', self.vi_lines[i])
 
-                # 2. Xóa và thay thế trực tiếp các thẻ HTML chứa cn_val thành Name đúng
-                if cn_val:
-                    pattern_tag_replace = re.compile(r"<i[^>]*t=['\"]" + re.escape(cn_val) + r"['\"][^>]*>[^<]*</i>", re.IGNORECASE)
-                    self.vi_lines[i] = pattern_tag_replace.sub(right_val, self.vi_lines[i])
-                    self.vi_lines[i] = unicodedata.normalize('NFC', self.vi_lines[i])
+
 
             # Ghi Tiếng Trung = Name đúng vào file config
             if cn_val:
@@ -249,7 +233,11 @@ class ReviewWindow:
             
             dialog.destroy()
 
-        tk.Button(dialog, text="🚀 Lưu Name & Cập nhật toàn bộ", command=apply_name, bg="#3b82f6", fg="white", borderwidth=0).pack(pady=20, ipadx=10, ipady=5)
+        btn_frame = tk.Frame(dialog, bg="#18181b")
+        btn_frame.pack(pady=20)
+        
+        tk.Button(btn_frame, text="🚀 Cập nhật nhanh", command=lambda: apply_name(False), bg="#3b82f6", fg="white", borderwidth=0).pack(side="left", padx=10, ipadx=10, ipady=5)
+        tk.Button(btn_frame, text="🔄 Dịch Lại Toàn Bộ", command=lambda: apply_name(True), bg="#f59e0b", fg="white", borderwidth=0).pack(side="left", padx=10, ipadx=10, ipady=5)
 
     def save_name_to_cfg(self, cn, vi):
         cfg_path = os.path.join(BASE_DIR, "name.cfg")
@@ -266,10 +254,8 @@ class ReviewWindow:
             cn_nfc = unicodedata.normalize('NFC', self.cn_lines[i])
             vi_nfc = unicodedata.normalize('NFC', self.vi_lines[i])
             
-            # Xóa sạch thẻ HTML (<i>...</i>) từ API trước khi lưu base64
-            vi_clean = re.sub(r'<i[^>]*>([^<]*)</i>', r'\1', vi_nfc)
             # Loại bỏ dấu cách kép (nếu có)
-            vi_clean = re.sub(r'  +', ' ', vi_clean).strip()
+            vi_clean = re.sub(r'  +', ' ', vi_nfc).strip()
             # Re-normalize NFC sau regex để đảm bảo ký tự tiếng Việt không bị decomposed
             vi_clean = unicodedata.normalize('NFC', vi_clean)
             
