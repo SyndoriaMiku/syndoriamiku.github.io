@@ -50,6 +50,8 @@ class ReviewWindow:
 
     def on_closing(self):
         self.app.btn_run.config(state="normal")
+        self.app.lbl_status.config(text="Sẵn sàng", fg="#71717a")
+        self.app.btn_clear.pack(side="right", padx=5)
         self.top.destroy()
 
     def setup_ui(self):
@@ -64,6 +66,9 @@ class ReviewWindow:
         btn_add = tk.Button(ctrl_frame, text="✏️ Thêm Name thủ công", command=self.prompt_add_name, bg="#3b82f6", fg="white", borderwidth=0, padx=15)
         btn_add.pack(side="right", padx=(0, 10))
 
+        btn_retrans = tk.Button(ctrl_frame, text="🔄 Dịch Lại Toàn Bộ", command=self.retranslate_all, bg="#f59e0b", fg="white", borderwidth=0, padx=15)
+        btn_retrans.pack(side="right", padx=(0, 10))
+
         self.text_editor = scrolledtext.ScrolledText(self.top, wrap=tk.WORD, bg="#18181b", fg="#e4e4e7", font=("Consolas", 11), borderwidth=0)
         self.text_editor.pack(fill="both", expand=True, padx=10, pady=5)
         
@@ -74,6 +79,12 @@ class ReviewWindow:
         self.menu.add_command(label="Sửa lỗi & Thêm Name", command=self.prompt_add_name)
         
         self.text_editor.bind("<Button-3>", self.show_context_menu)
+
+    def retranslate_all(self):
+        if messagebox.askyesno("Xác nhận", "Bạn có chắc muốn dịch lại toàn bộ truyện không? (Sẽ tốn thời gian gọi API từ đầu)", parent=self.top):
+            self.app.btn_run.config(state="normal")
+            self.top.destroy()
+            self.app.start_thread()
 
     def load_content(self):
         # Lưu lại vị trí cuộn chuột (scrollbar) và con trỏ hiện tại
@@ -209,6 +220,7 @@ class ReviewWindow:
                     return
 
             # Replace toàn bộ chữ sai thành chữ đúng trên mảng RAM (áp dụng cho TOÀN BỘ file truyện)
+            name_words_set = set(right_val.split())
             for i in range(len(self.vi_lines)):
                 # 1. Thay thế global nếu người dùng có nhập wrong_val
                 if wrong_val:
@@ -216,6 +228,16 @@ class ReviewWindow:
                     pattern_wrong = re.compile(re.escape(wrong_val), re.IGNORECASE)
                     self.vi_lines[i] = pattern_wrong.sub(right_val, self.vi_lines[i])
                     self.vi_lines[i] = unicodedata.normalize('NFC', self.vi_lines[i])
+                    
+                    # Sửa lỗi viết hoa của chữ đi ngay sau name
+                    pattern_fix = re.compile(re.escape(right_val) + r'(\s+)([\w]+)', re.UNICODE)
+                    def replacer(match):
+                        space = match.group(1)
+                        word = match.group(2)
+                        if word.istitle() and word not in name_words_set:
+                            return right_val + space + word.lower()
+                        return match.group(0)
+                    self.vi_lines[i] = pattern_fix.sub(replacer, self.vi_lines[i])
 
 
 
@@ -240,9 +262,40 @@ class ReviewWindow:
         tk.Button(btn_frame, text="🔄 Dịch Lại Toàn Bộ", command=lambda: apply_name(True), bg="#f59e0b", fg="white", borderwidth=0).pack(side="left", padx=10, ipadx=10, ipady=5)
 
     def save_name_to_cfg(self, cn, vi):
-        cfg_path = os.path.join(BASE_DIR, "name.cfg")
-        with open(cfg_path, "a", encoding="utf-8") as f:
-            f.write(f"\n{cn}={vi}")
+        if getattr(sys, 'frozen', False):
+            cfg_dir = os.path.dirname(sys.executable)
+        else:
+            cfg_dir = BASE_DIR
+        cfg_path = os.path.join(cfg_dir, "name.cfg")
+        
+        try:
+            if not os.path.exists(cfg_path):
+                with open(cfg_path, "w", encoding="utf-8") as f:
+                    f.write(f"{cn}={vi}\n")
+                return
+
+            with open(cfg_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+                
+            found = False
+            for i, line in enumerate(lines):
+                if line.strip() and not line.strip().startswith("#") and "=" in line:
+                    key, val = line.split("=", 1)
+                    if key.strip() == cn:
+                        if val.strip() != vi:
+                            lines[i] = f"{cn}={vi}\n"
+                        found = True
+                        break
+            
+            if not found:
+                if lines and not lines[-1].endswith("\n"):
+                    lines.append("\n")
+                lines.append(f"{cn}={vi}\n")
+                
+            with open(cfg_path, "w", encoding="utf-8") as f:
+                f.writelines(lines)
+        except Exception as e:
+            print(f"Lỗi khi lưu name.cfg: {e}")
 
     def save_data(self):
         output_dir = os.path.join(BASE_DIR, "stories", self.slug)
@@ -496,12 +549,29 @@ class TranslatorGUI:
             vi_lines = vi_res.split("\n")
             vi_names = list(name_dict.values())
             
+            name_words_set = set()
+            for n in vi_names:
+                for w in n.split():
+                    name_words_set.add(w)
+            
             for j in range(len(group)):
                 orig_cn, rep_cn = group[j]
                 vi = vi_lines[j] if j < len(vi_lines) else ""
                 
                 # Loại bỏ dấu cách kép do từ không có kết quả dịch
                 vi = re.sub(r'  +', ' ', vi).strip()
+                
+                # Hạ chữ hoa (nếu có) của từ ngay sau name (do API tự viết hoa)
+                for name in vi_names:
+                    if name in vi:
+                        pattern = re.compile(re.escape(name) + r'(\s+)([\w]+)', re.UNICODE)
+                        def replacer(match, n=name):
+                            space = match.group(1)
+                            word = match.group(2)
+                            if word.istitle() and word not in name_words_set:
+                                return n + space + word.lower()
+                            return match.group(0)
+                        vi = pattern.sub(replacer, vi)
                 
                 # Chỉ lấy nguyên bản đoạn dịch và đẩy vào mảng, không tự ép viết hoa nữa
                 final_cn_lines.append(orig_cn)
