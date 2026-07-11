@@ -327,6 +327,19 @@ class ChapterEditorApp:
 			pady=6,
 			font=("Arial", 10, "bold"),
 			cursor="hand2"
+		).pack(anchor="w", padx=16, pady=(0, 6))
+
+		tk.Button(
+			parent,
+			text="✂️ Chuyển phần bôi đen sang Editor ←",
+			bg="#f59e0b",
+			fg="#ffffff",
+			command=self.move_selected_text,
+			borderwidth=0,
+			padx=16,
+			pady=6,
+			font=("Arial", 10, "bold"),
+			cursor="hand2"
 		).pack(anchor="w", padx=16, pady=(0, 10))
 
 		# Status Label for loaded JSON info
@@ -869,6 +882,25 @@ class ChapterEditorApp:
 		else:
 			self.content_text.delete("1.0", tk.END)
 			self.content_text.insert("1.0", new_text)
+
+	def move_selected_text(self):
+		try:
+			selected_text = self.temp_text.get("sel.first", "sel.last")
+			if not selected_text.strip():
+				return
+			
+			# Cut the text from temp_text
+			self.temp_text.delete("sel.first", "sel.last")
+			
+			# Paste to content_text
+			existing = self.content_text.get("1.0", tk.END).strip()
+			if existing:
+				self.content_text.insert(tk.END, "\n\n" + selected_text)
+			else:
+				self.content_text.insert("1.0", selected_text)
+				
+		except tk.TclError:
+			messagebox.showwarning("Chú ý", "Vui lòng bôi đen (chọn) phần văn bản cần chuyển trong cửa sổ bên phải.")
 
 
 
