@@ -362,18 +362,98 @@
     {
         "title": "Lục hắc viện y học",
         "slug": "0011",
-        "date": "09/06/2026",
-        "timestamp": 1780995299.97186,
+        "date": "13/07/2026",
+        "timestamp": 1783930214.44531,
         "chapters": [
             {
                 "id": "000001",
-                "name": "Chương 1: Gió xuân",
-                "date": "09/06/2026"
+                "name": "Gió xuân",
+                "date": "13/07/2026"
             },
             {
                 "id": "000002",
                 "name": "Chương 02: Đại não",
                 "date": "09/06/2026"
+            },
+            {
+                "id": "000003",
+                "name": "Đại não",
+                "date": "13/07/2026"
+            },
+            {
+                "id": "000004",
+                "name": "Lên lớp",
+                "date": "13/07/2026"
+            },
+            {
+                "id": "000005",
+                "name": "Nhập học",
+                "date": "13/07/2026"
+            },
+            {
+                "id": "000006",
+                "name": "Khóa thứ nhất",
+                "date": "13/07/2026"
+            },
+            {
+                "id": "000007",
+                "name": "Vật tham chiếu",
+                "date": "13/07/2026"
+            },
+            {
+                "id": "000008",
+                "name": "Chế độ học phần",
+                "date": "13/07/2026"
+            },
+            {
+                "id": "000009",
+                "name": "Tẩy lễ",
+                "date": "13/07/2026"
+            },
+            {
+                "id": "000010",
+                "name": "Khóa ngoại hoạt động",
+                "date": "13/07/2026"
+            },
+            {
+                "id": "000011",
+                "name": "AV quảng cáo",
+                "date": "13/07/2026"
+            },
+            {
+                "id": "000012",
+                "name": "Phù dung",
+                "date": "13/07/2026"
+            },
+            {
+                "id": "000013",
+                "name": "Gặp may",
+                "date": "13/07/2026"
+            },
+            {
+                "id": "000014",
+                "name": "Truy phủng",
+                "date": "13/07/2026"
+            },
+            {
+                "id": "000015",
+                "name": "Mẫu tử",
+                "date": "13/07/2026"
+            },
+            {
+                "id": "000016",
+                "name": "Trung tâm",
+                "date": "13/07/2026"
+            },
+            {
+                "id": "000017",
+                "name": "Mang thai",
+                "date": "13/07/2026"
+            },
+            {
+                "id": "000018",
+                "name": "Hôn lễ",
+                "date": "13/07/2026"
             }
         ]
     },
@@ -2040,8 +2120,8 @@
     {
         "title": "Ta tại sinh hóa trong tận thế đem nữ đặc công nhóm thao trở thành ta chuyên chúc tao chó cái",
         "slug": "0047",
-        "date": "30/06/2026",
-        "timestamp": 1782756560.340993,
+        "date": "13/07/2026",
+        "timestamp": 1783930545.867373,
         "chapters": [
             {
                 "id": "000001",
@@ -2077,6 +2157,31 @@
                 "id": "000007",
                 "name": "STARS văn phòng ( Bên trên )",
                 "date": "30/06/2026"
+            },
+            {
+                "id": "000008",
+                "name": "STARS văn phòng (Dưới)",
+                "date": "13/07/2026"
+            },
+            {
+                "id": "000009",
+                "name": "Thông đạo dưới lòng đất",
+                "date": "13/07/2026"
+            },
+            {
+                "id": "000010",
+                "name": "Bá kim bóng tối",
+                "date": "13/07/2026"
+            },
+            {
+                "id": "000011",
+                "name": "Cống thoát nước váy đỏ",
+                "date": "13/07/2026"
+            },
+            {
+                "id": "000012",
+                "name": "Thợ săn cùng con mồi",
+                "date": "13/07/2026"
             }
         ]
     },
@@ -3114,6 +3219,115 @@
                 "id": "000003",
                 "name": "Mẫu thân thiên",
                 "date": "11/07/2026"
+            }
+        ]
+    },
+    {
+        "title": "Đại Dận đọa doanh lục",
+        "slug": "0067",
+        "date": "13/07/2026",
+        "timestamp": 1783930349.202654,
+        "chapters": [
+            {
+                "id": "000001",
+                "name": "Ta cái kia vô địch thiên hạ cấm quân thống lĩnh mẹ nuôi như thế nào bởi vì ngu ngốc hoàng đế mệnh lệnh",
+                "date": "13/07/2026"
+            },
+            {
+                "id": "000002",
+                "name": "Cấm quân cùng Doanh Châu sứ giả tỷ thí",
+                "date": "13/07/2026"
+            },
+            {
+                "id": "000003",
+                "name": "Lục mình tâm pháp phát tác",
+                "date": "13/07/2026"
+            },
+            {
+                "id": "000004",
+                "name": "Quỷ tử tiến cung",
+                "date": "13/07/2026"
+            },
+            {
+                "id": "000005",
+                "name": "Ngụy Khi Sương cả ngày dâm dục quấn thân",
+                "date": "13/07/2026"
+            },
+            {
+                "id": "000006",
+                "name": "Tính toán thiên tiên thân thể cởi váy tím trước mặt mọi người",
+                "date": "13/07/2026"
+            },
+            {
+                "id": "000007",
+                "name": "Triệt để luân hãm, Ngụy Khi Sương biến thành dưới hông bồn cầu",
+                "date": "13/07/2026"
+            },
+            {
+                "id": "000008",
+                "name": "Ngụy Khi Sương biến thành Doanh Châu giang nô",
+                "date": "13/07/2026"
+            },
+            {
+                "id": "000009",
+                "name": "Tô Mị Nhi biết được tình huống",
+                "date": "13/07/2026"
+            }
+        ]
+    },
+    {
+        "title": "Trẻ tuổi công tố viên tình thiêu chính trị và pháp luật giới tam đại cực phẩm đạn thịt thục phụ",
+        "slug": "0068",
+        "date": "13/07/2026",
+        "timestamp": 1783930419.126566,
+        "chapters": [
+            {
+                "id": "000001",
+                "name": "Chương 01",
+                "date": "13/07/2026"
+            },
+            {
+                "id": "000002",
+                "name": "Chương 02",
+                "date": "13/07/2026"
+            },
+            {
+                "id": "000003",
+                "name": "Chương 03",
+                "date": "13/07/2026"
+            },
+            {
+                "id": "000004",
+                "name": "Chương 04",
+                "date": "13/07/2026"
+            },
+            {
+                "id": "000005",
+                "name": "Chương 05",
+                "date": "13/07/2026"
+            },
+            {
+                "id": "000006",
+                "name": "Chương 06",
+                "date": "13/07/2026"
+            },
+            {
+                "id": "000007",
+                "name": "Chương 07",
+                "date": "13/07/2026"
+            }
+        ]
+    },
+    {
+        "title": "Bị lãnh chúa bán đứng đỉnh cấp nữ anh hùng tiểu đội tao ngộ quý tộc người mua lão gia thuê cường đạo tổ ba người",
+        "slug": "0069",
+        "date": "13/07/2026",
+        "timestamp": 1783930435.861506,
+        "chapters": [
+            {
+                "id": "000001",
+                "name": "Oneshot",
+                "date": "13/07/2026"
             }
         ]
     }

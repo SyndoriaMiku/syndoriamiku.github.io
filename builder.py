@@ -69,6 +69,9 @@ class ReviewWindow:
         btn_retrans = tk.Button(ctrl_frame, text="🔄 Dịch Lại Toàn Bộ", command=self.retranslate_all, bg="#f59e0b", fg="white", borderwidth=0, padx=15)
         btn_retrans.pack(side="right", padx=(0, 10))
 
+        btn_check_errors = tk.Button(ctrl_frame, text="🔍 Kiểm tra lỗi dịch", command=self.check_translation_errors, bg="#ef4444", fg="white", borderwidth=0, padx=15)
+        btn_check_errors.pack(side="right", padx=(0, 10))
+
         self.text_editor = scrolledtext.ScrolledText(self.top, wrap=tk.WORD, bg="#18181b", fg="#e4e4e7", font=("Consolas", 11), borderwidth=0)
         self.text_editor.pack(fill="both", expand=True, padx=10, pady=5)
         
@@ -85,6 +88,35 @@ class ReviewWindow:
             self.app.btn_run.config(state="normal")
             self.top.destroy()
             self.app.start_thread()
+
+    def check_translation_errors(self):
+        self.text_editor.tag_remove("error_highlight", "1.0", tk.END)
+        self.text_editor.tag_config("error_highlight", background="#ef4444", foreground="white")
+        
+        import re
+        # Tìm các ký tự Hán (bao gồm cả các bộ mở rộng) và ký tự lỗi Unicode \ufffd ()
+        error_pattern = re.compile(r'[\u3400-\u4dbf\u4e00-\u9fff\ufffd]')
+
+        error_count = 0
+        
+        self.text_editor.config(state=tk.NORMAL)
+        for i, text in enumerate(self.vi_lines):
+            line_idx = i * 3 + 2
+            
+            for match in error_pattern.finditer(text):
+                start, end = match.span()
+                self.text_editor.tag_add("error_highlight", f"{line_idx}.{start}", f"{line_idx}.{end}")
+                error_count += 1
+                
+        self.text_editor.config(state=tk.DISABLED)
+        
+        if error_count > 0:
+            messagebox.showwarning("Phát hiện lỗi", f"Tìm thấy {error_count} chỗ có ký tự tiếng Trung chưa được dịch hoặc ký tự bị lỗi font ().\nĐã bôi đỏ các chỗ này.", parent=self.top)
+            first_error = self.text_editor.tag_ranges("error_highlight")
+            if first_error:
+                self.text_editor.see(first_error[0])
+        else:
+            messagebox.showinfo("Hoàn tất", "Không phát hiện ký tự tiếng Trung chưa dịch hay lỗi font.", parent=self.top)
 
     def load_content(self):
         # Lưu lại vị trí cuộn chuột (scrollbar) và con trỏ hiện tại
