@@ -11,7 +11,7 @@ $(document).ready(function() {
     // Fetch players for the dropdowns
     $.ajax({
         type: "GET",
-        url: "https://syndoria.pythonanywhere.com/api/players/",
+        url: "https://syndoria.pythonanywhere.com/api/players/?page_size=100",
         success: function(response) {
             players = response.results ? response.results : response;
             addMatchRow(); // Add the first row once players are loaded
