@@ -976,7 +976,22 @@ class ChapterEditorApp:
 		coords = self.get_match_coords()
 		if not coords:
 			return "break"
-		self.current_match_idx = (self.current_match_idx + 1) % len(coords)
+			
+		active_ranges = self.temp_text.tag_ranges("active_match")
+		if active_ranges:
+			current_pos = str(active_ranges[0])
+			op = ">"
+		else:
+			current_pos = self.temp_text.index(tk.INSERT)
+			op = ">="
+			
+		next_idx = 0
+		for i, (start, end) in enumerate(coords):
+			if self.temp_text.compare(start, op, current_pos):
+				next_idx = i
+				break
+				
+		self.current_match_idx = next_idx
 		self.highlight_active_match()
 		return "break"
 
@@ -984,7 +999,21 @@ class ChapterEditorApp:
 		coords = self.get_match_coords()
 		if not coords:
 			return "break"
-		self.current_match_idx = (self.current_match_idx - 1) % len(coords)
+			
+		active_ranges = self.temp_text.tag_ranges("active_match")
+		if active_ranges:
+			current_pos = str(active_ranges[0])
+		else:
+			current_pos = self.temp_text.index(tk.INSERT)
+			
+		prev_idx = len(coords) - 1
+		for i in range(len(coords)-1, -1, -1):
+			start, end = coords[i]
+			if self.temp_text.compare(start, "<", current_pos):
+				prev_idx = i
+				break
+				
+		self.current_match_idx = prev_idx
 		self.highlight_active_match()
 		return "break"
 
