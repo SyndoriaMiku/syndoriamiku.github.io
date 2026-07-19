@@ -17,7 +17,16 @@ $(document).ready(function () {
         let loginReportBtn = $('#btn-login-report');
         loginReportBtn.text('Report');
         loginReportBtn.attr('href', 'report.html');
+        $('#report').show();
+        $('#btn-add-player').show();
+    } else {
+        $('#report').hide();
+        $('#btn-add-player').hide();
     }
+
+    $('#report').click(function() {
+        window.location.href = 'report.html';
+    });
 
     // Load recently active checkbox state
     let isRecentlyActive = localStorage.getItem('recently_active') === 'true';
@@ -75,6 +84,8 @@ $(document).ready(function () {
 
     // Double click row to edit
     $(document).on("dblclick", ".player-row", function () {
+        if (!localStorage.getItem('temple_token')) return;
+        
         currentDialogMode = 'edit';
         let row = $(this);
         let id = row.children("td").eq(1).text();
