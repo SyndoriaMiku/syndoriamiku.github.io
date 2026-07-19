@@ -13,7 +13,7 @@ $(document).ready(function() {
         type: "GET",
         url: "https://syndoria.pythonanywhere.com/api/players/",
         success: function(response) {
-            players = response;
+            players = response.results ? response.results : response;
             addMatchRow(); // Add the first row once players are loaded
         },
         error: function(xhr) {
