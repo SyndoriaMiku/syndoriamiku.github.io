@@ -3771,5 +3771,76 @@
                 "date": "02/08/2026"
             }
         ]
+    },
+    {
+        "title": "Đại Càn bị thương nặng",
+        "slug": "0077",
+        "date": "12/08/2026",
+        "timestamp": 1786512669.801812,
+        "chapters": [
+            {
+                "id": "000007",
+                "name": "Chương 7",
+                "date": "12/08/2026"
+            }
+        ]
+    },
+    {
+        "title": "Lại có thể có người tiễn đưa chính mình bạo nhũ mỹ mẫu cho ta",
+        "slug": "0078",
+        "date": "12/08/2026",
+        "timestamp": 1786512754.017811,
+        "chapters": [
+            {
+                "id": "000001",
+                "name": "Gặp phải lục mẫu nô",
+                "date": "12/08/2026"
+            },
+            {
+                "id": "000002",
+                "name": "Ý dâm",
+                "date": "12/08/2026"
+            },
+            {
+                "id": "000003",
+                "name": "Đẹp thục phụ",
+                "date": "12/08/2026"
+            },
+            {
+                "id": "000004",
+                "name": "Xoa bóp chấm mút",
+                "date": "12/08/2026"
+            },
+            {
+                "id": "000005",
+                "name": "Mẹ nuôi tình thương của mẹ",
+                "date": "12/08/2026"
+            },
+            {
+                "id": "000006",
+                "name": "Bú sữa mẹ",
+                "date": "12/08/2026"
+            },
+            {
+                "id": "000007",
+                "name": "Khẩu giao",
+                "date": "12/08/2026"
+            },
+            {
+                "id": "000008",
+                "name": "Thao lồn bắt đầu",
+                "date": "12/08/2026"
+            },
+            {
+                "id": "000009",
+                "name": "Nhi phía trước thao",
+                "date": "12/08/2026"
+            },
+            {
+                "id": "000010",
+                "name": "Sau vào thao lồn",
+                "date": "12/08/2026"
+            }
+        ]
     }
 ]
