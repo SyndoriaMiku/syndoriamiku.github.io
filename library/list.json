@@ -3225,8 +3225,8 @@
     {
         "title": "Đại Dận đọa doanh lục",
         "slug": "0067",
-        "date": "13/07/2026",
-        "timestamp": 1783930349.202654,
+        "date": "17/08/2026",
+        "timestamp": 1786978418.59049,
         "chapters": [
             {
                 "id": "000001",
@@ -3272,6 +3272,11 @@
                 "id": "000009",
                 "name": "Tô Mị Nhi biết được tình huống",
                 "date": "13/07/2026"
+            },
+            {
+                "id": "000010",
+                "name": "Chương 10",
+                "date": "17/08/2026"
             }
         ]
     },
@@ -3840,6 +3845,80 @@
                 "id": "000010",
                 "name": "Sau vào thao lồn",
                 "date": "12/08/2026"
+            }
+        ]
+    },
+    {
+        "title": "Xem ta vì củi mục tạp dịch sư tôn hai mẹ con cuối cùng lại biến thành ta lô đỉnh",
+        "slug": "0079",
+        "date": "17/08/2026",
+        "timestamp": 1786978429.054991,
+        "chapters": [
+            {
+                "id": "000001",
+                "name": "Oneshot",
+                "date": "17/08/2026"
+            }
+        ]
+    },
+    {
+        "title": "Lẻn vào điều tra viên Yinlin chủ động câu dẫn đốc công phòng tắm rửa cầu thao",
+        "slug": "0080",
+        "date": "17/08/2026",
+        "timestamp": 1786978444.37899,
+        "chapters": [
+            {
+                "id": "000001",
+                "name": "Oneshot",
+                "date": "17/08/2026"
+            }
+        ]
+    },
+    {
+        "title": "Ta vú lớn cây mơ, cao lãnh nữ thần, ngọt muội tỷ tỷ không thể nào là hoàng mao thụ thai nhục tiện khí",
+        "slug": "0081",
+        "date": "17/08/2026",
+        "timestamp": 1786978522.98349,
+        "chapters": [
+            {
+                "id": "000001",
+                "name": "Chương 01",
+                "date": "17/08/2026"
+            },
+            {
+                "id": "000002",
+                "name": "Chương 02",
+                "date": "17/08/2026"
+            },
+            {
+                "id": "000003",
+                "name": "Chương 03",
+                "date": "17/08/2026"
+            },
+            {
+                "id": "000004",
+                "name": "Chương 04",
+                "date": "17/08/2026"
+            },
+            {
+                "id": "000005",
+                "name": "Chương 05",
+                "date": "17/08/2026"
+            },
+            {
+                "id": "000006",
+                "name": "Chương 06",
+                "date": "17/08/2026"
+            },
+            {
+                "id": "000007",
+                "name": "Chương 07",
+                "date": "17/08/2026"
+            },
+            {
+                "id": "000008",
+                "name": "Chương 08",
+                "date": "17/08/2026"
             }
         ]
     }
