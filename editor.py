@@ -552,15 +552,53 @@ class ChapterEditorApp:
 		if self.loaded_json and "title" in self.loaded_json:
 			default_title = self.loaded_json.get("title", "")
 
-		title = simpledialog.askstring(
-			"Thêm Truyện Mới",
-			"Nhập Tên hiển thị của truyện mới:",
-			initialvalue=default_title,
-			parent=self.root
-		)
+		# Custom resizable dialog thay cho simpledialog.askstring
+		dialog = tk.Toplevel(self.root)
+		dialog.title("Thêm Truyện Mới")
+		dialog.resizable(True, True)
+		dialog.transient(self.root)
+		dialog.grab_set()
+
+		tk.Label(dialog, text="Nhập Tên hiển thị của truyện mới:").pack(anchor="w", padx=12, pady=(12, 4))
+
+		entry_var = tk.StringVar(value=default_title)
+		entry = tk.Entry(dialog, textvariable=entry_var)
+		entry.pack(fill=tk.X, expand=True, padx=12, pady=(0, 8))
+		entry.select_range(0, tk.END)
+		entry.focus_set()
+
+		title_result = [None]
+
+		def on_ok(event=None):
+			title_result[0] = entry_var.get()
+			dialog.destroy()
+
+		def on_cancel(event=None):
+			dialog.destroy()
+
+		btn_frame = tk.Frame(dialog)
+		btn_frame.pack(fill=tk.X, padx=12, pady=(0, 12))
+		tk.Button(btn_frame, text="OK", width=10, command=on_ok).pack(side=tk.RIGHT, padx=(4, 0))
+		tk.Button(btn_frame, text="Hủy", width=10, command=on_cancel).pack(side=tk.RIGHT)
+
+		entry.bind("<Return>", on_ok)
+		dialog.bind("<Escape>", on_cancel)
+
+		# Đặt kích thước tối thiểu và căn giữa so với root
+		dialog.update_idletasks()
+		w, h = 400, 130
+		rx = self.root.winfo_x() + (self.root.winfo_width() - w) // 2
+		ry = self.root.winfo_y() + (self.root.winfo_height() - h) // 2
+		dialog.geometry(f"{w}x{h}+{rx}+{ry}")
+		dialog.minsize(300, 110)
+
+		self.root.wait_window(dialog)
+
+		title = title_result[0]
 		if not title or not title.strip():
 			return
 		title = title.strip()
+
 
 		# Auto generate 4-digit Story ID
 		slug = self.get_next_story_id()
