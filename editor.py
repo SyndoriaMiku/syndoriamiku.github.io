@@ -704,20 +704,69 @@ class ChapterEditorApp:
 		if self.loaded_json and "title" in self.loaded_json:
 			default_title = self.loaded_json.get("title", "")
 
-		# Custom resizable dialog thay cho simpledialog.askstring
 		dialog = tk.Toplevel(self.root)
 		dialog.title("Thêm Truyện Mới")
-		dialog.resizable(True, True)
+		dialog.resizable(True, False)
 		dialog.transient(self.root)
 		dialog.grab_set()
+		dialog.configure(bg="#18181b")
 
-		tk.Label(dialog, text="Nhập Tên hiển thị của truyện mới:").pack(anchor="w", padx=12, pady=(12, 4))
+		# Header
+		header_frame = tk.Frame(dialog, bg="#09090b", pady=12)
+		header_frame.pack(fill=tk.X)
+		tk.Label(
+			header_frame,
+			text="➕ Thêm Truyện Mới",
+			fg="#ffffff",
+			bg="#09090b",
+			font=("Arial", 11, "bold"),
+		).pack(padx=16, anchor="w")
+
+		# Body
+		body_frame = tk.Frame(dialog, bg="#18181b")
+		body_frame.pack(fill=tk.X, padx=16, pady=(14, 0))
+
+		tk.Label(
+			body_frame,
+			text="Tên hiển thị của truyện:",
+			fg="#a1a1aa",
+			bg="#18181b",
+			font=("Arial", 9),
+		).pack(anchor="w")
 
 		entry_var = tk.StringVar(value=default_title)
-		entry = tk.Entry(dialog, textvariable=entry_var)
-		entry.pack(fill=tk.X, expand=True, padx=12, pady=(0, 8))
+		entry = tk.Entry(
+			body_frame,
+			textvariable=entry_var,
+			bg="#09090b",
+			fg="#ffffff",
+			insertbackground="#ffffff",
+			relief="flat",
+			font=("Arial", 11),
+			bd=0,
+			highlightthickness=1,
+			highlightbackground="#3f3f46",
+			highlightcolor="#10b981",
+		)
+		entry.pack(fill=tk.X, pady=(6, 0), ipady=7)
 		entry.select_range(0, tk.END)
 		entry.focus_set()
+
+		# Hint
+		tk.Label(
+			body_frame,
+			text="ID 4 chữ số sẽ được tạo tự động.",
+			fg="#52525b",
+			bg="#18181b",
+			font=("Arial", 8),
+		).pack(anchor="w", pady=(4, 0))
+
+		# Separator
+		tk.Frame(dialog, bg="#27272a", height=1).pack(fill=tk.X, pady=(14, 0))
+
+		# Buttons
+		btn_frame = tk.Frame(dialog, bg="#18181b")
+		btn_frame.pack(fill=tk.X, padx=16, pady=12)
 
 		title_result = [None]
 
@@ -730,29 +779,66 @@ class ChapterEditorApp:
 			save_config({"editor_add_story_dialog": dialog.geometry()})
 			dialog.destroy()
 
-		btn_frame = tk.Frame(dialog)
-		btn_frame.pack(fill=tk.X, padx=12, pady=(0, 12))
-		tk.Button(btn_frame, text="OK", width=10, command=on_ok).pack(side=tk.RIGHT, padx=(4, 0))
-		tk.Button(btn_frame, text="Hủy", width=10, command=on_cancel).pack(side=tk.RIGHT)
+		tk.Button(
+			btn_frame,
+			text="Hủy",
+			bg="#27272a",
+			fg="#a1a1aa",
+			activebackground="#3f3f46",
+			activeforeground="#ffffff",
+			relief="flat",
+			borderwidth=0,
+			padx=18,
+			pady=6,
+			font=("Arial", 9),
+			cursor="hand2",
+			command=on_cancel,
+		).pack(side=tk.RIGHT, padx=(6, 0))
+
+		tk.Button(
+			btn_frame,
+			text="✅ Tạo Truyện",
+			bg="#10b981",
+			fg="#ffffff",
+			activebackground="#059669",
+			activeforeground="#ffffff",
+			relief="flat",
+			borderwidth=0,
+			padx=18,
+			pady=6,
+			font=("Arial", 9, "bold"),
+			cursor="hand2",
+			command=on_ok,
+		).pack(side=tk.RIGHT)
 
 		entry.bind("<Return>", on_ok)
 		dialog.bind("<Escape>", on_cancel)
 
-		# Restore saved geometry or default, centered on root
+		# Restore saved geometry or default centered, horizontal only (resizable=False vertically)
 		cfg = load_config()
 		saved_geo = cfg.get("editor_add_story_dialog")
+		applied = False
 		if saved_geo:
 			try:
-				dialog.geometry(saved_geo)
+				# Only restore width+position, not height (since resizable is horizontal only)
+				import re as _re
+				m = _re.match(r"(\d+)x\d+([+-]\d+[+-]\d+)?", saved_geo)
+				if m:
+					w = max(int(m.group(1)), 480)
+					pos = m.group(2) or ""
+					dialog.update_idletasks()
+					h = dialog.winfo_reqheight()
+					dialog.geometry(f"{w}x{h}{pos}")
+					applied = True
 			except Exception:
-				saved_geo = None
-		if not saved_geo:
+				pass
+		if not applied:
 			dialog.update_idletasks()
-			w, h = 400, 130
+			w, h = 480, dialog.winfo_reqheight()
 			rx = self.root.winfo_x() + (self.root.winfo_width() - w) // 2
 			ry = self.root.winfo_y() + (self.root.winfo_height() - h) // 2
 			dialog.geometry(f"{w}x{h}+{rx}+{ry}")
-		dialog.minsize(300, 110)
+		dialog.minsize(480, 0)
 
 		self.root.wait_window(dialog)
 
