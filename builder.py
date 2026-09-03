@@ -17,6 +17,29 @@ API_URL = "https://comic.sangtacvietcdn.xyz/tsm.php?cdn=/"
 TEMPLATE_FILE = os.path.join(BASE_DIR, "reader.html")
 CHUNK_LIMIT = 12000
 DELAY = 1.2
+CONFIG_PATH = os.path.join(BASE_DIR, "editor_config.json")
+
+
+def load_config():
+    try:
+        if os.path.exists(CONFIG_PATH):
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+
+
+def save_config(data):
+    try:
+        existing = load_config()
+        existing.update(data)
+        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump(existing, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
 
 def slugify_vn(text):
     """Convert a Vietnamese (or any) title into a URL-friendly slug."""
@@ -34,7 +57,6 @@ class ReviewWindow:
     def __init__(self, parent, title, slug, cn_lines, vi_lines, app_instance):
         self.top = tk.Toplevel(parent)
         self.top.title(f"Review & Edit Name: {title}")
-        self.top.geometry("900x700")
         self.top.configure(bg="#09090b")
         
         self.title = title
@@ -43,16 +65,23 @@ class ReviewWindow:
         self.vi_lines = vi_lines
         self.app = app_instance
 
+        # Restore saved geometry or use default
+        cfg = load_config()
+        geo = cfg.get("builder_review", "900x700")
+        self.top.geometry(geo)
+
         self.top.protocol("WM_DELETE_WINDOW", self.on_closing)
 
         self.setup_ui()
         self.load_content()
 
     def on_closing(self):
+        save_config({"builder_review": self.top.geometry()})
         self.app.btn_run.config(state="normal")
         self.app.lbl_status.config(text="Sẵn sàng", fg="#71717a")
         self.app.btn_clear.pack(side="right", padx=5)
         self.top.destroy()
+
 
     def setup_ui(self):
         ctrl_frame = tk.Frame(self.top, bg="#09090b")
@@ -162,10 +191,19 @@ class ReviewWindow:
 
         dialog = tk.Toplevel(self.top)
         dialog.title("Sửa lỗi & Thêm Name Mới")
-        dialog.geometry("420x350")
         dialog.configure(bg="#18181b")
         dialog.transient(self.top)
         dialog.grab_set()
+
+        # Restore saved geometry or default
+        _cfg = load_config()
+        _geo = _cfg.get("builder_add_name", "420x350")
+        try:
+            dialog.geometry(_geo)
+        except Exception:
+            dialog.geometry("420x350")
+        dialog.resizable(True, True)
+
 
         # 1. Ô Tiếng Trung
         tk.Label(dialog, text="1. Tiếng Trung gốc (để lưu Name dùng vĩnh viễn):", fg="#a1a1aa", bg="#18181b").pack(pady=(10,0), anchor="w", padx=20)
@@ -225,10 +263,12 @@ class ReviewWindow:
                     return
                 self.save_name_to_cfg(cn_val, right_val)
                 self.app.btn_run.config(state="normal")
+                save_config({"builder_add_name": dialog.geometry()})
                 dialog.destroy()
                 self.top.destroy()
                 self.app.start_thread()
                 return
+
 
             import re
             
@@ -285,7 +325,9 @@ class ReviewWindow:
                 self.text_editor.insert(f"{line_idx}.0", self.vi_lines[i], "vi")
             self.text_editor.config(state=tk.DISABLED)
             
+            save_config({"builder_add_name": dialog.geometry()})
             dialog.destroy()
+
 
         btn_frame = tk.Frame(dialog, bg="#18181b")
         btn_frame.pack(pady=20)
@@ -368,11 +410,30 @@ class TranslatorGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("Story Translator Pro - SangTacViet API")
-        self.root.geometry("700x600")
         self.root.configure(bg="#09090b")
+        self._resize_timer = None
+
+        # Restore saved geometry or use default
+        cfg = load_config()
+        geo = cfg.get("builder_main", "700x600")
+        self.root.geometry(geo)
 
         # UI Components
         self.setup_ui()
+
+        # Save geometry on resize (debounced)
+        self.root.bind("<Configure>", self._on_root_configure)
+
+    def _on_root_configure(self, event=None):
+        if event and event.widget is not self.root:
+            return
+        if self._resize_timer:
+            self.root.after_cancel(self._resize_timer)
+        self._resize_timer = self.root.after(600, self._save_root_geometry)
+
+    def _save_root_geometry(self):
+        save_config({"builder_main": self.root.geometry()})
+
 
     def setup_ui(self):
         # Header

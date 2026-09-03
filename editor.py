@@ -9,6 +9,28 @@ from tkinter import filedialog, messagebox, scrolledtext, simpledialog, ttk
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LIBRARY_DIR = os.path.join(BASE_DIR, "library")
 CATALOG_PATH = os.path.join(LIBRARY_DIR, "list.json")
+CONFIG_PATH = os.path.join(BASE_DIR, "editor_config.json")
+
+
+def load_config():
+	try:
+		if os.path.exists(CONFIG_PATH):
+			with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+				return json.load(f)
+	except Exception:
+		pass
+	return {}
+
+
+def save_config(data):
+	try:
+		existing = load_config()
+		existing.update(data)
+		with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+			json.dump(existing, f, ensure_ascii=False, indent=2)
+	except Exception:
+		pass
+
 
 
 def safe_decode_b64(value):
@@ -141,14 +163,34 @@ class ChapterEditorApp:
 	def __init__(self, root):
 		self.root = root
 		self.root.title("Trình Chỉnh Sửa Chapter & Quản Lý Thư Viện")
-		self.root.geometry("1300x750")
 		self.root.configure(bg="#09090b")
 
 		self.loaded_json = None
 		self.story_options = []
+		self._resize_timer = None
+
+		# Restore saved geometry or use default
+		cfg = load_config()
+		geo = cfg.get("editor_main", "1300x750")
+		self.root.geometry(geo)
 
 		self.setup_ui()
 		self.load_story_list()
+
+		# Save geometry on resize (debounced)
+		self.root.bind("<Configure>", self._on_root_configure)
+
+	def _on_root_configure(self, event=None):
+		if event and event.widget is not self.root:
+			return
+		if self._resize_timer:
+			self.root.after_cancel(self._resize_timer)
+		self._resize_timer = self.root.after(600, self._save_root_geometry)
+
+	def _save_root_geometry(self):
+		geo = self.root.geometry()
+		save_config({"editor_main": geo})
+
 
 	def setup_ui(self):
 		header = tk.Frame(self.root, bg="#09090b")
@@ -215,8 +257,39 @@ class ChapterEditorApp:
 		).pack(side="right", padx=(10, 0), pady=(4, 0))
 
 		# Chapter ID and Title row
+		chap_select_frame = tk.Frame(form, bg="#18181b")
+		chap_select_frame.pack(fill="x", pady=(0, 6))
+
+		tk.Label(
+			chap_select_frame,
+			text="Chọn Chương để chỉnh sửa:",
+			fg="#a1a1aa",
+			bg="#18181b",
+		).pack(anchor="w")
+
+		chap_select_inner = tk.Frame(chap_select_frame, bg="#18181b")
+		chap_select_inner.pack(fill="x", pady=(4, 0))
+
+		self.chap_select_combo = ttk.Combobox(chap_select_inner, font=("Arial", 10), state="readonly")
+		self.chap_select_combo.pack(side="left", fill="x", expand=True)
+
+		tk.Button(
+			chap_select_inner,
+			text="✏️ Load chương",
+			bg="#3b82f6",
+			fg="#ffffff",
+			command=self.load_chapter_for_edit,
+			borderwidth=0,
+			padx=10,
+			pady=3,
+			font=("Arial", 9, "bold"),
+			cursor="hand2"
+		).pack(side="right", padx=(10, 0))
+
+		# Chapter ID and Title row
 		chap_meta_frame = tk.Frame(form, bg="#18181b")
 		chap_meta_frame.pack(fill="x", pady=(0, 12))
+
 
 		# Left side: Chapter ID (slug)
 		chap_id_frame = tk.Frame(chap_meta_frame, bg="#18181b")
@@ -547,6 +620,85 @@ class ChapterEditorApp:
 		self.chap_entry.delete(0, tk.END)
 		self.chap_entry.insert(0, next_chap_id)
 
+		# Populate chapter select combobox
+		self._refresh_chap_select(story_slug)
+
+	def _refresh_chap_select(self, story_slug):
+		"""Load chapter list for the selected story into chap_select_combo."""
+		catalog = []
+		if os.path.exists(CATALOG_PATH):
+			try:
+				with open(CATALOG_PATH, "r", encoding="utf-8") as f:
+					catalog = json.load(f)
+			except Exception:
+				pass
+
+		story = next((item for item in catalog if item.get("slug") == story_slug), None)
+		chap_options = []
+		if story:
+			for chap in story.get("chapters", []):
+				cid = chap.get("id", "")
+				cname = chap.get("name", "")
+				chap_options.append(f"{cid} | {cname}")
+
+		self.chap_select_combo["values"] = chap_options
+		self.chap_select_combo.set("")
+
+
+	def load_chapter_for_edit(self):
+		"""Load a chapter from library into the editor for editing."""
+		story_value = self.story_combo.get().strip()
+		if not story_value:
+			messagebox.showwarning("Chú ý", "Vui lòng chọn Truyện trước!")
+			return
+
+		chap_value = self.chap_select_combo.get().strip()
+		if not chap_value:
+			messagebox.showwarning("Chú ý", "Vui lòng chọn Chương muốn sửa!")
+			return
+
+		if "|" in story_value:
+			story_slug = story_value.split("|", 1)[0].strip()
+		else:
+			story_slug = slugify_vn(story_value)
+
+		if "|" in chap_value:
+			chap_slug = chap_value.split("|", 1)[0].strip()
+		else:
+			chap_slug = chap_value
+
+		data_path = os.path.join(LIBRARY_DIR, story_slug, chap_slug, "data.json")
+		if not os.path.exists(data_path):
+			messagebox.showerror("Lỗi", f"Không tìm thấy file:\n{data_path}")
+			return
+
+		try:
+			with open(data_path, "r", encoding="utf-8") as f:
+				chapter_json = json.load(f)
+		except Exception as e:
+			messagebox.showerror("Lỗi", f"Không thể đọc file data.json:\n{e}")
+			return
+
+		# Decode VI paragraphs
+		vi_paragraphs = []
+		for item in chapter_json.get("content", []):
+			vi = item.get("vi")
+			if vi:
+				vi_paragraphs.append(safe_decode_b64(vi))
+
+		chap_title = chapter_json.get("chapter_title", "")
+
+		# Fill editor
+		self.chap_entry.delete(0, tk.END)
+		self.chap_entry.insert(0, chap_slug)
+		self.chap_title_entry.delete(0, tk.END)
+		if chap_title:
+			self.chap_title_entry.insert(0, chap_title)
+		self.content_text.delete("1.0", tk.END)
+		self.content_text.insert("1.0", "\n\n".join(vi_paragraphs))
+
+		messagebox.showinfo("Đã load", f"Đã load chương: {chap_value}\nChỉnh sửa xong bấm 'Lưu' để ghi đè.")
+
 	def add_new_story(self):
 		default_title = ""
 		if self.loaded_json and "title" in self.loaded_json:
@@ -571,9 +723,11 @@ class ChapterEditorApp:
 
 		def on_ok(event=None):
 			title_result[0] = entry_var.get()
+			save_config({"editor_add_story_dialog": dialog.geometry()})
 			dialog.destroy()
 
 		def on_cancel(event=None):
+			save_config({"editor_add_story_dialog": dialog.geometry()})
 			dialog.destroy()
 
 		btn_frame = tk.Frame(dialog)
@@ -584,15 +738,24 @@ class ChapterEditorApp:
 		entry.bind("<Return>", on_ok)
 		dialog.bind("<Escape>", on_cancel)
 
-		# Đặt kích thước tối thiểu và căn giữa so với root
-		dialog.update_idletasks()
-		w, h = 400, 130
-		rx = self.root.winfo_x() + (self.root.winfo_width() - w) // 2
-		ry = self.root.winfo_y() + (self.root.winfo_height() - h) // 2
-		dialog.geometry(f"{w}x{h}+{rx}+{ry}")
+		# Restore saved geometry or default, centered on root
+		cfg = load_config()
+		saved_geo = cfg.get("editor_add_story_dialog")
+		if saved_geo:
+			try:
+				dialog.geometry(saved_geo)
+			except Exception:
+				saved_geo = None
+		if not saved_geo:
+			dialog.update_idletasks()
+			w, h = 400, 130
+			rx = self.root.winfo_x() + (self.root.winfo_width() - w) // 2
+			ry = self.root.winfo_y() + (self.root.winfo_height() - h) // 2
+			dialog.geometry(f"{w}x{h}+{rx}+{ry}")
 		dialog.minsize(300, 110)
 
 		self.root.wait_window(dialog)
+
 
 		title = title_result[0]
 		if not title or not title.strip():
@@ -927,6 +1090,13 @@ class ChapterEditorApp:
 			if not selected_text.strip():
 				return
 			
+			# Auto-fill chapter title if first line contains "Chương" and title field is empty
+			if not self.chap_title_entry.get().strip():
+				first_line = selected_text.strip().split("\n")[0].strip()
+				if re.search(r"chương", first_line, re.IGNORECASE):
+					self.chap_title_entry.delete(0, tk.END)
+					self.chap_title_entry.insert(0, first_line)
+			
 			# Cut the text from temp_text
 			self.temp_text.delete("sel.first", "sel.last")
 			
@@ -942,6 +1112,7 @@ class ChapterEditorApp:
 
 
 
+
 	# --- HỆ THỐNG TÌM KIẾM CHO CỬA SỔ TEMP ---
 	def get_match_coords(self):
 		ranges = self.temp_text.tag_ranges("match")
@@ -950,7 +1121,7 @@ class ChapterEditorApp:
 	def schedule_search(self, event=None):
 		if hasattr(self, '_search_timer') and self._search_timer:
 			self.root.after_cancel(self._search_timer)
-		self._search_timer = self.root.after(300, self.perform_search)
+		self._search_timer = self.root.after(500, self.perform_search)
 
 	def perform_search(self, event=None):
 		self.temp_text.tag_remove("match", "1.0", tk.END)
@@ -971,12 +1142,19 @@ class ChapterEditorApp:
 			pattern = re.compile(query, re.IGNORECASE)
 			text_content = self.temp_text.get("1.0", tk.END)
 			
+			# Collect all match ranges first, then apply in one batch
+			MAX_MATCHES = 2000
+			flat_ranges = []
 			for match in pattern.finditer(text_content):
 				if match.start() == match.end():
-					continue # Bỏ qua các match rỗng
-				start_idx = f"1.0+{match.start()}c"
-				end_idx = f"1.0+{match.end()}c"
-				self.temp_text.tag_add("match", start_idx, end_idx)
+					continue  # Bỏ qua các match rỗng
+				flat_ranges.append(f"1.0+{match.start()}c")
+				flat_ranges.append(f"1.0+{match.end()}c")
+				if len(flat_ranges) >= MAX_MATCHES * 2:
+					break
+
+			if flat_ranges:
+				self.temp_text.tag_add("match", *flat_ranges)
 				
 		except Exception:
 			self.search_status.config(text="Regex lỗi", fg="#ef4444")
@@ -988,6 +1166,7 @@ class ChapterEditorApp:
 			self.highlight_active_match()
 		else:
 			self.search_status.config(text="0/0", fg="#ef4444")
+
 
 	def highlight_active_match(self):
 		self.temp_text.tag_remove("active_match", "1.0", tk.END)
