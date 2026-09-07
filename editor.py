@@ -413,7 +413,21 @@ class ChapterEditorApp:
 			pady=6,
 			font=("Arial", 10, "bold"),
 			cursor="hand2"
+		).pack(anchor="w", padx=16, pady=(0, 6))
+
+		tk.Button(
+			parent,
+			text="🔪 Phân Chương Tự Động",
+			bg="#8b5cf6",
+			fg="#ffffff",
+			command=self.open_split_chapters_dialog,
+			borderwidth=0,
+			padx=16,
+			pady=6,
+			font=("Arial", 10, "bold"),
+			cursor="hand2"
 		).pack(anchor="w", padx=16, pady=(0, 10))
+
 
 		# Status Label for loaded JSON info
 		self.temp_status = tk.Label(
@@ -1198,8 +1212,450 @@ class ChapterEditorApp:
 
 
 
+	# --- HỆ THỐNG PHÂN CHƯƠNG TỰ ĐỘNG ---
+
+	DEFAULT_SPLIT_PATTERNS = [
+		("Chương X (mặc định)", r"^chương\s+[\d]+"),
+		("Chương X: Tiêu đề", r"^chương\s+[\d]+[\s:：·]"),
+		("Thứ X chương", r"^thứ\s+\d+\s+chương"),
+		("Tiết X:", r"^tiết\s+[\d\w]+[\s:：]"),
+		("Chapter X (English)", r"^chapter\s+\d+"),
+	]
+
+	def get_split_patterns(self):
+		"""Return list of (name, regex) for the pattern selector, merging defaults + saved custom."""
+		cfg = load_config()
+		saved = cfg.get("split_patterns", [])
+		# saved is list of [name, regex] from config
+		result = list(self.DEFAULT_SPLIT_PATTERNS)
+		for item in saved:
+			if isinstance(item, (list, tuple)) and len(item) == 2:
+				name, rx = item
+				# Skip if already in defaults (by regex)
+				if not any(rx == r for _, r in result):
+					result.append((name, rx))
+		return result
+
+	def save_split_pattern(self, name, regex):
+		"""Persist a new custom pattern to config."""
+		cfg = load_config()
+		saved = cfg.get("split_patterns", [])
+		# Avoid duplicate regex
+		saved = [p for p in saved if p[1] != regex]
+		saved.append([name, regex])
+		save_config({"split_patterns": saved})
+
+	def detect_chapters(self, text, pattern_regex):
+		"""
+		Split paragraphs (separated by \\n\\n) into chapters based on a regex header pattern.
+		Returns list of {"title": str, "paragraphs": [str]} dicts.
+		Paragraphs before the first header are grouped under title="".
+		"""
+		try:
+			compiled = re.compile(pattern_regex, re.IGNORECASE | re.MULTILINE)
+		except re.error:
+			return []
+
+		paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+		chapters = []
+		current_title = None
+		current_paras = []
+
+		for para in paragraphs:
+			if compiled.match(para):
+				# Flush previous group
+				if current_title is not None or current_paras:
+					chapters.append({"title": current_title or "", "paragraphs": current_paras})
+				current_title = para.strip()
+				current_paras = []
+			else:
+				current_paras.append(para)
+
+		# Flush last group
+		if current_title is not None or current_paras:
+			chapters.append({"title": current_title or "", "paragraphs": current_paras})
+
+		return chapters
+
+	def open_split_chapters_dialog(self):
+		"""Open the auto-split chapters dialog."""
+		raw_text = self.temp_text.get("1.0", tk.END).strip()
+		if not raw_text:
+			messagebox.showwarning("Chú ý", "Cửa sổ bên phải đang trống. Hãy load file JSON trước!")
+			return
+
+		patterns = self.get_split_patterns()
+
+		# --- Build Dialog ---
+		dlg = tk.Toplevel(self.root)
+		dlg.title("🔪 Phân Chương Tự Động")
+		dlg.configure(bg="#09090b")
+		dlg.transient(self.root)
+		dlg.grab_set()
+		dlg.resizable(True, True)
+
+		# Restore saved geometry
+		cfg = load_config()
+		geo = cfg.get("editor_split_dialog", "860x640")
+		dlg.geometry(geo)
+		dlg.minsize(700, 500)
+
+		def on_dlg_close():
+			save_config({"editor_split_dialog": dlg.geometry()})
+			dlg.destroy()
+		dlg.protocol("WM_DELETE_WINDOW", on_dlg_close)
+
+		# ── HEADER ──
+		hdr = tk.Frame(dlg, bg="#18181b", pady=10)
+		hdr.pack(fill=tk.X)
+		tk.Label(hdr, text="🔪 Phân Chương Tự Động", fg="#ffffff", bg="#18181b",
+				 font=("Arial", 12, "bold")).pack(side=tk.LEFT, padx=16)
+
+		# ── STEP 1: Pattern selector ──
+		step1 = tk.Frame(dlg, bg="#18181b", padx=16, pady=8)
+		step1.pack(fill=tk.X, padx=12, pady=(8, 0))
+		tk.Label(step1, text="BƯỚC 1 — Chọn pattern nhận diện header chương:", fg="#a1a1aa",
+				 bg="#18181b", font=("Arial", 9, "bold")).pack(anchor="w")
+
+		pattern_row = tk.Frame(step1, bg="#18181b")
+		pattern_row.pack(fill=tk.X, pady=(6, 0))
+
+		pattern_names = [p[0] for p in patterns]
+		pattern_var = tk.StringVar(value=pattern_names[0])
+		pattern_combo = ttk.Combobox(pattern_row, textvariable=pattern_var, values=pattern_names,
+									 state="readonly", font=("Arial", 9), width=28)
+		pattern_combo.pack(side=tk.LEFT, padx=(0, 8))
+
+		regex_var = tk.StringVar(value=patterns[0][1])
+		regex_entry = tk.Entry(pattern_row, textvariable=regex_var, bg="#27272a", fg="#e4e4e7",
+							   insertbackground="white", font=("Consolas", 9),
+							   highlightthickness=1, highlightbackground="#3f3f46",
+							   highlightcolor="#8b5cf6", relief="flat")
+		regex_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=4, padx=(0, 8))
+
+		def on_pattern_select(event=None):
+			sel = pattern_combo.get()
+			for name, rx in patterns:
+				if name == sel:
+					regex_var.set(rx)
+					break
+
+		pattern_combo.bind("<<ComboboxSelected>>", on_pattern_select)
+
+		# Save custom pattern button
+		def save_custom_pattern():
+			name = pattern_var.get().strip()
+			rx = regex_var.get().strip()
+			if not rx:
+				return
+			if not any(name == n for n, _ in patterns):
+				name = f"Tuỳ chỉnh: {rx[:20]}"
+			self.save_split_pattern(name, rx)
+			messagebox.showinfo("Đã lưu", f"Pattern '{name}' đã được lưu vào config.", parent=dlg)
+
+		tk.Button(pattern_row, text="💾 Lưu pattern", bg="#3f3f46", fg="#ffffff",
+				  relief="flat", borderwidth=0, padx=8, pady=4, font=("Arial", 8),
+				  cursor="hand2", command=save_custom_pattern).pack(side=tk.LEFT, padx=(0, 4))
+
+		# ── Detected chapters state ──
+		detected_chapters = []  # list of {"title": str, "paragraphs": [str], "title_var": StringVar}
+		chapter_rows_frame = None
+
+		# ── STEP 2: Preview ──
+		step2_header = tk.Frame(dlg, bg="#09090b", padx=16, pady=6)
+		step2_header.pack(fill=tk.X, padx=12, pady=(10, 0))
+		count_label = tk.Label(step2_header, text="BƯỚC 2 — Xem & chỉnh sửa tên chương:", fg="#a1a1aa",
+							   bg="#09090b", font=("Arial", 9, "bold"))
+		count_label.pack(side=tk.LEFT)
+
+		tk.Button(step2_header, text="🔍 Phân tích lại", bg="#8b5cf6", fg="#ffffff",
+				  relief="flat", borderwidth=0, padx=10, pady=3, font=("Arial", 9, "bold"),
+				  cursor="hand2", command=lambda: run_detect()).pack(side=tk.RIGHT)
+
+		# Scrollable list
+		list_outer = tk.Frame(dlg, bg="#09090b")
+		list_outer.pack(fill=tk.BOTH, expand=True, padx=12, pady=(4, 0))
+
+		canvas = tk.Canvas(list_outer, bg="#09090b", highlightthickness=0)
+		scrollbar = tk.Scrollbar(list_outer, orient="vertical", command=canvas.yview)
+		canvas.configure(yscrollcommand=scrollbar.set)
+		scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+		canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+		inner_frame = tk.Frame(canvas, bg="#09090b")
+		canvas_window = canvas.create_window((0, 0), window=inner_frame, anchor="nw")
+
+		def on_inner_configure(event):
+			canvas.configure(scrollregion=canvas.bbox("all"))
+		def on_canvas_configure(event):
+			canvas.itemconfig(canvas_window, width=event.width)
+		inner_frame.bind("<Configure>", on_inner_configure)
+		canvas.bind("<Configure>", on_canvas_configure)
+
+		# Mouse wheel scroll
+		def on_mousewheel(event):
+			canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+		canvas.bind_all("<MouseWheel>", on_mousewheel)
+
+		def build_chapter_list():
+			for w in inner_frame.winfo_children():
+				w.destroy()
+
+			if not detected_chapters:
+				tk.Label(inner_frame, text="Không phát hiện được chương nào với pattern này.",
+						 fg="#ef4444", bg="#09090b", font=("Arial", 10)).pack(pady=20)
+				return
+
+			# Column headers
+			hrow = tk.Frame(inner_frame, bg="#27272a")
+			hrow.pack(fill=tk.X, padx=4, pady=(4, 2))
+			tk.Label(hrow, text="#", fg="#71717a", bg="#27272a", font=("Arial", 8, "bold"), width=4).pack(side=tk.LEFT, padx=(8,0))
+			tk.Label(hrow, text="ID", fg="#71717a", bg="#27272a", font=("Arial", 8, "bold"), width=8).pack(side=tk.LEFT, padx=4)
+			tk.Label(hrow, text="Tên chương (có thể sửa)", fg="#71717a", bg="#27272a", font=("Arial", 8, "bold")).pack(side=tk.LEFT, padx=4, fill=tk.X, expand=True)
+			tk.Label(hrow, text="Đoạn", fg="#71717a", bg="#27272a", font=("Arial", 8, "bold"), width=6).pack(side=tk.RIGHT, padx=8)
+
+			for i, chap in enumerate(detected_chapters):
+				row_bg = "#18181b" if i % 2 == 0 else "#1c1c1f"
+				row = tk.Frame(inner_frame, bg=row_bg)
+				row.pack(fill=tk.X, padx=4, pady=1)
+
+				tk.Label(row, text=str(i+1), fg="#52525b", bg=row_bg, font=("Arial", 8), width=4).pack(side=tk.LEFT, padx=(8,0), pady=4)
+				tk.Label(row, text=chap["id"], fg="#3b82f6", bg=row_bg, font=("Consolas", 9), width=8).pack(side=tk.LEFT, padx=4)
+
+				entry = tk.Entry(row, textvariable=chap["title_var"], bg=row_bg, fg="#e4e4e7",
+								 insertbackground="white", font=("Arial", 9), relief="flat",
+								 highlightthickness=1, highlightbackground="#27272a",
+								 highlightcolor="#8b5cf6")
+				entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=3, padx=4)
+
+				tk.Label(row, text=str(len(chap["paragraphs"])), fg="#10b981", bg=row_bg,
+						 font=("Arial", 8), width=6).pack(side=tk.RIGHT, padx=8)
+
+		def run_detect():
+			nonlocal detected_chapters
+			rx = regex_var.get().strip()
+			if not rx:
+				messagebox.showwarning("Chú ý", "Vui lòng nhập regex pattern!", parent=dlg)
+				return
+
+			# Validate regex
+			try:
+				re.compile(rx, re.IGNORECASE)
+			except re.error as e:
+				messagebox.showerror("Regex lỗi", str(e), parent=dlg)
+				return
+
+			raw = self.temp_text.get("1.0", tk.END).strip()
+			chapters_raw = self.detect_chapters(raw, rx)
+
+			# Get next chapter ID from story
+			story_value = story_combo.get().strip()
+			story_slug = ""
+			if "|" in story_value:
+				story_slug = story_value.split("|", 1)[0].strip()
+
+			start_id = self.get_next_chapter_id(story_slug) if story_slug else "000001"
+			try:
+				id_int = int(start_id)
+			except ValueError:
+				id_int = 1
+
+			detected_chapters = []
+			for i, ch in enumerate(chapters_raw):
+				chap_id = f"{id_int + i:06d}"
+				title_val = ch["title"] if ch["title"] else f"Chương {id_int + i}"
+				detected_chapters.append({
+					"id": chap_id,
+					"title_var": tk.StringVar(value=title_val),
+					"paragraphs": ch["paragraphs"],
+				})
+
+			n = len(detected_chapters)
+			count_label.config(
+				text=f"BƯỚC 2 — Xem & chỉnh sửa ({n} chương phát hiện):",
+				fg="#10b981" if n > 0 else "#ef4444"
+			)
+			save_btn.config(text=f"💾 Lưu tất cả ({n} chương)")
+			build_chapter_list()
+
+		# ── STEP 3: Story selector + Save ──
+		tk.Frame(dlg, bg="#27272a", height=1).pack(fill=tk.X, padx=12, pady=(8, 0))
+		step3 = tk.Frame(dlg, bg="#18181b", padx=16, pady=10)
+		step3.pack(fill=tk.X, padx=12, pady=(0, 0))
+		tk.Label(step3, text="BƯỚC 3 — Chọn truyện để lưu:", fg="#a1a1aa", bg="#18181b",
+				 font=("Arial", 9, "bold")).pack(anchor="w", pady=(0, 6))
+
+		story_row = tk.Frame(step3, bg="#18181b")
+		story_row.pack(fill=tk.X)
+
+		story_combo = ttk.Combobox(story_row, values=self.story_options, font=("Arial", 10),
+								   state="readonly")
+		# Pre-select current story if available
+		cur = self.story_combo.get().strip()
+		if cur in self.story_options:
+			story_combo.set(cur)
+		story_combo.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
+		story_combo.bind("<<ComboboxSelected>>", lambda e: run_detect() if detected_chapters else None)
+
+		tk.Frame(dlg, bg="#27272a", height=1).pack(fill=tk.X, padx=12)
+		btn_row = tk.Frame(dlg, bg="#09090b", pady=10)
+		btn_row.pack(fill=tk.X, padx=12)
+
+		tk.Button(btn_row, text="Hủy", bg="#27272a", fg="#a1a1aa", activebackground="#3f3f46",
+				  relief="flat", borderwidth=0, padx=16, pady=6, font=("Arial", 9),
+				  cursor="hand2", command=on_dlg_close).pack(side=tk.RIGHT, padx=(6, 0))
+
+		save_btn = tk.Button(btn_row, text="💾 Lưu tất cả (0 chương)", bg="#8b5cf6", fg="#ffffff",
+				  activebackground="#7c3aed", relief="flat", borderwidth=0,
+				  padx=16, pady=6, font=("Arial", 9, "bold"), cursor="hand2",
+				  command=lambda: self.save_all_split_chapters(dlg, story_combo, detected_chapters, on_dlg_close))
+		save_btn.pack(side=tk.RIGHT)
+
+		# Initial detect
+		run_detect()
+
+	def save_all_split_chapters(self, dlg, story_combo, detected_chapters, close_callback):
+		"""Save all detected chapters to the library."""
+		import datetime
+		import shutil
+
+		story_value = story_combo.get().strip()
+		if not story_value:
+			messagebox.showwarning("Chú ý", "Vui lòng chọn Truyện!", parent=dlg)
+			return
+		if not detected_chapters:
+			messagebox.showwarning("Chú ý", "Không có chương nào để lưu!", parent=dlg)
+			return
+
+		# Parse story slug + title
+		if "|" in story_value:
+			story_slug, story_title = story_value.split("|", 1)
+			story_slug = story_slug.strip()
+			story_title = story_title.strip()
+		else:
+			story_title = story_value
+			story_slug = slugify_vn(story_title)
+
+		# Check chapters without content
+		empty = [ch for ch in detected_chapters if not ch["paragraphs"]]
+		if empty:
+			names = ", ".join(ch["title_var"].get()[:30] for ch in empty[:3])
+			if not messagebox.askyesno("Chú ý",
+				f"{len(empty)} chương không có nội dung ({names}...).\nBạn vẫn muốn lưu các chương có nội dung?",
+				parent=dlg):
+				return
+
+		now = datetime.datetime.now()
+		story_dir = os.path.join(LIBRARY_DIR, story_slug)
+		os.makedirs(story_dir, exist_ok=True)
+
+		# Copy story.html template if not present
+		story_template = os.path.join(LIBRARY_DIR, "story.html")
+		dest_story_html = os.path.join(story_dir, "index.html")
+		if os.path.exists(story_template) and not os.path.exists(dest_story_html):
+			try:
+				shutil.copy2(story_template, dest_story_html)
+			except Exception:
+				pass
+
+		# Load catalog
+		catalog = []
+		if os.path.exists(CATALOG_PATH):
+			try:
+				with open(CATALOG_PATH, "r", encoding="utf-8") as f:
+					catalog = json.load(f)
+			except Exception:
+				pass
+
+		existing_story = next((item for item in catalog if item.get("slug") == story_slug), None)
+		if not existing_story:
+			existing_story = {
+				"title": story_title, "slug": story_slug,
+				"date": now.strftime("%d/%m/%Y"), "timestamp": now.timestamp(),
+				"chapters": []
+			}
+			catalog.append(existing_story)
+
+		saved_count = 0
+		errors = []
+
+		for ch in detected_chapters:
+			if not ch["paragraphs"]:
+				continue
+
+			chap_slug = ch["id"]
+			chap_title = ch["title_var"].get().strip() or f"Chương {chap_slug}"
+			output_dir = os.path.join(story_dir, chap_slug)
+			os.makedirs(output_dir, exist_ok=True)
+
+			# Build data.json content blocks
+			story_data = {
+				"title": story_title,
+				"chapter_title": chap_title,
+				"content": []
+			}
+			for para in ch["paragraphs"]:
+				p_nfc = unicodedata.normalize("NFC", para)
+				story_data["content"].append({
+					"cn": base64.b64encode("".encode("utf-8")).decode("utf-8"),
+					"vi": base64.b64encode(p_nfc.encode("utf-8")).decode("utf-8"),
+				})
+
+			# Write data.json
+			data_json_path = os.path.join(output_dir, "data.json")
+			try:
+				with open(data_json_path, "w", encoding="utf-8") as f:
+					json.dump(story_data, f, ensure_ascii=False)
+			except Exception as e:
+				errors.append(f"{chap_slug}: {e}")
+				continue
+
+			# Copy reader.html template
+			reader_template = os.path.join(BASE_DIR, "reader.html")
+			dest_reader_html = os.path.join(output_dir, "index.html")
+			if os.path.exists(reader_template):
+				try:
+					shutil.copy2(reader_template, dest_reader_html)
+				except Exception:
+					pass
+
+			# Update catalog
+			chap_data = {"id": chap_slug, "name": chap_title, "date": now.strftime("%d/%m/%Y")}
+			chap_exists = next((c for c in existing_story["chapters"] if c["id"] == chap_slug), None)
+			if chap_exists:
+				chap_exists["name"] = chap_title
+				chap_exists["date"] = chap_data["date"]
+			else:
+				existing_story["chapters"].append(chap_data)
+
+			saved_count += 1
+
+		# Update story timestamp
+		existing_story["date"] = now.strftime("%d/%m/%Y")
+		existing_story["timestamp"] = now.timestamp()
+
+		# Save catalog
+		try:
+			with open(CATALOG_PATH, "w", encoding="utf-8") as f:
+				json.dump(catalog, f, ensure_ascii=False, indent=4)
+		except Exception as e:
+			messagebox.showerror("Lỗi", f"Không thể cập nhật list.json:\n{e}", parent=dlg)
+			return
+
+		self.load_story_list()
+
+		if errors:
+			messagebox.showwarning("Hoàn thành (có lỗi)",
+				f"Đã lưu {saved_count}/{len(detected_chapters)} chương.\n\nLỗi:\n" + "\n".join(errors[:5]),
+				parent=dlg)
+		else:
+			messagebox.showinfo("Thành công",
+				f"✅ Đã lưu {saved_count} chương vào truyện '{story_title}'!", parent=dlg)
+
+		close_callback()
 
 	# --- HỆ THỐNG TÌM KIẾM CHO CỬA SỔ TEMP ---
+
 	def get_match_coords(self):
 		ranges = self.temp_text.tag_ranges("match")
 		return [(str(ranges[i]), str(ranges[i+1])) for i in range(0, len(ranges), 2)]
