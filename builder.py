@@ -1,8 +1,14 @@
 import tkinter as tk
-from tkinter import filedialog, messagebox, scrolledtext
+from tkinter import filedialog, messagebox, scrolledtext, ttk
 import requests, json, os, sys, base64, datetime, time, threading
 import unicodedata, re
 from tkinterdnd2 import TkinterDnD, DND_FILES
+try:
+    import han_viet as _hv
+    _HAN_VIET_OK = True
+except ImportError:
+    _HAN_VIET_OK = False
+
 
 # --- XÁC ĐỊNH THƯ MỤC GỐC ---
 if getattr(sys, 'frozen', False):
@@ -470,6 +476,9 @@ class TranslatorGUI:
         self.btn_file = tk.Button(btn_frame, text="📁 Chọn File .txt", command=self.load_file, bg="#27272a", fg="white", borderwidth=0, padx=15)
         self.btn_file.pack(side="left", padx=5)
 
+        self.btn_scan = tk.Button(btn_frame, text="🔍 Scan Names", command=self.open_scan_names_dialog, bg="#7c3aed", fg="white", borderwidth=0, padx=15)
+        self.btn_scan.pack(side="left", padx=5)
+
         self.btn_run = tk.Button(btn_frame, text="🚀 Bắt đầu dịch", command=self.start_thread, bg="#1d4ed8", fg="white", borderwidth=0, padx=25)
         self.btn_run.pack(side="right", padx=5)
 
@@ -580,7 +589,416 @@ class TranslatorGUI:
             return None
         except: return None
 
+    # ─────────────────────────────────────────────────────────────
+    # SCAN NAMES FEATURE
+    # ─────────────────────────────────────────────────────────────
+
+    def _is_cjk(self, ch: str) -> bool:
+        return '\u4e00' <= ch <= '\u9fff'
+
+    def _suggest_vi(self, cn: str) -> str:
+        """Best-effort Hán-Việt suggestion: table lookup → fallback raw."""
+        if _HAN_VIET_OK:
+            return _hv.han_viet_name(cn)
+        # Minimal inline fallback (empty if no table)
+        return cn
+
+    def scan_name_candidates(self, text: str) -> list:
+        """
+        Scan Chinese text and return candidate names/terms sorted by confidence.
+        Returns list of dicts: {cn, type, count, confidence, contexts, suggested_vi}
+        """
+        import collections
+
+        existing_glossary: set = set()
+        name_dict = self.load_name_config()
+        existing_glossary = set(name_dict.keys())
+
+        single_surnames = _hv.SINGLE_SURNAMES if _HAN_VIET_OK else set()
+        double_surnames = _hv.DOUBLE_SURNAMES if _HAN_VIET_OK else []
+        context_patterns = _hv.CONTEXT_PATTERNS if _HAN_VIET_OK else []
+        entity_suffixes = _hv.ENTITY_SUFFIXES if _HAN_VIET_OK else {}
+        stopwords = _hv.STOPWORD_TERMS if _HAN_VIET_OK else set()
+
+        # ── 1. Collect all CJK sequences 2–6 chars ──
+        cjk_seq_re = re.compile(r'[\u4e00-\u9fff]{2,6}')
+        all_seqs = cjk_seq_re.findall(text)
+        freq: dict = collections.Counter(all_seqs)
+
+        # ── 2. Context pattern hits → person signal ──
+        context_hits: dict = collections.defaultdict(int)
+        context_examples: dict = collections.defaultdict(list)
+        for pat in context_patterns:
+            for m in re.finditer(pat, text):
+                cand = m.group(1).strip()
+                if 1 < len(cand) <= 4 and all(self._is_cjk(c) for c in cand):
+                    context_hits[cand] += 1
+                    # Capture a short context window
+                    start = max(0, m.start() - 5)
+                    end = min(len(text), m.end() + 5)
+                    snippet = text[start:end].replace('\n', ' ')
+                    if len(context_examples[cand]) < 3:
+                        context_examples[cand].append(snippet)
+
+        # ── 3. Surname heuristic ──
+        surname_hits: set = set()
+        # Double surname first (greedy)
+        for ds in double_surnames:
+            for m in re.finditer(re.escape(ds) + r'[\u4e00-\u9fff]{0,3}', text):
+                cand = m.group(0)
+                if 2 < len(cand) <= 6:
+                    surname_hits.add(cand)
+        # Single surname
+        for ss in single_surnames:
+            for m in re.finditer(re.escape(ss) + r'[\u4e00-\u9fff]{1,3}', text):
+                cand = m.group(0)
+                if 2 <= len(cand) <= 5:
+                    surname_hits.add(cand)
+
+        # ── 4. Build candidate pool ──
+        pool: set = set()
+        pool.update(context_hits.keys())
+        pool.update(surname_hits)
+        # Add high-frequency repeated terms (≥2 occurrences, all CJK)
+        for term, cnt in freq.items():
+            if cnt >= 2 and all(self._is_cjk(c) for c in term):
+                pool.add(term)
+
+        # ── 5. Score & classify ──
+        results = []
+        for cand in pool:
+            # Filter
+            if cand in existing_glossary:
+                continue
+            if cand in stopwords:
+                continue
+            if not all(self._is_cjk(c) for c in cand):
+                continue
+            if len(cand) < 2:
+                continue
+
+            cnt = freq.get(cand, 1)
+            ctx_score = context_hits.get(cand, 0)
+            has_surname = any(cand.startswith(s) for s in double_surnames) or \
+                          (len(cand) >= 2 and cand[0] in single_surnames)
+
+            # Entity type
+            last_ch = cand[-1]
+            if last_ch in entity_suffixes:
+                etype = entity_suffixes[last_ch]
+            elif has_surname or ctx_score > 0:
+                etype = 'PERSON'
+            else:
+                etype = 'UNKNOWN'
+
+            # Confidence 0..1
+            conf = 0.0
+            if ctx_score > 0:
+                conf += min(0.55, 0.15 * ctx_score)
+            if has_surname:
+                conf += 0.25
+            if cnt >= 3:
+                conf += 0.10
+            if cnt >= 6:
+                conf += 0.05
+            if last_ch in entity_suffixes:
+                conf += 0.20
+            conf = min(conf, 0.99)
+
+            # Require at least minimal signal
+            if conf < 0.10 and cnt < 3:
+                continue
+
+            results.append({
+                'cn': cand,
+                'type': etype,
+                'count': cnt,
+                'confidence': conf,
+                'contexts': context_examples.get(cand, []),
+                'suggested_vi': self._suggest_vi(cand),
+            })
+
+        # Sort: confidence desc, then count desc
+        results.sort(key=lambda x: (-x['confidence'], -x['count']))
+        return results
+
+    def open_scan_names_dialog(self):
+        """Open the Scan Names dialog."""
+        raw_text = self.txt_area.get(1.0, tk.END).strip()
+        if not raw_text:
+            messagebox.showwarning("Chú ý", "Vui lòng nhập nội dung tiếng Trung trước!")
+            return
+
+        # Run scan in background to avoid blocking UI
+        self.btn_scan.config(state="disabled", text="⏳ Đang quét...")
+        self.root.update()
+
+        try:
+            candidates = self.scan_name_candidates(raw_text)
+        except Exception as e:
+            messagebox.showerror("Lỗi", f"Lỗi khi quét tên:\n{e}")
+            self.btn_scan.config(state="normal", text="🔍 Scan Names")
+            return
+        finally:
+            self.btn_scan.config(state="normal", text="🔍 Scan Names")
+
+        # ── Build Dialog ──
+        dlg = tk.Toplevel(self.root)
+        dlg.title("🔍 Scan Names — Danh sách tên phát hiện")
+        dlg.configure(bg="#09090b")
+        dlg.transient(self.root)
+        dlg.resizable(True, True)
+
+        cfg = load_config()
+        geo = cfg.get("builder_scan_names", "860x560")
+        dlg.geometry(geo)
+        dlg.minsize(700, 420)
+
+        def on_close():
+            save_config({"builder_scan_names": dlg.geometry()})
+            dlg.destroy()
+        dlg.protocol("WM_DELETE_WINDOW", on_close)
+
+        # Header
+        hdr = tk.Frame(dlg, bg="#18181b", pady=10)
+        hdr.pack(fill=tk.X)
+        tk.Label(hdr, text="🔍 Scan Names", fg="#ffffff", bg="#18181b",
+                 font=("Arial", 12, "bold")).pack(side=tk.LEFT, padx=16)
+        tk.Label(hdr, text=f"{len(candidates)} ứng viên tìm được", fg="#a1a1aa", bg="#18181b",
+                 font=("Arial", 9)).pack(side=tk.LEFT)
+
+        # Re-scan button
+        def rerun():
+            on_close()
+            self.open_scan_names_dialog()
+
+        tk.Button(hdr, text="🔄 Quét lại", bg="#3f3f46", fg="#ffffff", relief="flat",
+                  borderwidth=0, padx=10, pady=4, font=("Arial", 8), cursor="hand2",
+                  command=rerun).pack(side=tk.RIGHT, padx=16)
+
+        if not candidates:
+            tk.Label(dlg, text="Không tìm thấy tên nào.\nThử nhập thêm nội dung tiếng Trung.",
+                     fg="#ef4444", bg="#09090b", font=("Arial", 10)).pack(pady=40)
+            tk.Button(dlg, text="Đóng", command=on_close, bg="#27272a", fg="white",
+                      relief="flat", borderwidth=0, padx=16, pady=6).pack()
+            return
+
+        # Filter bar
+        filter_frame = tk.Frame(dlg, bg="#18181b", padx=16, pady=6)
+        filter_frame.pack(fill=tk.X)
+        tk.Label(filter_frame, text="Lọc:", fg="#a1a1aa", bg="#18181b", font=("Arial", 9)).pack(side=tk.LEFT)
+
+        type_filter_var = tk.StringVar(value="TẤT CẢ")
+        type_options = ["TẤT CẢ", "PERSON", "SECT", "PLACE", "SKILL", "ITEM", "UNKNOWN"]
+        type_combo = ttk.Combobox(filter_frame, textvariable=type_filter_var,
+                                  values=type_options, state="readonly", width=12, font=("Arial", 9))
+        type_combo.pack(side=tk.LEFT, padx=(4, 12))
+
+        min_conf_var = tk.IntVar(value=0)
+        tk.Label(filter_frame, text="Conf ≥", fg="#a1a1aa", bg="#18181b", font=("Arial", 9)).pack(side=tk.LEFT)
+        tk.Spinbox(filter_frame, from_=0, to=99, textvariable=min_conf_var, width=4,
+                   bg="#27272a", fg="white", insertbackground="white", relief="flat",
+                   font=("Arial", 9)).pack(side=tk.LEFT, padx=(2, 0))
+        tk.Label(filter_frame, text="%", fg="#a1a1aa", bg="#18181b", font=("Arial", 9)).pack(side=tk.LEFT, padx=(2, 12))
+
+        # Column headers
+        col_hdr = tk.Frame(dlg, bg="#27272a")
+        col_hdr.pack(fill=tk.X, padx=12, pady=(6, 0))
+        for text, w in [("Tiếng Trung", 14), ("Loại", 9), ("Xuất hiện", 8), ("Conf", 6),
+                        ("Hán-Việt đề xuất (có thể sửa)", 0), ("", 14)]:
+            anchor = "w" if w == 0 else "center"
+            expand = w == 0
+            tk.Label(col_hdr, text=text, fg="#71717a", bg="#27272a", font=("Arial", 8, "bold"),
+                     width=w if w else None, anchor=anchor).pack(
+                side=tk.LEFT, padx=4, pady=3, fill=tk.X if expand else None, expand=expand)
+
+        # Scrollable list
+        list_outer = tk.Frame(dlg, bg="#09090b")
+        list_outer.pack(fill=tk.BOTH, expand=True, padx=12, pady=(2, 0))
+
+        canvas = tk.Canvas(list_outer, bg="#09090b", highlightthickness=0)
+        scrollbar = tk.Scrollbar(list_outer, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        inner = tk.Frame(canvas, bg="#09090b")
+        win_id = canvas.create_window((0, 0), window=inner, anchor="nw")
+
+        inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", lambda e: canvas.itemconfig(win_id, width=e.width))
+        canvas.bind_all("<MouseWheel>", lambda e: canvas.yview_scroll(int(-1*(e.delta/120)), "units"))
+
+        # Status bar
+        tk.Frame(dlg, bg="#27272a", height=1).pack(fill=tk.X, padx=12, pady=(6, 0))
+        status_var = tk.StringVar(value="")
+        tk.Label(dlg, textvariable=status_var, fg="#10b981", bg="#09090b",
+                 font=("Arial", 8)).pack(anchor="w", padx=16, pady=4)
+
+        ignored: set = set()
+        row_widgets: list = []  # list of (frame, cn)
+
+        type_badge_colors = {
+            'PERSON': '#1d4ed8', 'SECT': '#7c3aed', 'PLACE': '#065f46',
+            'SKILL': '#b45309', 'ITEM': '#9f1239', 'UNKNOWN': '#3f3f46',
+        }
+
+        def build_list(filter_type="TẤT CẢ", min_conf=0):
+            for w in inner.winfo_children():
+                w.destroy()
+            row_widgets.clear()
+
+            shown = 0
+            for i, c in enumerate(candidates):
+                if c['cn'] in ignored:
+                    continue
+                if filter_type != "TẤT CẢ" and c['type'] != filter_type:
+                    continue
+                if c['confidence'] * 100 < min_conf:
+                    continue
+
+                row_bg = "#18181b" if shown % 2 == 0 else "#1c1c1f"
+                row = tk.Frame(inner, bg=row_bg)
+                row.pack(fill=tk.X, pady=1)
+                row_widgets.append((row, c['cn']))
+
+                # CN label (clickable to show context)
+                cn_lbl = tk.Label(row, text=c['cn'], fg="#ffffff", bg=row_bg,
+                                  font=("Consolas", 11, "bold"), width=14, cursor="hand2")
+                cn_lbl.pack(side=tk.LEFT, padx=(8, 4), pady=4)
+
+                def show_ctx(ev, cand=c):
+                    ctxs = cand['contexts']
+                    if ctxs:
+                        messagebox.showinfo(
+                            f"Ngữ cảnh: {cand['cn']}",
+                            "\n\n".join(ctxs) or "Không có ngữ cảnh mẫu.",
+                            parent=dlg
+                        )
+                cn_lbl.bind("<Button-1>", show_ctx)
+
+                # Type badge
+                badge_bg = type_badge_colors.get(c['type'], '#3f3f46')
+                tk.Label(row, text=c['type'], fg="white", bg=badge_bg,
+                         font=("Arial", 7, "bold"), width=9, padx=4, pady=1).pack(
+                    side=tk.LEFT, padx=4, pady=6)
+
+                # Count
+                tk.Label(row, text=str(c['count']), fg="#10b981", bg=row_bg,
+                         font=("Arial", 9), width=8).pack(side=tk.LEFT, padx=4)
+
+                # Confidence
+                conf_pct = int(c['confidence'] * 100)
+                conf_fg = "#10b981" if conf_pct >= 60 else "#f59e0b" if conf_pct >= 30 else "#ef4444"
+                tk.Label(row, text=f"{conf_pct}%", fg=conf_fg, bg=row_bg,
+                         font=("Arial", 9, "bold"), width=6).pack(side=tk.LEFT, padx=4)
+
+                # Editable VI suggestion
+                vi_var = tk.StringVar(value=c['suggested_vi'])
+                vi_entry = tk.Entry(row, textvariable=vi_var, bg=row_bg, fg="#e4e4e7",
+                                    insertbackground="white", font=("Arial", 10), relief="flat",
+                                    highlightthickness=1, highlightbackground="#3f3f46",
+                                    highlightcolor="#7c3aed")
+                vi_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=3, padx=6)
+
+                # Ignore button
+                def do_ignore(cn=c['cn']):
+                    ignored.add(cn)
+                    build_list(type_filter_var.get(), min_conf_var.get())
+                    status_var.set(f"Đã bỏ qua: {cn}")
+
+                tk.Button(row, text="Bỏ qua", bg="#27272a", fg="#a1a1aa", relief="flat",
+                          borderwidth=0, padx=6, pady=3, font=("Arial", 8), cursor="hand2",
+                          command=do_ignore).pack(side=tk.RIGHT, padx=2, pady=4)
+
+                # Add button
+                def do_add(cn=c['cn'], vi_v=vi_var):
+                    vi_text = vi_v.get().strip()
+                    if not vi_text:
+                        messagebox.showwarning("Chú ý", "Vui lòng nhập tên tiếng Việt!", parent=dlg)
+                        return
+                    self._add_name_to_cfg(cn, vi_text)
+                    ignored.add(cn)
+                    build_list(type_filter_var.get(), min_conf_var.get())
+                    status_var.set(f"✅ Đã thêm: {cn} = {vi_text}")
+
+                tk.Button(row, text="Thêm", bg="#059669", fg="white", relief="flat",
+                          borderwidth=0, padx=10, pady=3, font=("Arial", 8, "bold"),
+                          cursor="hand2", command=do_add).pack(side=tk.RIGHT, padx=2, pady=4)
+
+                shown += 1
+
+            if shown == 0:
+                tk.Label(inner, text="Không có ứng viên nào khớp bộ lọc.",
+                         fg="#71717a", bg="#09090b", font=("Arial", 9)).pack(pady=16)
+
+        def apply_filter(event=None):
+            build_list(type_filter_var.get(), min_conf_var.get())
+
+        type_combo.bind("<<ComboboxSelected>>", apply_filter)
+        min_conf_var.trace_add("write", lambda *_: apply_filter())
+
+        build_list()
+
+        # Bottom bar: Add All Visible
+        tk.Frame(dlg, bg="#27272a", height=1).pack(fill=tk.X, padx=12)
+        bot = tk.Frame(dlg, bg="#09090b", pady=8)
+        bot.pack(fill=tk.X, padx=12)
+
+        def add_all_visible():
+            added = 0
+            for _row, _cn in row_widgets:
+                # Find the Entry in that row
+                for child in _row.winfo_children():
+                    if isinstance(child, tk.Entry):
+                        vi_text = child.get().strip()
+                        if vi_text and _cn not in ignored:
+                            self._add_name_to_cfg(_cn, vi_text)
+                            ignored.add(_cn)
+                            added += 1
+                        break
+            build_list(type_filter_var.get(), min_conf_var.get())
+            status_var.set(f"✅ Đã thêm {added} tên vào name.cfg")
+
+        tk.Button(bot, text="Đóng", bg="#27272a", fg="#a1a1aa", activebackground="#3f3f46",
+                  relief="flat", borderwidth=0, padx=16, pady=6, font=("Arial", 9),
+                  cursor="hand2", command=on_close).pack(side=tk.RIGHT, padx=(6, 0))
+
+        tk.Button(bot, text="✅ Thêm tất cả đang hiển thị", bg="#7c3aed", fg="white",
+                  activebackground="#6d28d9", relief="flat", borderwidth=0,
+                  padx=16, pady=6, font=("Arial", 9, "bold"), cursor="hand2",
+                  command=add_all_visible).pack(side=tk.RIGHT)
+
+    def _add_name_to_cfg(self, cn: str, vi: str):
+        """Add/update a name entry to name.cfg — reuses ReviewWindow.save_name_to_cfg logic."""
+        cfg_path = os.path.join(BASE_DIR, "name.cfg")
+        cn = unicodedata.normalize("NFC", cn.strip())
+        vi = unicodedata.normalize("NFC", vi.strip())
+        try:
+            lines = []
+            if os.path.exists(cfg_path):
+                with open(cfg_path, "r", encoding="utf-8") as f:
+                    lines = f.readlines()
+            found = False
+            for i, line in enumerate(lines):
+                stripped = line.strip()
+                if stripped and not stripped.startswith("#") and "=" in stripped:
+                    k, _ = stripped.split("=", 1)
+                    if k.strip() == cn:
+                        lines[i] = f"{cn}={vi}\n"
+                        found = True
+                        break
+            if not found:
+                if lines and not lines[-1].endswith("\n"):
+                    lines.append("\n")
+                lines.append(f"{cn}={vi}\n")
+            with open(cfg_path, "w", encoding="utf-8") as f:
+                f.writelines(lines)
+        except Exception as e:
+            messagebox.showerror("Lỗi", f"Không thể ghi name.cfg:\n{e}")
+
     def start_thread(self):
+
         threading.Thread(target=self.run_process, daemon=True).start()
 
     def run_process(self):

@@ -8,8 +8,8 @@
     {
         "title": "Quoc Vuong Tro Choi",
         "slug": "quoc-vuong-tro-choi",
-        "date": "19/04/2026",
-        "timestamp": 1776584526.776106
+        "date": "09/09/2026",
+        "timestamp": 1788943664.841458
     },
     {
         "title": "Tuy But Nguy Yen",
@@ -1756,5 +1756,11 @@
         "slug": "co-choi-co-chiu",
         "date": "07/09/2026",
         "timestamp": 1788772632.29097
+    },
+    {
+        "title": "Người Hoa phang cả nhà",
+        "slug": "nguoi-hoa-phang-ca-nha",
+        "date": "09/09/2026",
+        "timestamp": 1788944696.959906
     }
 ]

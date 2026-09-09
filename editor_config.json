@@ -1,7 +1,8 @@
 {
-  "editor_main": "1370x791+78+78",
+  "editor_main": "1375x792+1+84",
   "editor_add_story_dialog": "700x219+0+0",
-  "builder_main": "1370x791+78+78",
-  "builder_add_name": "420x350+0+0",
-  "editor_split_dialog": "706x571+0+0"
+  "builder_main": "966x700+1+84",
+  "builder_add_name": "678x304+0+0",
+  "editor_split_dialog": "700x665+0+0",
+  "builder_review": "900x700+393+378"
 }

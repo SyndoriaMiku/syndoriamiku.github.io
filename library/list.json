@@ -5631,5 +5631,76 @@
                 "date": "07/09/2026"
             }
         ]
+    },
+    {
+        "title": "Quốc vương trò chơi",
+        "slug": "0119",
+        "date": "09/09/2026",
+        "timestamp": 1788944774.685965,
+        "chapters": [
+            {
+                "id": "000001",
+                "name": "Oneshot",
+                "date": "09/09/2026"
+            }
+        ]
+    },
+    {
+        "title": "Người Hoa phang cả nhà",
+        "slug": "0120",
+        "date": "09/09/2026",
+        "timestamp": 1788944841.231407,
+        "chapters": [
+            {
+                "id": "000001",
+                "name": "Chương 1: Du học người Hoa bạn cùng phòng",
+                "date": "09/09/2026"
+            },
+            {
+                "id": "000002",
+                "name": "Chương 02: Mỹ thiếu nữ phá thân",
+                "date": "09/09/2026"
+            },
+            {
+                "id": "000003",
+                "name": "Chương 03: Chủ động đưa tới cửa mỹ thiếu nữ",
+                "date": "09/09/2026"
+            },
+            {
+                "id": "000004",
+                "name": "Chương 04: Học bổ túc",
+                "date": "09/09/2026"
+            },
+            {
+                "id": "000005",
+                "name": "Chương 05: Cao lãnh ngự tỷ bị chinh phục",
+                "date": "09/09/2026"
+            },
+            {
+                "id": "000006",
+                "name": "Chương 06: Thư phục ở trung quốc người khen ở dưới giáo hoa",
+                "date": "09/09/2026"
+            },
+            {
+                "id": "000007",
+                "name": "Chương 7: Hoàn toàn thần phục a! Cao lãnh giáo hoa",
+                "date": "09/09/2026"
+            },
+            {
+                "id": "000008",
+                "name": "Chương 08: Giáo hoa tỷ muội chung hầu một gậy",
+                "date": "09/09/2026"
+            },
+            {
+                "id": "000009",
+                "name": "Chương 09: Mỹ phụ hiệu trưởng mới nếm thử đại điểu",
+                "date": "09/09/2026"
+            },
+            {
+                "id": "000010",
+                "name": "Chương 10: Tam nữ mang thai",
+                "date": "09/09/2026"
+            }
+        ]
     }
 ]
