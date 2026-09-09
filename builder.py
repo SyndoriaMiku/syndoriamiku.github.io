@@ -603,10 +603,10 @@ class TranslatorGUI:
         # Minimal inline fallback (empty if no table)
         return cn
 
-    def scan_name_candidates(self, text: str) -> list:
+    def scan_name_candidates(self, text: str, max_results: int = 250) -> list:
         """
         Scan Chinese text and return candidate names/terms sorted by confidence.
-        Returns list of dicts: {cn, type, count, confidence, contexts, suggested_vi}
+        Optimized O(N) algorithm with background execution support.
         """
         import collections
 
@@ -619,95 +619,158 @@ class TranslatorGUI:
         context_patterns = _hv.CONTEXT_PATTERNS if _HAN_VIET_OK else []
         entity_suffixes = _hv.ENTITY_SUFFIXES if _HAN_VIET_OK else {}
         stopwords = _hv.STOPWORD_TERMS if _HAN_VIET_OK else set()
+        invalid_chars = getattr(_hv, 'INVALID_NAME_CHARS', set('的了着是在有不是一个去到进出过要能会看说道问笑摇头走死把被为与及或等这那它他她已乃从自向即又但虽却并手声色身步面眼心冷沉怒厉淡微苦大小老少归回来'))
 
-        # ── 1. Collect all CJK sequences 2–6 chars ──
-        cjk_seq_re = re.compile(r'[\u4e00-\u9fff]{2,6}')
-        all_seqs = cjk_seq_re.findall(text)
-        freq: dict = collections.Counter(all_seqs)
+        # ── 1. Segment text by punctuation ──
+        segments = re.split(r'[，。！？、“”‘’：；…\n\r\t ()（）《》【】—\-.,!?:;\'"~]+', text)
+        segments = [s.strip() for s in segments if s.strip()]
 
-        # ── 2. Context pattern hits → person signal ──
+        # ── 2. Count n-grams (2–6 chars) in one pass ──
+        ngram_freq = collections.Counter()
+        for seg in segments:
+            seg_cjk = ''.join(c for c in seg if self._is_cjk(c))
+            L = len(seg_cjk)
+            for n in range(2, min(7, L + 1)):
+                for i in range(L - n + 1):
+                    ngram_freq[seg_cjk[i:i+n]] += 1
+
+        # ── 3. Context pattern hits (X说道, X冷笑道, X看着, X长老...) ──
         context_hits: dict = collections.defaultdict(int)
         context_examples: dict = collections.defaultdict(list)
         for pat in context_patterns:
             for m in re.finditer(pat, text):
                 cand = m.group(1).strip()
-                if 1 < len(cand) <= 4 and all(self._is_cjk(c) for c in cand):
+                while cand and cand[0] in invalid_chars:
+                    cand = cand[1:]
+                while cand and cand[-1] in invalid_chars:
+                    cand = cand[:-1]
+                if 2 <= len(cand) <= 4 and all(self._is_cjk(c) for c in cand):
                     context_hits[cand] += 1
-                    # Capture a short context window
-                    start = max(0, m.start() - 5)
-                    end = min(len(text), m.end() + 5)
-                    snippet = text[start:end].replace('\n', ' ')
                     if len(context_examples[cand]) < 3:
-                        context_examples[cand].append(snippet)
+                        start = max(0, m.start() - 6)
+                        end = min(len(text), m.end() + 6)
+                        context_examples[cand].append(text[start:end].replace('\n', ' '))
 
-        # ── 3. Surname heuristic ──
+        # ── 4. Surname heuristic (2-3 chars for single, 3-4 chars for double) ──
         surname_hits: set = set()
-        # Double surname first (greedy)
-        for ds in double_surnames:
-            for m in re.finditer(re.escape(ds) + r'[\u4e00-\u9fff]{0,3}', text):
-                cand = m.group(0)
-                if 2 < len(cand) <= 6:
-                    surname_hits.add(cand)
-        # Single surname
-        for ss in single_surnames:
-            for m in re.finditer(re.escape(ss) + r'[\u4e00-\u9fff]{1,3}', text):
-                cand = m.group(0)
-                if 2 <= len(cand) <= 5:
-                    surname_hits.add(cand)
+        for seg in segments:
+            seg_cjk = ''.join(c for c in seg if self._is_cjk(c))
+            # Double surname: length 3 or 4
+            for ds in double_surnames:
+                idx = 0
+                while True:
+                    pos = seg_cjk.find(ds, idx)
+                    if pos == -1:
+                        break
+                    for L in (3, 4):
+                        if pos + L <= len(seg_cjk):
+                            cand = seg_cjk[pos:pos+L]
+                            if not any(c in invalid_chars for c in cand[len(ds):]):
+                                surname_hits.add(cand)
+                    idx = pos + 1
 
-        # ── 4. Build candidate pool ──
+            # Single surname or "阿" prefix (2 or 3 chars, e.g. 阿宝, 林铭)
+            for i, ch in enumerate(seg_cjk):
+                if ch in single_surnames or ch == '阿':
+                    for L in (2, 3):
+                        if i + L <= len(seg_cjk):
+                            cand = seg_cjk[i:i+L]
+                            if not any(c in invalid_chars for c in cand[1:]):
+                                surname_hits.add(cand)
+
+        # ── 5. Entity suffix hits from frequent n-grams ──
+        entity_hits: set = set()
+        for ngram, cnt in ngram_freq.items():
+            if cnt >= 2 and len(ngram) in (2, 3, 4, 5):
+                if ngram[-1] in entity_suffixes:
+                    if not any(c in invalid_chars for c in (ngram[0], ngram[-1])):
+                        entity_hits.add(ngram)
+
+        # ── 6. Candidate Pool ──
         pool: set = set()
         pool.update(context_hits.keys())
         pool.update(surname_hits)
-        # Add high-frequency repeated terms (≥2 occurrences, all CJK)
-        for term, cnt in freq.items():
-            if cnt >= 2 and all(self._is_cjk(c) for c in term):
-                pool.add(term)
+        pool.update(entity_hits)
+        # Frequent terms (count >= 3, length 2-3)
+        for ngram, cnt in ngram_freq.items():
+            if cnt >= 3 and len(ngram) in (2, 3):
+                if not any(c in invalid_chars for c in (ngram[0], ngram[-1])):
+                    if ngram not in stopwords:
+                        pool.add(ngram)
 
-        # ── 5. Score & classify ──
+        # ── 7. Fast O(N) Sub-ngram suppression ──
+        sorted_cands = sorted(pool, key=len, reverse=True)
+        to_remove = set()
+        cand_set = set(pool)
+
+        for super_cand in sorted_cands:
+            if super_cand in to_remove:
+                continue
+            super_cnt = ngram_freq.get(super_cand, 0)
+            L = len(super_cand)
+            for sub_len in range(2, L):
+                for i in range(L - sub_len + 1):
+                    sub = super_cand[i:i+sub_len]
+                    if sub in cand_set and sub not in to_remove:
+                        sub_cnt = ngram_freq.get(sub, 0)
+                        if sub_cnt <= super_cnt * 1.1:
+                            to_remove.add(sub)
+                        elif sub in double_surnames and super_cand.startswith(sub):
+                            to_remove.add(sub)
+
+        pool -= to_remove
+
+        # ── 8. Score & classify ──
         results = []
         for cand in pool:
-            # Filter
-            if cand in existing_glossary:
+            if cand in existing_glossary or cand in stopwords:
                 continue
-            if cand in stopwords:
+            if len(cand) < 2 or not all(self._is_cjk(c) for c in cand):
                 continue
-            if not all(self._is_cjk(c) for c in cand):
-                continue
-            if len(cand) < 2:
+            if any(c in invalid_chars for c in (cand[0], cand[-1])):
                 continue
 
-            cnt = freq.get(cand, 1)
+            cnt = ngram_freq.get(cand, 1)
             ctx_score = context_hits.get(cand, 0)
-            has_surname = any(cand.startswith(s) for s in double_surnames) or \
-                          (len(cand) >= 2 and cand[0] in single_surnames)
+            has_ds = any(cand.startswith(ds) for ds in double_surnames) and len(cand) in (3, 4)
+            has_ss = (cand[0] in single_surnames) and len(cand) in (2, 3)
+            has_a = cand.startswith('阿') and len(cand) in (2, 3)
+            has_surname = has_ds or has_ss or has_a
 
-            # Entity type
+            # Filter out single-occurrence accidental surname substrings (e.g. 任何, 告诉)
+            if has_surname and cnt == 1 and ctx_score == 0:
+                continue
+
             last_ch = cand[-1]
-            if last_ch in entity_suffixes:
-                etype = entity_suffixes[last_ch]
-            elif has_surname or ctx_score > 0:
+            has_suffix = last_ch in entity_suffixes
+
+            # Entity type (Person takes precedence if has name signal)
+            if has_surname or ctx_score > 0:
                 etype = 'PERSON'
+            elif has_suffix:
+                etype = entity_suffixes[last_ch]
             else:
                 etype = 'UNKNOWN'
 
             # Confidence 0..1
             conf = 0.0
             if ctx_score > 0:
-                conf += min(0.55, 0.15 * ctx_score)
+                conf += min(0.50, 0.20 * ctx_score)
             if has_surname:
-                conf += 0.25
-            if cnt >= 3:
+                conf += 0.35
+            if has_suffix:
+                conf += 0.30
+            if cnt >= 2:
+                conf += 0.15
+            if cnt >= 4:
+                conf += 0.15
+            if cnt >= 8:
                 conf += 0.10
-            if cnt >= 6:
-                conf += 0.05
-            if last_ch in entity_suffixes:
-                conf += 0.20
             conf = min(conf, 0.99)
 
-            # Require at least minimal signal
-            if conf < 0.10 and cnt < 3:
+            if conf < 0.25 and cnt < 2:
                 continue
+
 
             results.append({
                 'cn': cand,
@@ -718,9 +781,9 @@ class TranslatorGUI:
                 'suggested_vi': self._suggest_vi(cand),
             })
 
-        # Sort: confidence desc, then count desc
-        results.sort(key=lambda x: (-x['confidence'], -x['count']))
-        return results
+        # Sort: confidence desc, count desc, length asc
+        results.sort(key=lambda x: (-x['confidence'], -x['count'], len(x['cn'])))
+        return results[:max_results]
 
     def open_scan_names_dialog(self):
         """Open the Scan Names dialog."""
@@ -729,20 +792,27 @@ class TranslatorGUI:
             messagebox.showwarning("Chú ý", "Vui lòng nhập nội dung tiếng Trung trước!")
             return
 
-        # Run scan in background to avoid blocking UI
+        self.root.config(cursor="watch")
         self.btn_scan.config(state="disabled", text="⏳ Đang quét...")
-        self.root.update()
+        self.root.update_idletasks()
 
         try:
             candidates = self.scan_name_candidates(raw_text)
         except Exception as e:
-            messagebox.showerror("Lỗi", f"Lỗi khi quét tên:\n{e}")
+            self.root.config(cursor="")
             self.btn_scan.config(state="normal", text="🔍 Scan Names")
+            messagebox.showerror("Lỗi", f"Lỗi khi quét tên:\n{e}")
             return
         finally:
+            self.root.config(cursor="")
             self.btn_scan.config(state="normal", text="🔍 Scan Names")
 
-        # ── Build Dialog ──
+        self.lbl_status.config(text=f"Đã quét xong: tìm thấy {len(candidates)} ứng viên")
+        self._show_scan_names_dialog(candidates)
+
+    def _show_scan_names_dialog(self, candidates):
+
+        """Build and display the Scan Names dialog."""
         dlg = tk.Toplevel(self.root)
         dlg.title("🔍 Scan Names — Danh sách tên phát hiện")
         dlg.configure(bg="#09090b")
@@ -764,8 +834,9 @@ class TranslatorGUI:
         hdr.pack(fill=tk.X)
         tk.Label(hdr, text="🔍 Scan Names", fg="#ffffff", bg="#18181b",
                  font=("Arial", 12, "bold")).pack(side=tk.LEFT, padx=16)
-        tk.Label(hdr, text=f"{len(candidates)} ứng viên tìm được", fg="#a1a1aa", bg="#18181b",
-                 font=("Arial", 9)).pack(side=tk.LEFT)
+        hdr_count_lbl = tk.Label(hdr, text=f"{len(candidates)} ứng viên tìm được", fg="#a1a1aa", bg="#18181b",
+                                 font=("Arial", 9))
+        hdr_count_lbl.pack(side=tk.LEFT)
 
         # Re-scan button
         def rerun():
@@ -777,7 +848,7 @@ class TranslatorGUI:
                   command=rerun).pack(side=tk.RIGHT, padx=16)
 
         if not candidates:
-            tk.Label(dlg, text="Không tìm thấy tên nào.\nThử nhập thêm nội dung tiếng Trung.",
+            tk.Label(dlg, text="Không tìm thấy tên nào mới trong văn bản.\n(Tất cả các tên có thể đã có trong name.cfg).",
                      fg="#ef4444", bg="#09090b", font=("Arial", 10)).pack(pady=40)
             tk.Button(dlg, text="Đóng", command=on_close, bg="#27272a", fg="white",
                       relief="flat", borderwidth=0, padx=16, pady=6).pack()
@@ -804,11 +875,11 @@ class TranslatorGUI:
         # Column headers
         col_hdr = tk.Frame(dlg, bg="#27272a")
         col_hdr.pack(fill=tk.X, padx=12, pady=(6, 0))
-        for text, w in [("Tiếng Trung", 14), ("Loại", 9), ("Xuất hiện", 8), ("Conf", 6),
-                        ("Hán-Việt đề xuất (có thể sửa)", 0), ("", 14)]:
+        for text_label, w in [("Tiếng Trung", 14), ("Loại", 9), ("Xuất hiện", 8), ("Conf", 6),
+                              ("Hán-Việt đề xuất (có thể sửa)", 0), ("", 14)]:
             anchor = "w" if w == 0 else "center"
             expand = w == 0
-            tk.Label(col_hdr, text=text, fg="#71717a", bg="#27272a", font=("Arial", 8, "bold"),
+            tk.Label(col_hdr, text=text_label, fg="#71717a", bg="#27272a", font=("Arial", 8, "bold"),
                      width=w if w else None, anchor=anchor).pack(
                 side=tk.LEFT, padx=4, pady=3, fill=tk.X if expand else None, expand=expand)
 
@@ -827,7 +898,7 @@ class TranslatorGUI:
 
         inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
         canvas.bind("<Configure>", lambda e: canvas.itemconfig(win_id, width=e.width))
-        canvas.bind_all("<MouseWheel>", lambda e: canvas.yview_scroll(int(-1*(e.delta/120)), "units"))
+        dlg.bind("<MouseWheel>", lambda e: canvas.yview_scroll(int(-1 * (e.delta / 120)), "units"))
 
         # Status bar
         tk.Frame(dlg, bg="#27272a", height=1).pack(fill=tk.X, padx=12, pady=(6, 0))
@@ -843,20 +914,22 @@ class TranslatorGUI:
             'SKILL': '#b45309', 'ITEM': '#9f1239', 'UNKNOWN': '#3f3f46',
         }
 
+        MAX_DISPLAY = 150
+
         def build_list(filter_type="TẤT CẢ", min_conf=0):
             for w in inner.winfo_children():
                 w.destroy()
             row_widgets.clear()
 
-            shown = 0
-            for i, c in enumerate(candidates):
-                if c['cn'] in ignored:
-                    continue
-                if filter_type != "TẤT CẢ" and c['type'] != filter_type:
-                    continue
-                if c['confidence'] * 100 < min_conf:
-                    continue
+            matching = [
+                c for c in candidates
+                if c['cn'] not in ignored
+                and (filter_type == "TẤT CẢ" or c['type'] == filter_type)
+                and (c['confidence'] * 100 >= min_conf)
+            ]
 
+            shown = 0
+            for i, c in enumerate(matching[:MAX_DISPLAY]):
                 row_bg = "#18181b" if shown % 2 == 0 else "#1c1c1f"
                 row = tk.Frame(inner, bg=row_bg)
                 row.pack(fill=tk.X, pady=1)
@@ -901,25 +974,33 @@ class TranslatorGUI:
                                     highlightcolor="#7c3aed")
                 vi_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=3, padx=6)
 
-                # Ignore button
-                def do_ignore(cn=c['cn']):
+                # Ignore button (fast: removes just this row)
+                def do_ignore(target_row=row, cn=c['cn']):
                     ignored.add(cn)
-                    build_list(type_filter_var.get(), min_conf_var.get())
+                    target_row.destroy()
+                    for idx, (r, name) in enumerate(row_widgets):
+                        if name == cn:
+                            row_widgets.pop(idx)
+                            break
                     status_var.set(f"Đã bỏ qua: {cn}")
 
                 tk.Button(row, text="Bỏ qua", bg="#27272a", fg="#a1a1aa", relief="flat",
                           borderwidth=0, padx=6, pady=3, font=("Arial", 8), cursor="hand2",
                           command=do_ignore).pack(side=tk.RIGHT, padx=2, pady=4)
 
-                # Add button
-                def do_add(cn=c['cn'], vi_v=vi_var):
+                # Add button (fast: adds and removes just this row)
+                def do_add(target_row=row, cn=c['cn'], vi_v=vi_var):
                     vi_text = vi_v.get().strip()
                     if not vi_text:
                         messagebox.showwarning("Chú ý", "Vui lòng nhập tên tiếng Việt!", parent=dlg)
                         return
                     self._add_name_to_cfg(cn, vi_text)
                     ignored.add(cn)
-                    build_list(type_filter_var.get(), min_conf_var.get())
+                    target_row.destroy()
+                    for idx, (r, name) in enumerate(row_widgets):
+                        if name == cn:
+                            row_widgets.pop(idx)
+                            break
                     status_var.set(f"✅ Đã thêm: {cn} = {vi_text}")
 
                 tk.Button(row, text="Thêm", bg="#059669", fg="white", relief="flat",
@@ -931,6 +1012,8 @@ class TranslatorGUI:
             if shown == 0:
                 tk.Label(inner, text="Không có ứng viên nào khớp bộ lọc.",
                          fg="#71717a", bg="#09090b", font=("Arial", 9)).pack(pady=16)
+            elif len(matching) > MAX_DISPLAY:
+                status_var.set(f"Hiển thị {MAX_DISPLAY}/{len(matching)} ứng viên hàng đầu (dùng bộ lọc để thu hẹp)")
 
         def apply_filter(event=None):
             build_list(type_filter_var.get(), min_conf_var.get())
@@ -947,8 +1030,7 @@ class TranslatorGUI:
 
         def add_all_visible():
             added = 0
-            for _row, _cn in row_widgets:
-                # Find the Entry in that row
+            for _row, _cn in list(row_widgets):
                 for child in _row.winfo_children():
                     if isinstance(child, tk.Entry):
                         vi_text = child.get().strip()
@@ -969,11 +1051,17 @@ class TranslatorGUI:
                   padx=16, pady=6, font=("Arial", 9, "bold"), cursor="hand2",
                   command=add_all_visible).pack(side=tk.RIGHT)
 
+
     def _add_name_to_cfg(self, cn: str, vi: str):
         """Add/update a name entry to name.cfg — reuses ReviewWindow.save_name_to_cfg logic."""
-        cfg_path = os.path.join(BASE_DIR, "name.cfg")
+        if getattr(sys, 'frozen', False):
+            cfg_dir = os.path.dirname(sys.executable)
+        else:
+            cfg_dir = BASE_DIR
+        cfg_path = os.path.join(cfg_dir, "name.cfg")
         cn = unicodedata.normalize("NFC", cn.strip())
         vi = unicodedata.normalize("NFC", vi.strip())
+
         try:
             lines = []
             if os.path.exists(cfg_path):

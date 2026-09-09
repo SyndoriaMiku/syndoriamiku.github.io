@@ -2,86 +2,95 @@
 han_viet.py — Lookup tables for the Scan Names feature.
 No external dependencies required.
 """
+from __future__ import annotations
 
-HAN_VIET: dict = {
+# ---------------------------------------------------------------------------
+# Hán-Việt character lookup table (~600 most common chars in CN web novels)
+# ---------------------------------------------------------------------------
+HAN_VIET: dict[str, str] = {
     # Surnames
-    '\u674e': 'Ly', '\u738b': 'Vuong', '\u5f20': 'Truong', '\u5218': 'Luu', '\u9648': 'Tran',
-    '\u6768': 'Duong', '\u8d75': 'Trieu', '\u9ec4': 'Hoang', '\u5468': 'Chu', '\u5434': 'Ngo',
-    '\u5f90': 'Tu', '\u5b59': 'Ton', '\u80e1': 'Ho', '\u6731': 'Chu', '\u9ad8': 'Cao',
-    '\u6797': 'Lam', '\u4f55': 'Ha', '\u90ed': 'Quach', '\u9a6c': 'Ma', '\u7f57': 'La',
-    '\u6881': 'Luong', '\u5b8b': 'Tong', '\u90d1': 'Trinh', '\u8c22': 'Ta', '\u97e9': 'Han',
-    '\u5510': 'Duong', '\u51af': 'Phung', '\u4e8e': 'Vu', '\u8463': 'Dong', '\u8427': 'Tieu',
-    '\u7a0b': 'Trinh', '\u66f9': 'Tao', '\u8881': 'Vien', '\u9093': 'Dang', '\u8bb8': 'Hua',
-    '\u5085': 'Pho', '\u6c88': 'Tham', '\u66fe': 'Tang', '\u5f6d': 'Banh', '\u5415': 'La',
-    '\u82cf': 'To', '\u5362': 'Lu', '\u848b': 'Tuong', '\u8521': 'Thai', '\u8d3e': 'Gia',
-    '\u4e01': 'Dinh', '\u9b4f': 'Nguy', '\u8585': 'Tiet', '\u53f6': 'Diep', '\u960e': 'Diem',
-    '\u4f59': 'Du', '\u6f58': 'Phan', '\u675c': 'Do', '\u6234': 'Dai', '\u590f': 'Ha',
-    '\u9492': 'Chung', '\u6c6a': 'Uong', '\u7530': 'Dien', '\u4efb': 'Nhiem', '\u59dc': 'Khuong',
-    '\u8303': 'Pham', '\u65b9': 'Phuong', '\u77f3': 'Thach', '\u59da': 'Dieu', '\u8c2d': 'Dam',
-    '\u5ed6': 'Lieu', '\u90b9': 'Trau', '\u718a': 'Hung', '\u91d1': 'Kim', '\u9646': 'Luc',
-    '\u90dd': 'Hac', '\u5b54': 'Khong', '\u767d': 'Bach', '\u5d14': 'Thoi', '\u5eb7': 'Khang',
-    '\u6bdb': 'Mao', '\u90b1': 'Khau', '\u79e6': 'Tan', '\u6c5f': 'Giang', '\u53f2': 'Su',
-    '\u987e': 'Co', '\u4faf': 'Hau', '\u90b5': 'Thieu', '\u5b5f': 'Manh', '\u9f99': 'Long',
-    '\u4e07': 'Van', '\u6bb5': 'Doan', '\u96f7': 'Loi', '\u9322': 'Tien', '\u6c64': 'Thang',
-    '\u5c39': 'Doan', '\u9ece': 'Le', '\u5e38': 'Thuong', '\u6b66': 'Vo', '\u8d3a': 'Ha',
-    '\u8d56': 'Lai', '\u9f9a': 'Cung', '\u6587': 'Van', '\u4e54': 'Kieu', '\u6b27': 'Au',
-    '\u6155': 'Mo', '\u5bb9': 'Dung', '\u53f8': 'Tu', '\u5b98': 'Quan', '\u8bf8': 'Chu',
-    '\u845b': 'Cat', '\u4e1c': 'Dong', '\u72ec': 'Doc', '\u5b64': 'Co', '\u5357': 'Nam',
-    '\u897f': 'Tay', '\u8f69': 'Hien', '\u8f95': 'Vien', '\u4ee4': 'Lenh', '\u72d0': 'Ho',
-    '\u5c09': 'Uy', '\u8fdf': 'Tri', '\u752b': 'Phu', '\u767e': 'Bach',
-    # Given name chars
-    '\u9435': 'Minh', '\u4e91': 'Van', '\u96ea': 'Tuyet', '\u6708': 'Nguyet', '\u98ce': 'Phong',
-    '\u5929': 'Thien', '\u5730': 'Dia', '\u5c71': 'Son', '\u6c34': 'Thuy',
-    '\u706b': 'Hoa', '\u6728': 'Moc', '\u571f': 'Tho', '\u660e': 'Minh', '\u534e': 'Hoa',
-    '\u82f1': 'Anh', '\u8c6a': 'Hao', '\u6770': 'Kiet', '\u5f3a': 'Cuong', '\u4f1f': 'Vi',
-    '\u5cf0': 'Phong', '\u5b87': 'Vu', '\u6d69': 'Hao', '\u65ed': 'Huc', '\u9633': 'Duong',
-    '\u5a77': 'Dinh', '\u83b9': 'Oanh', '\u5a1c': 'Na', '\u4e3d': 'Le', '\u82b3': 'Phuong',
-    '\u96e8': 'Vu', '\u6674': 'Tinh', '\u68a6': 'Mong', '\u5f64': 'Dong', '\u73b2': 'Linh',
-    '\u5026': 'Thien', '\u71d5': 'Yen', '\u6653': 'Hieu', '\u73ca': 'San',
-    '\u6d1b': 'Lac', '\u82e5': 'Nhuoc', '\u8bd7': 'Thi', '\u52a0': 'Gia', '\u989c': 'Nhan',
-    '\u67d4': 'Nhu', '\u9759': 'Tinh', '\u83f2': 'Phi', '\u51cc': 'Lang', '\u5ab3': 'Yen',
-    '\u74a3': 'Ly', '\u73cd': 'Chan', '\u73c2': 'Kha', '\u7476': 'Dao', '\u777e': 'Can',
-    '\u742a': 'Ky', '\u745e': 'Thuy', '\u7433': 'Lam', '\u7426': 'Ky',
-    '\u9038': 'Dat', '\u660a': 'Hao', '\u8fb0': 'Than', '\u7139': 'Huyen',
-    '\u7fca': 'Duc', '\u71d9': 'Hi', '\u6657': 'Thinh', '\u714e': 'Duc', '\u70e8': 'Diep',
-    '\u9a8f': 'Tuan', '\u777f': 'Tue', '\u9706': 'Lam', '\u9716': 'Dinh', '\u9704': 'Tieu',
-    '\u6cfd': 'Trach', '\u6de2': 'Ky', '\u6d9b': 'Dao', '\u6d66': 'Pho', '\u6d0b': 'Duong',
-    '\u6f47': 'Tieu', '\u6f9c': 'Lan', '\u701a': 'Han', '\u6f20': 'Mac', '\u6e0a': 'Uyen',
-    '\u6960': 'Nam', '\u6a17': 'Xuan', '\u67cf': 'Bach', '\u6953': 'Phong',
-    '\u6850': 'Dong', '\u6842': 'Que', '\u677e': 'Tung',
-    '\u7af9': 'Truc', '\u8377': 'Ha', '\u83ca': 'Cuc', '\u6885': 'Mai', '\u5170': 'Lan',
-    '\u83b2': 'Lien', '\u8431': 'Huyen', '\u82d3': 'Linh',
-    '\u8f89': 'Huy', '\u8000': 'Dieu', '\u5149': 'Quang', '\u4eae': 'Luong', '\u6628': 'Duc',
-    '\u66dc': 'Dieu', '\u70dc': 'Vi', '\u708e': 'Viem', '\u70c8': 'Liet',
-    '\u9a01': 'Hao', '\u52c7': 'Dung', '\u6bc5': 'Nghi', '\u521a': 'Cuong', '\u78ca': 'Loi',
-    '\u946b': 'Han', '\u9e4f': 'Bang', '\u98de': 'Phi', '\u9e64': 'Hac', '\u9e3f': 'Hong',
-    '\u864e': 'Ho', '\u8c79': 'Bao', '\u72fc': 'Lang', '\u9e9f': 'Lan',
-    '\u86df': 'Giao',
-    # Xianxia terms
-    '\u4ed9': 'Tien', '\u9b54': 'Ma', '\u59d6': 'Yeu', '\u9b3c': 'Quy', '\u4f5b': 'Phat',
-    '\u795e': 'Than', '\u5723': 'Thanh', '\u5e1d': 'De', '\u5c0a': 'Ton', '\u541b': 'Quan',
-    '\u9053': 'Dao', '\u5fb7': 'Duc',
-    '\u5b97': 'Tong', '\u95e8': 'Mon', '\u6d3e': 'Phai', '\u6559': 'Giao', '\u6bbf': 'Dien',
-    '\u9601': 'Cac', '\u5c9b': 'Dao', '\u57ce': 'Thanh', '\u56fd': 'Quoc', '\u754c': 'Gioi',
-    '\u57df': 'Vuc', '\u6d77': 'Hai', '\u6e56': 'Ho', '\u6cb3': 'Ha', '\u5cb3': 'Nhac',
-    '\u5251': 'Kiem', '\u5200': 'Dao', '\u67aa': 'Thuong', '\u5f13': 'Cung',
-    '\u529f': 'Cong', '\u6cd5': 'Phap', '\u8bc0': 'Quyet', '\u672f': 'Thuat',
-    '\u4e39': 'Dan', '\u836f': 'Duoc', '\u7075': 'Linh', '\u6c14': 'Khi', '\u529b': 'Luc',
-    '\u5143': 'Nguyen', '\u771f': 'Chan', '\u4fee': 'Tu', '\u70bc': 'Luyen',
-    '\u5883': 'Canh', '\u9636': 'Giai', '\u54c1': 'Pham', '\u7ea7': 'Cap', '\u5c42': 'Tang',
-    '\u53e4': 'Co', '\u592a': 'Thai', '\u5927': 'Dai', '\u5c0f': 'Tieu', '\u8001': 'Lao',
-    '\u5c11': 'Thieu', '\u65b0': 'Tan', '\u5148': 'Tien', '\u540e': 'Hau',
-    '\u5185': 'Noi', '\u5916': 'Ngoai', '\u6b63': 'Chinh', '\u90aa': 'Ta',
-    '\u9634': 'Am', '\u4e7e': 'Can', '\u5764': 'Khon', '\u79bb': 'Ly',
-    '\u9b54': 'Ma', '\u6df7': 'Hon',
-    '\u865a': 'Hu', '\u7a7a': 'Khong', '\u65e0': 'Vo', '\u6709': 'Huu', '\u7384': 'Huyen',
-    '\u8d64': 'Xich', '\u9752': 'Thanh', '\u7d2b': 'Tu', '\u7389': 'Ngoc',
-    # Titles
-    '\u5e08': 'Su', '\u7236': 'Phu', '\u6bcd': 'Mau', '\u5144': 'Huynh', '\u5f1f': 'De',
-    '\u59d0': 'Ty', '\u59b9': 'Muoi', '\u4e3b': 'Chu', '\u638c': 'Chuong',
-    '\u7956': 'To', '\u4f20': 'Truyen', '\u627f': 'Thua',
-    '\u524d': 'Tien', '\u8f88': 'Boi', '\u6666': 'Van',
-    '\u51f0': 'Phuong',
+    '李': 'Lý', '王': 'Vương', '张': 'Trương', '刘': 'Lưu', '陈': 'Trần',
+    '杨': 'Dương', '赵': 'Triệu', '黄': 'Hoàng', '周': 'Chu', '吴': 'Ngô',
+    '徐': 'Từ', '孙': 'Tôn', '胡': 'Hồ', '朱': 'Chu', '高': 'Cao',
+    '林': 'Lâm', '何': 'Hà', '郭': 'Quách', '马': 'Mã', '罗': 'La',
+    '梁': 'Lương', '宋': 'Tống', '郑': 'Trịnh', '谢': 'Tạ', '韩': 'Hàn',
+    '唐': 'Đường', '冯': 'Phùng', '于': 'Vu', '董': 'Đổng', '萧': 'Tiêu',
+    '程': 'Trình', '曹': 'Tào', '袁': 'Viên', '邓': 'Đặng', '许': 'Hứa',
+    '傅': 'Phó', '沈': 'Thẩm', '曾': 'Tăng', '彭': 'Bành', '吕': 'Lã',
+    '苏': 'Tô', '卢': 'Lư', '蒋': 'Tưởng', '蔡': 'Thái', '贾': 'Giả',
+    '丁': 'Đinh', '魏': 'Ngụy', '薛': 'Tiết', '叶': 'Diệp', '阎': 'Diêm',
+    '余': 'Dư', '潘': 'Phan', '杜': 'Đỗ', '戴': 'Đái', '夏': 'Hạ',
+    '钟': 'Chung', '汪': 'Uông', '田': 'Điền', '任': 'Nhiệm', '姜': 'Khương',
+    '范': 'Phạm', '方': 'Phương', '石': 'Thạch', '姚': 'Diêu', '谭': 'Đàm',
+    '廖': 'Liêu', '邹': 'Trâu', '熊': 'Hùng', '金': 'Kim', '陆': 'Lục',
+    '郝': 'Hác', '孔': 'Khổng', '白': 'Bạch', '崔': 'Thôi', '康': 'Khang',
+    '毛': 'Mao', '邱': 'Khâu', '秦': 'Tần', '江': 'Giang', '史': 'Sử',
+    '顾': 'Cố', '侯': 'Hầu', '邵': 'Thiệu', '孟': 'Mạnh', '龙': 'Long',
+    '万': 'Vạn', '段': 'Đoạn', '雷': 'Lôi', '钱': 'Tiền', '汤': 'Thang',
+    '尹': 'Doãn', '黎': 'Lê', '常': 'Thường', '武': 'Võ', '贺': 'Hạ',
+    '赖': 'Lại', '龚': 'Cung', '文': 'Văn', '乔': 'Kiều', '欧': 'Âu',
+    '慕': 'Mộ', '容': 'Dung', '司': 'Tư', '官': 'Quan', '诸': 'Chư',
+    '葛': 'Cát', '东': 'Đông', '独': 'Độc', '孤': 'Cô', '南': 'Nam',
+    '宫': 'Cung', '西': 'Tây', '长': 'Trường', '轩': 'Hiên', '辕': 'Viên',
+    '令': 'Lệnh', '狐': 'Hồ', '尉': 'Úy', '迟': 'Trì', '甫': 'Phủ',
+    '公': 'Công', '百': 'Bách', '里': 'Lý', '宁': 'Ninh', '安': 'An',
+    '申': 'Thân', '屠': 'Đồ', '羊': 'Dương', '舌': 'Thiệt', '微': 'Vi',
+    '生': 'Sinh', '赫': 'Hách', '连': 'Liên', '呼': 'Hô', '延': 'Diên',
+    '俟': 'Kỳ', '拓': 'Thác', '跋': 'Bạt', '裴': 'Bùi',
+    # Given name chars & Common elements
+    '阿': 'A', '宝': 'Bảo', '湘': 'Tương', '君': 'Quân', '雀': 'Tước',
+    '街': 'Nhai', '台': 'Đài', '镜': 'Kính',
+    '铭': 'Minh', '浩': 'Hạo', '宇': 'Vũ', '云': 'Vân', '雪': 'Tuyết',
+    '月': 'Nguyệt', '风': 'Phong', '天': 'Thiên', '地': 'Địa', '凤': 'Phượng',
+    '山': 'Sơn', '水': 'Thủy', '火': 'Hỏa', '木': 'Mộc', '土': 'Thổ',
+    '明': 'Minh', '华': 'Hoa', '英': 'Anh', '豪': 'Hào', '杰': 'Kiệt',
+    '强': 'Cường', '伟': 'Vĩ', '峰': 'Phong', '旭': 'Húc', '阳': 'Dương',
+    '婷': 'Đình', '莹': 'Oánh', '娜': 'Na', '丽': 'Lệ', '芳': 'Phương',
+    '雨': 'Vũ', '晴': 'Tình', '梦': 'Mộng', '彤': 'Đồng', '玲': 'Linh',
+    '倩': 'Thiến', '燕': 'Yến', '晓': 'Hiểu', '珊': 'San', '洛': 'Lạc',
+    '若': 'Nhược', '诗': 'Thi', '颜': 'Nhan', '柔': 'Nhu', '静': 'Tĩnh',
+    '菲': 'Phi', '凌': 'Lăng', '璃': 'Ly', '珍': 'Trân', '珂': 'Kha',
+    '瑶': 'Dao', '瑾': 'Cẩn', '琪': 'Kỳ', '瑞': 'Thụy', '琳': 'Lâm',
+    '逸': 'Dật', '昊': 'Hạo', '辰': 'Thần', '翊': 'Dực', '熙': 'Hi',
+    '晟': 'Thịnh', '骏': 'Tuấn', '睿': 'Tuệ', '霖': 'Lâm', '霆': 'Đình',
+    '霄': 'Tiêu', '泽': 'Trạch', '涛': 'Đào', '浦': 'Phổ', '洋': 'Dương',
+    '潇': 'Tiêu', '澜': 'Lan', '渊': 'Uyên', '楠': 'Nam', '柏': 'Bách',
+    '枫': 'Phong', '桐': 'Đồng', '桂': 'Quế', '松': 'Tùng', '竹': 'Trúc',
+    '荷': 'Hà', '菊': 'Cúc', '梅': 'Mai', '兰': 'Lan', '莲': 'Liên',
+    '萱': 'Huyên', '辉': 'Huy', '耀': 'Diệu', '光': 'Quang', '亮': 'Lượng',
+    '炎': 'Viêm', '烈': 'Liệt', '勇': 'Dũng', '毅': 'Nghị', '刚': 'Cương',
+    '磊': 'Lỗi', '鑫': 'Hân', '鹏': 'Bằng', '飞': 'Phi', '鹤': 'Hạc',
+    '鸿': 'Hồng', '凰': 'Hoàng', '虎': 'Hổ', '豹': 'Báo', '狼': 'Lang',
+    '麟': 'Lân', '蛟': 'Giao', '星': 'Tinh', '日': 'Nhật', '年': 'Niên',
+    '春': 'Xuân', '秋': 'Thu', '冬': 'Đông', '霸': 'Bá', '凡': 'Phàm',
+    '尘': 'Trần', '冰': 'Băng', '霜': 'Sương', '寒': 'Hàn', '影': 'Ảnh',
+    '绝': 'Tuyệt', '狂': 'Cuồng', '傲': 'Ngạo', '玄': 'Huyền', '青': 'Thanh',
+    '赤': 'Xích', '紫': 'Tử', '玉': 'Ngọc', '晶': 'Tinh', '铁': 'Thiết',
+    '博': 'Bác', '修': 'Tu', '罗': 'La', '玄': 'Huyền', '重': 'Trọng',
+    '一': 'Nhất', '二': 'Nhị', '三': 'Tam', '四': 'Tứ', '五': 'Ngũ',
+    '六': 'Lục', '七': 'Thất', '八': 'Bát', '九': 'Cửu', '十': 'Thập',
+    '千': 'Thiên', '万': 'Vạn',
+    # Xianxia terms & Titles
+    '仙': 'Tiên', '魔': 'Ma', '妖': 'Yêu', '鬼': 'Quỷ', '佛': 'Phật',
+    '神': 'Thần', '圣': 'Thánh', '帝': 'Đế', '尊': 'Tôn', '君': 'Quân',
+    '皇': 'Hoàng', '侠': 'Hiệp', '道': 'Đạo', '德': 'Đức', '宗': 'Tông',
+    '门': 'Môn', '派': 'Phái', '教': 'Giáo', '殿': 'Điện', '阁': 'Các',
+    '岛': 'Đảo', '城': 'Thành', '国': 'Quốc', '界': 'Giới', '域': 'Vực',
+    '海': 'Hải', '湖': 'Hồ', '河': 'Hà', '岳': 'Nhạc', '剑': 'Kiếm',
+    '刀': 'Đao', '枪': 'Thương', '弓': 'Cung', '戟': 'Kích', '斧': 'Phủ',
+    '锤': 'Chùy', '杖': 'Trượng', '功': 'Công', '法': 'Pháp', '诀': 'Quyết',
+    '技': 'Kỹ', '术': 'Thuật', '丹': 'Đan', '药': 'Dược', '灵': 'Linh',
+    '气': 'Khí', '力': 'Lực', '元': 'Nguyên', '真': 'Chân',
+    '炼': 'Luyện', '境': 'Cảnh', '阶': 'Giai', '品': 'Phẩm', '级': 'Cấp',
+    '层': 'Tầng', '古': 'Cổ', '太': 'Thái', '大': 'Đại', '小': 'Tiểu',
+    '老': 'Lão', '少': 'Thiếu', '新': 'Tân', '先': 'Tiên', '后': 'Hậu',
+    '内': 'Nội', '外': 'Ngoại', '正': 'Chính', '邪': 'Tà', '善': 'Thiện',
+    '恶': 'Ác', '暗': 'Ám', '阴': 'Âm', '乾': 'Càn', '坤': 'Khôn',
+    '混': 'Hỗn', '虚': 'Hư', '空': 'Không', '无': 'Vô', '有': 'Hữu',
+    '师': 'Sư', '父': 'Phụ', '母': 'Mẫu', '兄': 'Huynh', '弟': 'Đệ',
+    '姐': 'Tỷ', '妹': 'Muội', '主': 'Chủ', '掌': 'Chưởng', '祖': 'Tổ',
+    '传': 'Truyền', '承': 'Thừa', '前': 'Tiền', '辈': 'Bối', '晚': 'Vãn',
+    '府': 'Phủ', '洞': 'Động', '崖': 'Nhai', '谷': 'Cốc', '洲': 'Châu',
 }
 
 
@@ -98,62 +107,66 @@ def han_viet_name(cn_text: str) -> str:
     return ' '.join(p.capitalize() for p in parts)
 
 
-SINGLE_SURNAMES: set = set(
-    '\u674e\u738b\u5f20\u5218\u9648\u6768\u8d75\u9ec4\u5468\u5434\u5f90\u5b59\u80e1\u6731\u9ad8'
-    '\u6797\u4f55\u90ed\u9a6c\u7f57\u6881\u5b8b\u90d1\u8c22\u97e9\u5510\u51af\u4e8e\u8463\u8427'
-    '\u7a0b\u66f9\u8881\u9093\u8bb8\u5085\u6c88\u66fe\u5f6d\u5415\u82cf\u5362\u848b\u8521\u8d3e'
-    '\u4e01\u9b4f\u8585\u53f6\u960e\u4f59\u6f58\u675c\u6234\u590f\u9492\u6c6a\u7530\u4efb\u59dc'
-    '\u8303\u65b9\u77f3\u59da\u8c2d\u5ed6\u90b9\u718a\u91d1\u9646\u90dd\u5b54\u767d\u5d14\u5eb7'
-    '\u6bdb\u90b1\u79e6\u6c5f\u53f2\u987e\u4faf\u90b5\u5b5f\u9f99\u4e07\u6bb5\u96f7\u9322\u6c64'
-    '\u5c39\u9ece\u5e38\u6b66\u8d3a\u8d96\u9f9a\u6587\u4e54\u6b27\u5b81\u8300\u90a2\u962e\u97e6'
+# ---------------------------------------------------------------------------
+# Surname lists
+# ---------------------------------------------------------------------------
+SINGLE_SURNAMES: set[str] = set(
+    '李王张刘陈杨赵黄周吴徐孙胡朱高林何郭马罗梁宋郑谢韩唐冯于董萧程曹袁邓许'
+    '傅沈曾彭吕苏卢蒋蔡贾丁魏薛叶阎余潘杜戴夏钟汪田任姜范方石姚谭廖邹熊金陆'
+    '郝孔白崔康毛邱秦江史顾侯邵孟龙万段雷钱汤尹黎常武贺赖龚文乔欧宁安裴'
 )
 
-DOUBLE_SURNAMES: list = [
-    '\u6b27\u9633', '\u53f8\u9a6c', '\u4e0a\u5b98', '\u8bf8\u845b', '\u4e1c\u65b9',
-    '\u72ec\u5b64', '\u5357\u5bab', '\u6155\u5bb9', '\u897f\u95e8', '\u957f\u5b59',
-    '\u8f69\u8f95', '\u4ee4\u72d0', '\u5c09\u8fdf', '\u7687\u752b', '\u590f\u4faf',
-    '\u516c\u5b59', '\u7533\u5c60', '\u767e\u91cc', '\u516c\u7f8a', '\u7f8a\u820c',
-    '\u5fae\u751f', '\u8d3a\u5170', '\u8d6b\u8fde', '\u547c\u5ef6', '\u4e07\u4fc3',
-    '\u62d3\u8dc4',
+DOUBLE_SURNAMES: list[str] = [
+    '欧阳', '司马', '上官', '诸葛', '东方', '独孤', '南宫', '慕容', '西门',
+    '长孙', '轩辕', '令狐', '尉迟', '皇甫', '夏侯', '公孙', '申屠', '百里',
+    '公羊', '羊舌', '微生', '贺兰', '赫连', '呼延', '万俟', '拓跋',
 ]
 
-CONTEXT_PATTERNS: list = [
-    r'(.{1,4})(?:\u8bf4\u9053|\u7b11\u9053|\u51b7\u58f0\u9053|\u6c89\u58f0\u9053|\u4f4e\u58f0\u9053)',
-    r'(.{1,4})(?:\u95ee\u9053|\u8ffd\u95ee|\u8d28\u95ee)',
-    r'(.{1,4})(?:\u770b\u7740|\u671b\u7740|\u6ce8\u89c6\u7740|\u76ef\u7740|\u51dd\u89c6\u7740)',
-    r'(.{1,4})(?:\u76b1\u7709|\u70b9\u5934|\u6447\u5934|\u82e6\u7b11|\u51b7\u7b11|\u5fae\u7b11)',
-    r'(.{1,4})(?:\u51fa\u624b|\u51fa\u62db|\u52a8\u624b|\u6325\u5251|\u8fd0\u529f)',
-    r'(.{1,4})(?:\u5e08\u5144|\u5e08\u59d0|\u5e08\u5f1f|\u5e08\u59b9|\u5e08\u7236|\u5e08\u5c0a)',
-    r'(.{1,4})(?:\u957f\u8001|\u516c\u5b50|\u5c0f\u59d0|\u59d1\u5a18|\u5927\u4eba|\u524d\u8f88)',
-    r'(.{1,4})(?:\u5b97\u4e3b|\u95e8\u4e3b|\u638c\u95e8|\u5802\u4e3b|\u5ea7\u4e3b|\u6559\u4e3b)',
-    r'(.{1,4})(?:\u9648\u4e0b|\u6bbf\u4e0b|\u9601\u4e0b)',
-    r'(.{1,4})(?:\u7684\u58f0\u97f3|\u7684\u76ee\u5149|\u7684\u8eab\u5f71|\u7684\u6c14\u606f)',
+# Characters that should not appear at start or end of a candidate name
+INVALID_NAME_CHARS: set[str] = set(
+    '的了着是在有不是一个去到进出过要能会看说道问笑摇头走死把被为与及或等这那它他她已乃从自向即又但虽却并手声色身步面眼心冷沉怒厉淡微苦大小老少归回来'
+)
+
+# ---------------------------------------------------------------------------
+# Context patterns: group 1 = candidate name
+# ---------------------------------------------------------------------------
+CONTEXT_PATTERNS: list[str] = [
+    r'(.{2,4})(?:冷笑道|沉声道|低声道|轻声道|轻声说|大声道|大声说|大笑道|苦笑道|淡笑道|怒道|喝道|厉声道|冷哼道|冷哼一声|说道|笑道|问道|追问|质问|答道|叹道)',
+    r'(.{2,4})(?:看着|望着|注视着|盯着|凝视着)',
+    r'(.{2,4})(?:皱眉|点头|摇头|苦笑|冷笑|微笑|大笑|冷哼)',
+    r'(.{2,4})(?:出手|出招|动手|挥剑|运功)',
+    r'(.{2,4})(?:师兄|师姐|师弟|师妹|师父|师傅|师尊)',
+    r'(.{2,4})(?:长老|公子|小姐|姑娘|大人|前辈|晚辈)',
+    r'(.{2,4})(?:宗主|门主|掌门|堂主|座主|教主)',
+    r'(.{2,4})(?:陛下|殿下|阁下)',
+    r'(.{2,4})(?:的声音|的目光|的身影|的气息)',
 ]
 
-STOPWORD_TERMS: set = {
-    '\u4ec0\u4e48', '\u8fd9\u4e2a', '\u90a3\u4e2a', '\u4e00\u4e2a', '\u4ed6\u4eec',
-    '\u5979\u4eec', '\u6211\u4eec', '\u4f60\u4eec', '\u6ca1\u6709', '\u53ef\u4ee5',
-    '\u4e0d\u662f', '\u8fd8\u662f', '\u5c31\u662f', '\u5982\u679c', '\u867d\u7136',
-    '\u4f46\u662f', '\u7136\u540e', '\u56e0\u4e3a', '\u6240\u4ee5', '\u5df2\u7ecf',
-    '\u4e0d\u8fc7', '\u800c\u4e14', '\u6216\u8005', '\u8fd8\u6709', '\u975e\u5e38',
-    '\u5341\u5206', '\u771f\u7684', '\u4e00\u5b9a', '\u53ef\u80fd', '\u5e94\u8be5',
-    '\u9700\u8981', '\u77e5\u9053', '\u89c9\u5f97', '\u611f\u89c9', '\u770b\u5230',
-    '\u542c\u5230', '\u8bf4\u9053', '\u95ee\u9053', '\u7b11\u9053', '\u60f3\u5230',
-    '\u5fc3\u4e2d', '\u773c\u4e2d', '\u624b\u4e2d', '\u4f53\u5185', '\u5929\u7a7a',
-    '\u5730\u9762', '\u56db\u5468', '\u5468\u56f4', '\u7a81\u7136', '\u5ffd\u7136',
-    '\u968f\u5373', '\u987f\u65f6', '\u77ac\u95f4', '\u7247\u523b', '\u6b64\u65f6',
-    '\u53ea\u89c1', '\u5374\u89c1', '\u4f46\u89c1', '\u53ea\u662f', '\u4e0d\u7981',
-    '\u7adf\u7136', '\u5c45\u7136', '\u679c\u7136',
+# ---------------------------------------------------------------------------
+# Noise / Stopwords
+# ---------------------------------------------------------------------------
+STOPWORD_TERMS: set[str] = {
+    '什么', '这个', '那个', '一个', '他们', '她们', '我们', '你们',
+    '没有', '可以', '不是', '还是', '就是', '如果', '虽然', '但是',
+    '然后', '因为', '所以', '已经', '不过', '而且', '或者', '还有',
+    '非常', '十分', '真的', '一定', '可能', '应该', '需要', '知道',
+    '觉得', '感觉', '看到', '听到', '说道', '问道', '笑道', '想到',
+    '心中', '眼中', '手中', '体内', '天空', '地面', '四周', '周围',
+    '突然', '忽然', '随即', '顿时', '瞬间', '片刻', '此时', '此刻',
+    '只见', '却见', '但见', '只是', '不禁', '竟然', '居然', '果然',
 }
 
-ENTITY_SUFFIXES: dict = {
-    '\u5b97': 'SECT', '\u95e8': 'SECT', '\u6d3e': 'SECT', '\u6559': 'SECT', '\u6bbf': 'SECT',
-    '\u9601': 'SECT', '\u5802': 'SECT', '\u5e84': 'SECT', '\u5d6e': 'SECT', '\u697c': 'SECT',
-    '\u5cf0': 'PLACE', '\u5c9b': 'PLACE', '\u57ce': 'PLACE', '\u56fd': 'PLACE', '\u754c': 'PLACE',
-    '\u57df': 'PLACE', '\u6d77': 'PLACE', '\u5c71': 'PLACE', '\u6e56': 'PLACE', '\u6cb3': 'PLACE',
-    '\u5cb3': 'PLACE', '\u6d32': 'PLACE', '\u6e0a': 'PLACE', '\u6797': 'PLACE', '\u8c37': 'PLACE',
-    '\u8bc0': 'SKILL', '\u529f': 'SKILL', '\u6cd5': 'SKILL', '\u672f': 'SKILL', '\u7ecf': 'SKILL',
-    '\u638c': 'SKILL', '\u5251': 'SKILL', '\u5200': 'SKILL', '\u62f3': 'SKILL', '\u817f': 'SKILL',
-    '\u4e39': 'ITEM', '\u836f': 'ITEM', '\u5b9d': 'ITEM', '\u5668': 'ITEM', '\u7b26': 'ITEM',
-    '\u73e0': 'ITEM', '\u73af': 'ITEM', '\u955c': 'ITEM', '\u5854': 'ITEM', '\u9f0e': 'ITEM',
+# ---------------------------------------------------------------------------
+# Entity suffixes
+# ---------------------------------------------------------------------------
+ENTITY_SUFFIXES: dict[str, str] = {
+    '宗': 'SECT', '门': 'SECT', '派': 'SECT', '教': 'SECT', '殿': 'SECT',
+    '阁': 'SECT', '堂': 'SECT', '庄': 'SECT', '楼': 'SECT',
+    '峰': 'PLACE', '岛': 'PLACE', '城': 'PLACE', '国': 'PLACE', '界': 'PLACE',
+    '域': 'PLACE', '海': 'PLACE', '山': 'PLACE', '湖': 'PLACE', '河': 'PLACE',
+    '岳': 'PLACE', '洲': 'PLACE', '渊': 'PLACE', '谷': 'PLACE',
+    '诀': 'SKILL', '功': 'SKILL', '法': 'SKILL', '术': 'SKILL', '经': 'SKILL',
+    '掌': 'SKILL', '剑': 'SKILL', '刀': 'SKILL', '拳': 'SKILL',
+    '丹': 'ITEM', '药': 'ITEM', '宝': 'ITEM', '器': 'ITEM', '符': 'ITEM',
+    '珠': 'ITEM', '环': 'ITEM', '镜': 'ITEM', '塔': 'ITEM', '鼎': 'ITEM',
 }
