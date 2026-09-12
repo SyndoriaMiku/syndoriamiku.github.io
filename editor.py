@@ -1300,10 +1300,51 @@ class ChapterEditorApp:
 		dlg.geometry(geo)
 		dlg.minsize(700, 500)
 
+		resize_timer = None
+		normal_geometry = geo
+		window_state = cfg.get("editor_split_dialog_state", "normal")
+		if window_state not in ("normal", "zoomed"):
+			window_state = "normal"
+
+		def save_dialog_geometry():
+			nonlocal resize_timer
+			resize_timer = None
+			save_config({
+				"editor_split_dialog": normal_geometry,
+				"editor_split_dialog_state": window_state,
+			})
+
+		def on_dialog_configure(event):
+			nonlocal resize_timer, normal_geometry, window_state
+			# Child widgets also emit Configure events; only track the dialog.
+			if event.widget is not dlg or event.width < 700 or event.height < 500:
+				return
+			state = dlg.state()
+			if state not in ("normal", "zoomed"):
+				return
+			window_state = state
+			if state == "normal":
+				normal_geometry = dlg.geometry()
+			if resize_timer is not None:
+				self.root.after_cancel(resize_timer)
+			resize_timer = self.root.after(600, save_dialog_geometry)
+
+		def on_dialog_destroy(event):
+			nonlocal resize_timer
+			if event.widget is not dlg:
+				return
+			if resize_timer is not None:
+				self.root.after_cancel(resize_timer)
+			save_dialog_geometry()
+
 		def on_dlg_close():
-			save_config({"editor_split_dialog": dlg.geometry()})
 			dlg.destroy()
+
+		dlg.bind("<Configure>", on_dialog_configure, add="+")
+		dlg.bind("<Destroy>", on_dialog_destroy, add="+")
 		dlg.protocol("WM_DELETE_WINDOW", on_dlg_close)
+		if window_state == "zoomed":
+			dlg.after_idle(lambda: dlg.state("zoomed"))
 
 		# ── HEADER ──
 		hdr = tk.Frame(dlg, bg="#18181b", pady=10)
@@ -1392,10 +1433,13 @@ class ChapterEditorApp:
 		inner_frame.bind("<Configure>", on_inner_configure)
 		canvas.bind("<Configure>", on_canvas_configure)
 
-		# Mouse wheel scroll
+		# Mouse wheel scroll — bind to dlg (not bind_all) so it's removed when dialog closes
 		def on_mousewheel(event):
-			canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-		canvas.bind_all("<MouseWheel>", on_mousewheel)
+			try:
+				canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+			except tk.TclError:
+				pass
+		dlg.bind("<MouseWheel>", on_mousewheel)
 
 		def build_chapter_list():
 			for w in inner_frame.winfo_children():

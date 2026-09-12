@@ -1,8 +1,15 @@
 {
   "editor_main": "1375x792+1+84",
-  "editor_add_story_dialog": "700x219+0+0",
+  "editor_add_story_dialog": "788x219+58+128",
   "builder_main": "1375x792+1+84",
-  "builder_add_name": "519x299+0+0",
-  "editor_split_dialog": "700x576+0+0",
-  "builder_review": "900x700+-6+316"
+  "builder_add_name": "788x308+27+160",
+  "editor_split_dialog": "788x587+58+128",
+  "builder_review": "900x700+11+269",
+  "builder_scan_names": "788x715+0+0",
+  "split_patterns": [
+    [
+      "Thứ X chương",
+      "^thứ\\s+\\d+\\s+chương"
+    ]
+  ]
 }

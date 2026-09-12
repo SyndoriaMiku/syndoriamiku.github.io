@@ -47,8 +47,11 @@
     <div class="sticky top-0 z-50 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800 p-3">
         <div class="max-w-2xl mx-auto">
             <div class="flex items-center justify-between mb-2">
-                <a href="../" class="text-xs text-zinc-500 hover:text-zinc-300">← Quay lại</a>
-                <span id="title" class="text-sm font-medium text-zinc-200 truncate ml-4">Đang tải...</span>
+                <a href="../" class="shrink-0 text-xs text-zinc-500 hover:text-zinc-300">← Quay lại</a>
+                <div class="min-w-0 ml-4 text-right">
+                    <div id="title" class="text-sm font-medium text-zinc-200 truncate">Đang tải...</div>
+                    <div id="chapterTitle" class="hidden text-xs text-blue-300 mt-1 break-words" aria-live="polite"></div>
+                </div>
             </div>
             <!-- Top Pagination -->
             <div class="flex items-center justify-between gap-2 mt-2" id="paginationTop">
@@ -157,6 +160,10 @@
                                 const currentIdx = chapters.findIndex(c => c.id === chapterId);
                                 
                                 if (currentIdx !== -1) {
+                                    const chapterName = chapters[currentIdx].name || `Chương ${currentIdx + 1}`;
+                                    $('#chapterTitle').text(chapterName).attr('title', chapterName).removeClass('hidden');
+                                    document.title = `${chapterName} — ${story.title || $('#title').text()}`;
+
                                     // Đọc chương trước
                                     if (currentIdx > 0) {
                                         const prevChap = chapters[currentIdx - 1];

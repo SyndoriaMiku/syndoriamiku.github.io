@@ -9,6 +9,13 @@ try:
 except ImportError:
     _HAN_VIET_OK = False
 
+try:
+    from name_scanner import NameScanner as _NameScanner
+    _NAME_SCANNER_OK = True
+except ImportError:
+    _NameScanner = None
+    _NAME_SCANNER_OK = False
+
 
 # --- XÁC ĐỊNH THƯ MỤC GỐC ---
 if getattr(sys, 'frozen', False):
@@ -57,6 +64,48 @@ def slugify_vn(text):
     text = re.sub(r"[^a-z0-9\s-]", "", text)
     text = re.sub(r"[\s-]+", "-", text).strip("-")
     return text
+
+
+def fix_capitalization_after_names(text: str, vi_names: list) -> str:
+    """
+    Hạ chữ hoa của từ đi ngay sau tên riêng (do API tự động viết hoa sau thực thể tiếng Latin).
+    Không hạ chữ hoa nếu chuỗi tiếp theo là khởi đầu của một Tên riêng khác trong từ điển.
+    """
+    if not text or not vi_names:
+        return text
+
+    sorted_names = sorted(set(n.strip() for n in vi_names if n and n.strip()), key=len, reverse=True)
+
+    if not sorted_names:
+        return text
+
+    # Khớp tên dài trước, đúng ranh giới từ để không sửa bên trong tên khác.
+    pattern = re.compile(r'(?<!\w)(?:' + '|'.join(map(re.escape, sorted_names)) + r')(?!\w)')
+    matches = list(pattern.finditer(text))
+    name_starts = {match.start() for match in matches}
+    edits = []
+    for match in matches:
+        # API có thể giữ ký tự ẩn từ bản gốc giữa tên và từ tiếp theo
+        # (đặc biệt ZWNJ U+200C). Giữ các ký tự này, chỉ sửa chữ hoa.
+        # Không đi qua dấu câu hoặc xuống dòng (đầu câu mới).
+        following = re.match(
+            r'(?:[^\S\r\n\v\f\x85\u2028\u2029]|[\u200b-\u200d\u2060\ufeff])+(\w+)',
+            text[match.end():],
+        )
+        if not following:
+            continue
+        start = match.end() + following.start(1)
+        word = following.group(1)
+        if start in name_starts:
+            continue
+        # Giữ nguyên từ viết tắt như VIP, FBI.
+        if word.istitle() and not (word.isupper() and len(word) > 1):
+            edits.append((start, start + len(word), word.lower()))
+
+    for start, end, replacement in reversed(edits):
+        text = text[:start] + replacement + text[end:]
+    return text
+
 
 # --- CLASS REVIEW WINDOW MỚI ---
 class ReviewWindow:
@@ -298,7 +347,7 @@ class ReviewWindow:
                     return
 
             # Replace toàn bộ chữ sai thành chữ đúng trên mảng RAM (áp dụng cho TOÀN BỘ file truyện)
-            name_words_set = set(right_val.split())
+            vi_names = list(self.app.load_name_config().values()) + [right_val]
             for i in range(len(self.vi_lines)):
                 # 1. Thay thế global nếu người dùng có nhập wrong_val
                 if wrong_val:
@@ -308,14 +357,7 @@ class ReviewWindow:
                     self.vi_lines[i] = unicodedata.normalize('NFC', self.vi_lines[i])
                     
                     # Sửa lỗi viết hoa của chữ đi ngay sau name
-                    pattern_fix = re.compile(re.escape(right_val) + r'(\s+)([\w]+)', re.UNICODE)
-                    def replacer(match):
-                        space = match.group(1)
-                        word = match.group(2)
-                        if word.istitle() and word not in name_words_set:
-                            return right_val + space + word.lower()
-                        return match.group(0)
-                    self.vi_lines[i] = pattern_fix.sub(replacer, self.vi_lines[i])
+                    self.vi_lines[i] = fix_capitalization_after_names(self.vi_lines[i], vi_names)
 
 
 
@@ -604,186 +646,15 @@ class TranslatorGUI:
         return cn
 
     def scan_name_candidates(self, text: str, max_results: int = 250) -> list:
-        """
-        Scan Chinese text and return candidate names/terms sorted by confidence.
-        Optimized O(N) algorithm with background execution support.
-        """
-        import collections
-
-        existing_glossary: set = set()
-        name_dict = self.load_name_config()
-        existing_glossary = set(name_dict.keys())
-
-        single_surnames = _hv.SINGLE_SURNAMES if _HAN_VIET_OK else set()
-        double_surnames = _hv.DOUBLE_SURNAMES if _HAN_VIET_OK else []
-        context_patterns = _hv.CONTEXT_PATTERNS if _HAN_VIET_OK else []
-        entity_suffixes = _hv.ENTITY_SUFFIXES if _HAN_VIET_OK else {}
-        stopwords = _hv.STOPWORD_TERMS if _HAN_VIET_OK else set()
-        invalid_chars = getattr(_hv, 'INVALID_NAME_CHARS', set('的了着是在有不是一个去到进出过要能会看说道问笑摇头走死把被为与及或等这那它他她已乃从自向即又但虽却并手声色身步面眼心冷沉怒厉淡微苦大小老少归回来'))
-
-        # ── 1. Segment text by punctuation ──
-        segments = re.split(r'[，。！？、“”‘’：；…\n\r\t ()（）《》【】—\-.,!?:;\'"~]+', text)
-        segments = [s.strip() for s in segments if s.strip()]
-
-        # ── 2. Count n-grams (2–6 chars) in one pass ──
-        ngram_freq = collections.Counter()
-        for seg in segments:
-            seg_cjk = ''.join(c for c in seg if self._is_cjk(c))
-            L = len(seg_cjk)
-            for n in range(2, min(7, L + 1)):
-                for i in range(L - n + 1):
-                    ngram_freq[seg_cjk[i:i+n]] += 1
-
-        # ── 3. Context pattern hits (X说道, X冷笑道, X看着, X长老...) ──
-        context_hits: dict = collections.defaultdict(int)
-        context_examples: dict = collections.defaultdict(list)
-        for pat in context_patterns:
-            for m in re.finditer(pat, text):
-                cand = m.group(1).strip()
-                while cand and cand[0] in invalid_chars:
-                    cand = cand[1:]
-                while cand and cand[-1] in invalid_chars:
-                    cand = cand[:-1]
-                if 2 <= len(cand) <= 4 and all(self._is_cjk(c) for c in cand):
-                    context_hits[cand] += 1
-                    if len(context_examples[cand]) < 3:
-                        start = max(0, m.start() - 6)
-                        end = min(len(text), m.end() + 6)
-                        context_examples[cand].append(text[start:end].replace('\n', ' '))
-
-        # ── 4. Surname heuristic (2-3 chars for single, 3-4 chars for double) ──
-        surname_hits: set = set()
-        for seg in segments:
-            seg_cjk = ''.join(c for c in seg if self._is_cjk(c))
-            # Double surname: length 3 or 4
-            for ds in double_surnames:
-                idx = 0
-                while True:
-                    pos = seg_cjk.find(ds, idx)
-                    if pos == -1:
-                        break
-                    for L in (3, 4):
-                        if pos + L <= len(seg_cjk):
-                            cand = seg_cjk[pos:pos+L]
-                            if not any(c in invalid_chars for c in cand[len(ds):]):
-                                surname_hits.add(cand)
-                    idx = pos + 1
-
-            # Single surname or "阿" prefix (2 or 3 chars, e.g. 阿宝, 林铭)
-            for i, ch in enumerate(seg_cjk):
-                if ch in single_surnames or ch == '阿':
-                    for L in (2, 3):
-                        if i + L <= len(seg_cjk):
-                            cand = seg_cjk[i:i+L]
-                            if not any(c in invalid_chars for c in cand[1:]):
-                                surname_hits.add(cand)
-
-        # ── 5. Entity suffix hits from frequent n-grams ──
-        entity_hits: set = set()
-        for ngram, cnt in ngram_freq.items():
-            if cnt >= 2 and len(ngram) in (2, 3, 4, 5):
-                if ngram[-1] in entity_suffixes:
-                    if not any(c in invalid_chars for c in (ngram[0], ngram[-1])):
-                        entity_hits.add(ngram)
-
-        # ── 6. Candidate Pool ──
-        pool: set = set()
-        pool.update(context_hits.keys())
-        pool.update(surname_hits)
-        pool.update(entity_hits)
-        # Frequent terms (count >= 3, length 2-3)
-        for ngram, cnt in ngram_freq.items():
-            if cnt >= 3 and len(ngram) in (2, 3):
-                if not any(c in invalid_chars for c in (ngram[0], ngram[-1])):
-                    if ngram not in stopwords:
-                        pool.add(ngram)
-
-        # ── 7. Fast O(N) Sub-ngram suppression ──
-        sorted_cands = sorted(pool, key=len, reverse=True)
-        to_remove = set()
-        cand_set = set(pool)
-
-        for super_cand in sorted_cands:
-            if super_cand in to_remove:
-                continue
-            super_cnt = ngram_freq.get(super_cand, 0)
-            L = len(super_cand)
-            for sub_len in range(2, L):
-                for i in range(L - sub_len + 1):
-                    sub = super_cand[i:i+sub_len]
-                    if sub in cand_set and sub not in to_remove:
-                        sub_cnt = ngram_freq.get(sub, 0)
-                        if sub_cnt <= super_cnt * 1.1:
-                            to_remove.add(sub)
-                        elif sub in double_surnames and super_cand.startswith(sub):
-                            to_remove.add(sub)
-
-        pool -= to_remove
-
-        # ── 8. Score & classify ──
-        results = []
-        for cand in pool:
-            if cand in existing_glossary or cand in stopwords:
-                continue
-            if len(cand) < 2 or not all(self._is_cjk(c) for c in cand):
-                continue
-            if any(c in invalid_chars for c in (cand[0], cand[-1])):
-                continue
-
-            cnt = ngram_freq.get(cand, 1)
-            ctx_score = context_hits.get(cand, 0)
-            has_ds = any(cand.startswith(ds) for ds in double_surnames) and len(cand) in (3, 4)
-            has_ss = (cand[0] in single_surnames) and len(cand) in (2, 3)
-            has_a = cand.startswith('阿') and len(cand) in (2, 3)
-            has_surname = has_ds or has_ss or has_a
-
-            # Filter out single-occurrence accidental surname substrings (e.g. 任何, 告诉)
-            if has_surname and cnt == 1 and ctx_score == 0:
-                continue
-
-            last_ch = cand[-1]
-            has_suffix = last_ch in entity_suffixes
-
-            # Entity type (Person takes precedence if has name signal)
-            if has_surname or ctx_score > 0:
-                etype = 'PERSON'
-            elif has_suffix:
-                etype = entity_suffixes[last_ch]
-            else:
-                etype = 'UNKNOWN'
-
-            # Confidence 0..1
-            conf = 0.0
-            if ctx_score > 0:
-                conf += min(0.50, 0.20 * ctx_score)
-            if has_surname:
-                conf += 0.35
-            if has_suffix:
-                conf += 0.30
-            if cnt >= 2:
-                conf += 0.15
-            if cnt >= 4:
-                conf += 0.15
-            if cnt >= 8:
-                conf += 0.10
-            conf = min(conf, 0.99)
-
-            if conf < 0.25 and cnt < 2:
-                continue
-
-
-            results.append({
-                'cn': cand,
-                'type': etype,
-                'count': cnt,
-                'confidence': conf,
-                'contexts': context_examples.get(cand, []),
-                'suggested_vi': self._suggest_vi(cand),
-            })
-
-        # Sort: confidence desc, count desc, length asc
-        results.sort(key=lambda x: (-x['confidence'], -x['count'], len(x['cn'])))
-        return results[:max_results]
+        """Scan person names using syntactic boundaries and the saved glossary."""
+        if not _NAME_SCANNER_OK:
+            raise RuntimeError("Không tải được name_scanner.py. Hãy kiểm tra module và han_viet.py.")
+        results = _NameScanner().scan(
+            text, existing_glossary=set(self.load_name_config()), max_results=max_results,
+        )
+        for item in results:
+            item['type'] = 'PERSON'
+        return results
 
     def open_scan_names_dialog(self):
         """Open the Scan Names dialog."""
@@ -1148,11 +1019,6 @@ class TranslatorGUI:
             vi_lines = vi_res.split("\n")
             vi_names = list(name_dict.values())
             
-            name_words_set = set()
-            for n in vi_names:
-                for w in n.split():
-                    name_words_set.add(w)
-            
             for j in range(len(group)):
                 orig_cn, rep_cn = group[j]
                 vi = vi_lines[j] if j < len(vi_lines) else ""
@@ -1161,16 +1027,7 @@ class TranslatorGUI:
                 vi = re.sub(r'  +', ' ', vi).strip()
                 
                 # Hạ chữ hoa (nếu có) của từ ngay sau name (do API tự viết hoa)
-                for name in vi_names:
-                    if name in vi:
-                        pattern = re.compile(re.escape(name) + r'(\s+)([\w]+)', re.UNICODE)
-                        def replacer(match, n=name):
-                            space = match.group(1)
-                            word = match.group(2)
-                            if word.istitle() and word not in name_words_set:
-                                return n + space + word.lower()
-                            return match.group(0)
-                        vi = pattern.sub(replacer, vi)
+                vi = fix_capitalization_after_names(vi, vi_names)
                 
                 # Chỉ lấy nguyên bản đoạn dịch và đẩy vào mảng, không tự ép viết hoa nữa
                 final_cn_lines.append(orig_cn)
