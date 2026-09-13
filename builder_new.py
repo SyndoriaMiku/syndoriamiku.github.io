@@ -1,9 +1,14 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext, simpledialog, ttk
-import requests, json, os, sys, base64, datetime, time, threading
+import json, os, sys, base64, datetime, time, threading
 import unicodedata, re
 from tkinterdnd2 import TkinterDnD, DND_FILES
 from phrase_translation import render_translation, split_source_text, response_by_line, TranslationFormatError
+try:
+    from curl_cffi import requests as browser_requests, CurlHttpVersion
+except ImportError:
+    browser_requests = None
+    CurlHttpVersion = None
 try:
     import han_viet as _hv
     _HAN_VIET_OK = True
@@ -28,8 +33,14 @@ else:
 
 # --- CẤU HÌNH API ---
 # Khi dịch vụ đổi tên miền, chỉ sửa API_BASE_URL (không thêm dấu / cuối).
-API_BASE_URL = "https://sangtacviet.xyz"
+API_BASE_URL = "https://sangtacviet.vip"
 API_URL = API_BASE_URL + "/index.php?ngmar=trans&langhint=chinese"
+# Tạm tắt khi website hết hạn chứng chỉ; đổi lại True sau khi được gia hạn.
+API_VERIFY_TLS = False
+# Ưu tiên HTTP/2; tự thử HTTP/3 khi lỗi mạng. True để ưu tiên HTTP/3.
+API_USE_HTTP3 = False
+API_CONNECT_TIMEOUT = 10
+API_READ_TIMEOUT = 45
 TEMPLATE_FILE = os.path.join(BASE_DIR, "reader.html")
 CHUNK_LIMIT = 15000  # Số ký tự tối đa trong content, tính cả khoảng trắng/xuống dòng.
 DELAY = 1.2
@@ -453,7 +464,8 @@ class ReviewWindow:
 class TranslatorGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Story Translator Pro — API theo cụm từ (builder_new)")
+        tls_status = "kiểm tra chứng chỉ" if API_VERIFY_TLS else "bỏ kiểm tra chứng chỉ"
+        self.root.title(f"Story Translator Pro — builder_new — HTTPS: {tls_status}")
         self.root.configure(bg="#09090b")
         self._resize_timer = None
         self.api_cookie = os.environ.get('STV_TRANSLATION_COOKIE', '').strip()
@@ -652,6 +664,11 @@ class TranslatorGUI:
             return text
         if not self.api_cookie:
             raise RuntimeError("API theo cụm từ yêu cầu đăng nhập. Hãy nhập Cookie qua nút 'Phiên API'.")
+        if browser_requests is None:
+            raise RuntimeError(
+                'Thiếu thư viện HTTP/3. Chạy lệnh sau trong môi trường Python dùng builder_new:\n'
+                f'"{sys.executable}" -m pip install curl_cffi==0.16.3'
+            )
         if len(text) > CHUNK_LIMIT:
             result = ''
             for index, part in enumerate(split_source_text(text, CHUNK_LIMIT, name_dict)):
@@ -666,14 +683,36 @@ class TranslatorGUI:
             self.phrase_cache[text] = ''.join(self.phrase_cache.get(part, '') for part in split_source_text(text, CHUNK_LIMIT, name_dict))
             return result
         headers = {"Origin": API_BASE_URL, "Referer": API_BASE_URL + "/trans/",
-                   "User-Agent": "Mozilla/5.0", "Cookie": self.api_cookie}
-        try:
-            res = requests.post(API_URL, data={"ajax": "trans", "content": text},
-                                headers=headers, timeout=45, allow_redirects=False)
-        except requests.exceptions.SSLError:
-            raise RuntimeError("Chứng chỉ HTTPS của API không hợp lệ hoặc đã hết hạn. Không thể gửi cookie an toàn.") from None
-        except requests.exceptions.RequestException:
-            return None
+                   "Cookie": self.api_cookie}
+        preferred = getattr(self, '_api_preferred_version', None)
+        if preferred is None:
+            preferred = CurlHttpVersion.V3ONLY if API_USE_HTTP3 else CurlHttpVersion.V2_0
+        fallback = CurlHttpVersion.V2_0 if preferred == CurlHttpVersion.V3ONLY else CurlHttpVersion.V3ONLY
+        failures = []
+        # Translation is read-only: retry the same source on transport failures only.
+        # Never retry authentication responses or follow redirects with the cookie.
+        for attempt, version in enumerate((preferred, fallback, preferred, fallback), 1):
+            transport = "HTTP/3" if version == CurlHttpVersion.V3ONLY else "HTTP/2"
+            try:
+                res = browser_requests.post(
+                    API_URL, data={"ajax": "trans", "content": text},
+                    headers=headers, timeout=(API_CONNECT_TIMEOUT, API_READ_TIMEOUT),
+                    allow_redirects=False, verify=API_VERIFY_TLS, impersonate="chrome",
+                    http_version=version,
+                )
+                self._api_preferred_version = version
+                break
+            except browser_requests.exceptions.RequestException as error:
+                detail = str(error).replace(self.api_cookie, '[cookie đã ẩn]')[:400]
+                failures.append(f"Lần {attempt} ({transport}): {detail}")
+                if attempt < 4:
+                    time.sleep(0.5)
+        else:
+            raise RuntimeError(
+                f"Không kết nối được tới {API_BASE_URL} sau 4 lần thử HTTP/2 và HTTP/3.\n"
+                "Kết nối tới máy chủ bị ngắt hoặc hết thời gian chờ. Hãy thử dịch lại sau.\n\n"
+                + "\n".join(failures)
+            ) from None
         if res.status_code in (301, 302, 303, 307, 308, 401, 403):
             raise RuntimeError("API từ chối phiên đăng nhập hoặc chuyển hướng. Hãy cập nhật Cookie qua 'Phiên API'.")
         if res.status_code != 200:
