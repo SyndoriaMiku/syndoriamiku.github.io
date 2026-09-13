@@ -1,8 +1,9 @@
 import tkinter as tk
-from tkinter import filedialog, messagebox, scrolledtext, ttk
+from tkinter import filedialog, messagebox, scrolledtext, simpledialog, ttk
 import requests, json, os, sys, base64, datetime, time, threading
 import unicodedata, re
 from tkinterdnd2 import TkinterDnD, DND_FILES
+from phrase_translation import render_translation, split_source_text, response_by_line, TranslationFormatError
 try:
     import han_viet as _hv
     _HAN_VIET_OK = True
@@ -26,9 +27,11 @@ else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # --- CẤU HÌNH API ---
-API_URL = "https://comic.sangtacvietcdn.xyz/tsm.php?cdn=/"
+# Khi dịch vụ đổi tên miền, chỉ sửa API_BASE_URL (không thêm dấu / cuối).
+API_BASE_URL = "https://sangtacviet.xyz"
+API_URL = API_BASE_URL + "/index.php?ngmar=trans&langhint=chinese"
 TEMPLATE_FILE = os.path.join(BASE_DIR, "reader.html")
-CHUNK_LIMIT = 12000
+CHUNK_LIMIT = 15000  # Số ký tự tối đa trong content, tính cả khoảng trắng/xuống dòng.
 DELAY = 1.2
 CONFIG_PATH = os.path.join(BASE_DIR, "editor_config.json")
 
@@ -133,6 +136,8 @@ class ReviewWindow:
         self.cn_lines = cn_lines
         self.vi_lines = vi_lines
         self.app = app_instance
+        self.response_lines = [self.app.phrase_cache.get(unicodedata.normalize('NFC', line))
+                               for line in cn_lines]
 
         # Restore saved geometry or use default
         cfg = load_config()
@@ -281,45 +286,23 @@ class ReviewWindow:
         if is_cn and selected_text:
             ent_cn.insert(0, selected_text)
 
-        # 2. Ô Từ sai
-        tk.Label(dialog, text="2. Cụm từ VN bị dịch sai (để thay thế trong bài này):", fg="#a1a1aa", bg="#18181b").pack(pady=(10,0), anchor="w", padx=20)
-        ent_wrong = tk.Entry(dialog, bg="#27272a", fg="white", borderwidth=0, insertbackground="white")
-        ent_wrong.pack(fill="x", padx=20, pady=5, ipady=5)
-        if not is_cn and selected_text:
-            ent_wrong.insert(0, selected_text)
+        tk.Label(dialog, text="Cập nhật theo tiếng Trung trong response đã lưu, không tìm từ Việt.",
+                 fg="#a1a1aa", bg="#18181b", wraplength=380).pack(pady=(8, 0), padx=20)
 
         # 3. Ô Name đúng
-        tk.Label(dialog, text="3. Sửa thành (Name đúng):", fg="#10b981", bg="#18181b", font=("Arial", 10, "bold")).pack(pady=(10,0), anchor="w", padx=20)
+        tk.Label(dialog, text="2. Sửa thành (Name đúng):", fg="#10b981", bg="#18181b", font=("Arial", 10, "bold")).pack(pady=(10,0), anchor="w", padx=20)
         ent_right = tk.Entry(dialog, bg="#27272a", fg="white", borderwidth=0, insertbackground="white")
         ent_right.pack(fill="x", padx=20, pady=5, ipady=5)
         
         if is_cn and selected_text:
-            # Gợi ý Name bằng cách gọi API dịch tiếng Trung và tự title-case
-            import threading
-            def fetch_suggestion(cn_text):
-                try:
-                    res = self.app.translate_api(cn_text)
-                    if res:
-                        # API trả về text thuần (VD: 'Lâm Vũ hân'), chỉ cần title-case
-                        suggestion = res.strip().title()
-                        
-                        if suggestion:
-                            def safe_insert():
-                                if not ent_right.get():
-                                    ent_right.insert(0, suggestion)
-                            dialog.after(0, safe_insert)
-                except Exception:
-                    pass
-            threading.Thread(target=fetch_suggestion, args=(selected_text,), daemon=True).start()
+            ent_right.insert(0, self.app._suggest_vi(selected_text))
 
         def apply_name(retranslate=False):
             cn_val = ent_cn.get().strip()
-            wrong_val = ent_wrong.get().strip()
             right_val = ent_right.get().strip()
 
             # Chuẩn hóa NFC để so sánh chính xác các ký tự tiếng Việt
             if cn_val: cn_val = unicodedata.normalize('NFC', cn_val)
-            if wrong_val: wrong_val = unicodedata.normalize('NFC', wrong_val)
             if right_val: right_val = unicodedata.normalize('NFC', right_val)
 
             if not right_val:
@@ -330,7 +313,8 @@ class ReviewWindow:
                 if not cn_val:
                     messagebox.showwarning("Chú ý", "Để dịch lại từ đầu, bắt buộc phải có 'Tiếng Trung gốc'!", parent=dialog)
                     return
-                self.save_name_to_cfg(cn_val, right_val)
+                if not self.save_name_to_cfg(cn_val, right_val):
+                    return
                 self.app.btn_run.config(state="normal")
                 save_config({"builder_add_name": dialog.geometry()})
                 dialog.destroy()
@@ -339,45 +323,22 @@ class ReviewWindow:
                 return
 
 
-            import re
-            
-            # Tự động gọi API để tìm từ bị dịch sai nếu người dùng để trống Ô 2
-            if not wrong_val and cn_val:
-                try:
-                    self.app.lbl_status.config(text="Đang tự động tìm từ dịch sai qua API...", fg="#f59e0b")
-                    self.app.root.update()
-                    auto_vi = self.app.translate_api(cn_val)
-                    if auto_vi:
-                        wrong_val = unicodedata.normalize('NFC', auto_vi.strip())
-                except Exception:
-                    pass
-
-            if not wrong_val and not cn_val:
-                messagebox.showwarning("Chú ý", "Vui lòng nhập ít nhất 'Tiếng Trung' hoặc 'Từ sai'!", parent=dialog)
+            if not cn_val:
+                messagebox.showwarning("Chú ý", "Vui lòng nhập tiếng Trung gốc để khớp cụm từ trong response.", parent=dialog)
                 return
-
-            if not wrong_val:
-                if not messagebox.askyesno("Xác nhận", "Bạn chưa nhập 'Cụm từ VN bị dịch sai' (Ô số 2) và hệ thống không thể tự động nhận diện.\n\nHệ thống sẽ lưu Name vào từ điển để áp dụng cho các chương sau, nhưng SẼ KHÔNG THỂ cập nhật nhanh trong đoạn text hiện tại.\n\nBạn có muốn tiếp tục?", parent=dialog):
-                    return
-
-            # Replace toàn bộ chữ sai thành chữ đúng trên mảng RAM (áp dụng cho TOÀN BỘ file truyện)
-            vi_names = list(self.app.load_name_config().values()) + [right_val]
-            for i in range(len(self.vi_lines)):
-                # 1. Thay thế global nếu người dùng có nhập wrong_val
-                if wrong_val:
-                    # Dùng Regex để thay thế không phân biệt hoa thường (case-insensitive)
-                    pattern_wrong = re.compile(re.escape(wrong_val), re.IGNORECASE)
-                    self.vi_lines[i] = pattern_wrong.sub(right_val, self.vi_lines[i])
-                    self.vi_lines[i] = unicodedata.normalize('NFC', self.vi_lines[i])
-                    
-                    # Sửa lỗi viết hoa của chữ đi ngay sau name
-                    self.vi_lines[i] = fix_capitalization_after_names(self.vi_lines[i], vi_names)
-
-
-
-            # Ghi Tiếng Trung = Name đúng vào file config
-            if cn_val:
-                self.save_name_to_cfg(cn_val, right_val)
+            self.top.config(cursor="watch")
+            self.top.update_idletasks()
+            try:
+                updated_lines = self.apply_name_from_responses(cn_val, right_val)
+            except Exception as error:
+                detail = str(error) if isinstance(error, (TranslationFormatError, RuntimeError)) else "Không thể cập nhật tên từ response."
+                messagebox.showerror("Lỗi cập nhật tên", detail, parent=dialog)
+                return
+            finally:
+                self.top.config(cursor="")
+            if not self.save_name_to_cfg(cn_val, right_val):
+                return
+            self.vi_lines = updated_lines
 
             # Cập nhật trực tiếp lên màn hình mà không xóa đi nạp lại, CHỐNG NHẢY CHUỘT 100%
             self.text_editor.config(state=tk.NORMAL)
@@ -397,6 +358,25 @@ class ReviewWindow:
         tk.Button(btn_frame, text="🚀 Cập nhật nhanh", command=lambda: apply_name(False), bg="#3b82f6", fg="white", borderwidth=0).pack(side="left", padx=10, ipadx=10, ipady=5)
         tk.Button(btn_frame, text="🔄 Dịch Lại Toàn Bộ", command=lambda: apply_name(True), bg="#f59e0b", fg="white", borderwidth=0).pack(side="left", padx=10, ipadx=10, ipady=5)
 
+    def apply_name_from_responses(self, cn, vi):
+        """Prepare all affected lines before modifying the review or glossary."""
+        names = self.app.load_name_config()
+        names[cn] = vi
+        updated = list(self.vi_lines)
+        for index, original in enumerate(self.cn_lines):
+            source = unicodedata.normalize('NFC', original)
+            if cn not in source:
+                continue
+            response = self.response_lines[index]
+            if not response:
+                raise TranslationFormatError("Dòng cần sửa không có response theo cụm từ. Hãy dịch lại bằng builder_new trước khi cập nhật tên.")
+            updated[index] = render_translation(
+                response, source, names,
+                translate_fragment=self.app.translate_cached_fragment,
+            )
+            updated[index] = re.sub(r'  +', ' ', updated[index]).strip()
+        return updated
+
     def save_name_to_cfg(self, cn, vi):
         if getattr(sys, 'frozen', False):
             cfg_dir = os.path.dirname(sys.executable)
@@ -408,7 +388,7 @@ class ReviewWindow:
             if not os.path.exists(cfg_path):
                 with open(cfg_path, "w", encoding="utf-8") as f:
                     f.write(f"{cn}={vi}\n")
-                return
+                return True
 
             with open(cfg_path, "r", encoding="utf-8") as f:
                 lines = f.readlines()
@@ -430,8 +410,10 @@ class ReviewWindow:
                 
             with open(cfg_path, "w", encoding="utf-8") as f:
                 f.writelines(lines)
+            return True
         except Exception as e:
-            print(f"Lỗi khi lưu name.cfg: {e}")
+            messagebox.showerror("Lỗi lưu tên", f"Không thể lưu name.cfg:\n{e}", parent=self.top)
+            return False
 
     def save_data(self):
         output_dir = os.path.join(BASE_DIR, "stories", self.slug)
@@ -471,9 +453,11 @@ class ReviewWindow:
 class TranslatorGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Story Translator Pro - SangTacViet API")
+        self.root.title("Story Translator Pro — API theo cụm từ (builder_new)")
         self.root.configure(bg="#09090b")
         self._resize_timer = None
+        self.api_cookie = os.environ.get('STV_TRANSLATION_COOKIE', '').strip()
+        self.phrase_cache = {}
 
         # Restore saved geometry or use default
         cfg = load_config()
@@ -499,7 +483,7 @@ class TranslatorGUI:
 
     def setup_ui(self):
         # Header
-        tk.Label(self.root, text="DỊCH TRUYỆN TRUNG - VIỆT", font=("Arial", 14, "bold"), fg="#ffffff", bg="#09090b").pack(pady=10)
+        tk.Label(self.root, text="DỊCH TRUYỆN — API THEO CỤM TỪ (BẢN MỚI)", font=("Arial", 14, "bold"), fg="#ffffff", bg="#09090b").pack(pady=10)
 
         # Story Title Input
         frame_title = tk.Frame(self.root, bg="#09090b")
@@ -535,6 +519,8 @@ class TranslatorGUI:
         self.btn_scan = tk.Button(btn_frame, text="🔍 Scan Names", command=self.open_scan_names_dialog, bg="#7c3aed", fg="white", borderwidth=0, padx=15)
         self.btn_scan.pack(side="left", padx=5)
 
+        tk.Button(btn_frame, text="🔑 Phiên API", command=self.prompt_api_session,
+                  bg="#27272a", fg="white", borderwidth=0, padx=10).pack(side="left", padx=5)
 
         self.btn_run = tk.Button(btn_frame, text="🚀 Bắt đầu dịch", command=self.start_thread, bg="#1d4ed8", fg="white", borderwidth=0, padx=25)
         self.btn_run.pack(side="right", padx=5)
@@ -545,6 +531,29 @@ class TranslatorGUI:
         self.lbl_status = tk.Label(self.root, text="Sẵn sàng", fg="#71717a", bg="#09090b")
         self.lbl_status.pack(pady=5)
 
+    def prompt_api_session(self):
+        cookie = simpledialog.askstring(
+            "Phiên đăng nhập API",
+            "CÁCH LẤY COOKIE PHIÊN API\n\n"
+            f"1. Mở {API_BASE_URL}/trans/ và đăng nhập.\n"
+            "2. Nhấn F12 → Network → chọn Fetch/XHR.\n"
+            "3. Dịch thử một câu tiếng Trung để tạo request.\n"
+            "4. Chọn request index.php?ngmar=trans&langhint=chinese.\n"
+            "5. Mở Headers → Request Headers → tìm Cookie.\n"
+            "6. Sao chép toàn bộ giá trị Cookie và dán vào ô bên dưới.\n\n"
+            "Chỉ lấy giá trị sau Cookie:, không lấy chữ Cookie: hoặc cả lệnh cURL.\n"
+            "Nếu không thấy Cookie, kiểm tra đã đăng nhập rồi dịch thử lại.\n"
+            "Nếu phiên hết hạn, lấy cookie mới theo các bước trên.\n\n"
+            "Cookie được che khi nhập và chỉ giữ trong bộ nhớ đến khi đóng builder_new.\n"
+            "Để trống và nhấn OK để xóa phiên hiện tại.",
+            show="*", parent=self.root,
+        )
+        if cookie is not None:
+            if '\r' in cookie or '\n' in cookie:
+                messagebox.showerror("Cookie không hợp lệ", "Cookie phải nằm trên một dòng.", parent=self.root)
+                return
+            self.api_cookie = cookie.strip()
+            self.lbl_status.config(text="Đã cập nhật phiên API" if self.api_cookie else "Đã xóa phiên API")
 
     def clear_all(self):
         self.ent_title.delete(0, tk.END)
@@ -637,21 +646,60 @@ class TranslatorGUI:
                 print(f"Lỗi khi đọc file name.cfg: {e}")
         return name_dict
 
-    def translate_api(self, text):
-        headers = {"Origin": "https://www.bilibili.com", "Referer": "https://www.bilibili.com/", "User-Agent": "Mozilla/5.0"}
+    def translate_api(self, text, name_dict=None):
+        text = unicodedata.normalize('NFC', text)
+        if not text.strip():
+            return text
+        if not self.api_cookie:
+            raise RuntimeError("API theo cụm từ yêu cầu đăng nhập. Hãy nhập Cookie qua nút 'Phiên API'.")
+        if len(text) > CHUNK_LIMIT:
+            result = ''
+            for index, part in enumerate(split_source_text(text, CHUNK_LIMIT, name_dict)):
+                if index:
+                    time.sleep(DELAY)
+                translated = self.translate_api(part, name_dict)
+                if translated is None:
+                    return None
+                if result and translated and not result[-1].isspace() and not translated[0].isspace():
+                    result += ' '
+                result += translated
+            self.phrase_cache[text] = ''.join(self.phrase_cache.get(part, '') for part in split_source_text(text, CHUNK_LIMIT, name_dict))
+            return result
+        headers = {"Origin": API_BASE_URL, "Referer": API_BASE_URL + "/trans/",
+                   "User-Agent": "Mozilla/5.0", "Cookie": self.api_cookie}
         try:
-            res = requests.post(API_URL, data={"sajax": "trans", "content": text}, headers=headers, timeout=45)
-            if res.status_code == 200:
-                # Normalize NFC ngay khi nhận response để đảm bảo ký tự tiếng Việt đúng chuẩn
-                return unicodedata.normalize('NFC', res.text.strip())
+            res = requests.post(API_URL, data={"ajax": "trans", "content": text},
+                                headers=headers, timeout=45, allow_redirects=False)
+        except requests.exceptions.SSLError:
+            raise RuntimeError("Chứng chỉ HTTPS của API không hợp lệ hoặc đã hết hạn. Không thể gửi cookie an toàn.") from None
+        except requests.exceptions.RequestException:
             return None
-        except: return None
+        if res.status_code in (301, 302, 303, 307, 308, 401, 403):
+            raise RuntimeError("API từ chối phiên đăng nhập hoặc chuyển hướng. Hãy cập nhật Cookie qua 'Phiên API'.")
+        if res.status_code != 200:
+            return None
+        res.encoding = 'utf-8'
+        translated = render_translation(
+            res.text, text, name_dict,
+            translate_fragment=self.translate_cached_fragment,
+        )
+        self.phrase_cache[text] = res.text
+        for line, response in response_by_line(res.text, text):
+            if response:
+                self.phrase_cache[line] = response
+        return translated
 
-    def translate_lines(self, lines):
+    def translate_cached_fragment(self, text):
+        response = self.phrase_cache.get(text)
+        if response:
+            return render_translation(response, text)
+        return self.translate_api(text)
+
+    def translate_lines(self, lines, name_dict=None):
         """Keep each translated paragraph paired with its original input line."""
         if not lines:
             return []
-        translate = self.translate_api
+        translate = (lambda text: self.translate_api(text, name_dict)) if name_dict is not None else self.translate_api
         result = translate("\n".join(lines))
         if not result:
             time.sleep(3)
@@ -1004,9 +1052,23 @@ class TranslatorGUI:
             messagebox.showerror("Lỗi", f"Không thể ghi name.cfg:\n{e}")
 
     def start_thread(self):
+        if not self.api_cookie:
+            self.prompt_api_session()
+            if not self.api_cookie:
+                return
+        threading.Thread(target=self._run_process_safely, daemon=True).start()
 
-        threading.Thread(target=self.run_process, daemon=True).start()
-
+    def _run_process_safely(self):
+        try:
+            self.run_process()
+        except Exception as error:
+            # Never display request headers/cookies from an unexpected exception.
+            detail = str(error) if isinstance(error, (TranslationFormatError, RuntimeError)) else "Không thể hoàn tất bản dịch."
+            def show_error():
+                self.btn_run.config(state="normal")
+                self.lbl_status.config(text="Dịch chưa hoàn tất", fg="#ef4444")
+                messagebox.showerror("Lỗi dịch", detail, parent=self.root)
+            self.root.after(0, show_error)
 
     def run_process(self):
         title = self.ent_title.get().strip()
@@ -1027,15 +1089,10 @@ class TranslatorGUI:
 
         lines = [l.strip() for l in content.split("\n") if l.strip()]
 
+        self.phrase_cache = {}
         name_dict = self.load_name_config()
-        sorted_names = sorted(name_dict.keys(), key=len, reverse=True)
-        processed_lines = []
-        for line in lines:
-            replaced_line = line
-            for cn in sorted_names:
-                if cn in replaced_line:
-                    replaced_line = replaced_line.replace(cn, name_dict[cn])
-            processed_lines.append((line, replaced_line))
+        # Keep the Chinese context intact; apply names to returned phrase spans.
+        processed_lines = [(line, line) for line in lines]
 
         chunks = []
         cur_g, cur_l = [], 0
@@ -1056,8 +1113,7 @@ class TranslatorGUI:
 
         for i, group in enumerate(chunks):
             self.lbl_status.config(text=f"Đang dịch đợt {i+1}/{len(chunks)}...")
-            vi_lines = self.translate_lines([rep for _, rep in group])
-            vi_names = list(name_dict.values())
+            vi_lines = self.translate_lines([rep for _, rep in group], name_dict)
             
             for j in range(len(group)):
                 orig_cn, rep_cn = group[j]
@@ -1066,7 +1122,8 @@ class TranslatorGUI:
                 # Loại bỏ dấu cách kép do từ không có kết quả dịch
                 vi = re.sub(r'  +', ' ', vi).strip()
                 
-                vi = fix_capitalization_after_names(vi, vi_names)
+                # Phrase output already has names applied at their source spans.
+                # Do not guess capitalization from neighboring Vietnamese words.
                 
                 # Chỉ lấy nguyên bản đoạn dịch và đẩy vào mảng, không tự ép viết hoa nữa
                 final_cn_lines.append(orig_cn)
