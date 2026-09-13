@@ -1,6 +1,6 @@
 """Chinese person-name candidates from syntactic boundaries; no n-gram counting.
 
-Run ``python name_scanner.py`` for the sample and regression tests.
+Run ``python name_scanner.py`` for a sample scan.
 Counts are distinct (text position, signal) hits, not fabricated repetitions.
 """
 from __future__ import annotations
@@ -188,12 +188,8 @@ class NameScanner:
 
 if __name__ == '__main__':
     import sys
-    import unittest
-    from pathlib import Path
     if hasattr(sys.stdout, 'reconfigure'):
         sys.stdout.reconfigure(encoding='utf-8')
     sample = '林铭看着前方。“裴湘君，你来了！”他名叫阿宝。欧阳雪大人点头。独孤皂低头沉思。'
     for result in NameScanner().scan(sample):
         print(f"{result['cn']} -> {result['suggested_vi']} ({result['confidence']:.2f}, {result['signals']})")
-    suite = unittest.defaultTestLoader.discover(str(Path(__file__).parent / 'tests'), pattern='test_name_scanner.py')
-    raise SystemExit(not unittest.TextTestRunner(verbosity=2).run(suite).wasSuccessful())
