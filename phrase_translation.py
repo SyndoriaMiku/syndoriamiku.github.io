@@ -46,6 +46,15 @@ class PhraseParser(HTMLParser):
 
 _CJK = re.compile(r'[\u3400-\u4dbf\u4e00-\u9fff]')
 _PUNCTUATION = str.maketrans({'，': ',', '。': '.', '！': '!', '？': '?', '：': ':', '；': ';'})
+def _omitted_tokens(source, start, end):
+    """Trust API omissions instead of maintaining a fixed particle dictionary.
+
+    Empty spans consume omitted Chinese without leaking it into Vietnamese.
+    Original offsets remain available for glossary matches, including names
+    crossing or entirely inside an omitted span. Punctuation and spacing stay.
+    """
+    return [(match.start(), match.end(), '')
+            for match in _CJK.finditer(source, start, end)]
 
 
 def response_by_line(response, source):
@@ -124,15 +133,15 @@ def render_translation(response, source, names=None, translate_fragment=None):
     cursor = 0
     for phrase in parser.phrases:
         start = source.find(phrase['source'], cursor)
-        if start < 0 or _CJK.search(source[cursor:start]):
+        if start < 0:
             raise TranslationFormatError('Không ghép được cụm từ API với tiếng Trung gốc; đã dừng để tránh mất nội dung.')
+        tokens.extend(_omitted_tokens(source, cursor, start))
         end = start + len(phrase['source'])
         if '\n' in source[start:end] or '\r' in source[start:end]:
             raise TranslationFormatError('Một cụm từ API vượt qua ranh giới đoạn văn.')
         tokens.append((start, end, phrase['text']))
         cursor = end
-    if _CJK.search(source[cursor:]):
-        raise TranslationFormatError('API trả thiếu cụm từ ở cuối văn bản.')
+    tokens.extend(_omitted_tokens(source, cursor, len(source)))
 
     glossary = {unicodedata.normalize('NFC', k): v for k, v in (names or {}).items() if k and v}
     replacements = []

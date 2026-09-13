@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext, ttk
-import requests, json, os, sys, base64, datetime, time, threading
+import requests, json, os, sys, base64, datetime, time, threading, queue
 import unicodedata, re
 from tkinterdnd2 import TkinterDnD, DND_FILES
 try:
@@ -28,7 +28,7 @@ else:
 # --- CẤU HÌNH API ---
 API_URL = "https://comic.sangtacvietcdn.xyz/tsm.php?cdn=/"
 TEMPLATE_FILE = os.path.join(BASE_DIR, "reader.html")
-CHUNK_LIMIT = 12000
+CHUNK_LIMIT = 20000
 DELAY = 1.2
 CONFIG_PATH = os.path.join(BASE_DIR, "editor_config.json")
 
@@ -66,7 +66,12 @@ def slugify_vn(text):
     return text
 
 
-def fix_capitalization_after_names(text: str, vi_names: list) -> str:
+def compile_name_pattern(vi_names):
+    names = sorted(set(n.strip() for n in vi_names if n and n.strip()), key=len, reverse=True)
+    return re.compile(r'(?<!\w)(?:' + '|'.join(map(re.escape, names)) + r')(?!\w)') if names else None
+
+
+def fix_capitalization_after_names(text: str, vi_names: list, name_pattern=None) -> str:
     """
     Hạ chữ hoa sai sau tên riêng hoặc ký tự ẩn giữa câu do API giữ lại.
     Không hạ chữ hoa nếu chuỗi tiếp theo là khởi đầu của một Tên riêng khác trong từ điển.
@@ -74,29 +79,25 @@ def fix_capitalization_after_names(text: str, vi_names: list) -> str:
     if not text:
         return text
 
-    sorted_names = sorted(set(n.strip() for n in vi_names if n and n.strip()), key=len, reverse=True)
-
     # Khớp tên dài trước, đúng ranh giới từ để không sửa bên trong tên khác.
     matches = []
-    if sorted_names:
-        pattern = re.compile(r'(?<!\w)(?:' + '|'.join(map(re.escape, sorted_names)) + r')(?!\w)')
+    pattern = name_pattern if name_pattern is not None else compile_name_pattern(vi_names)
+    if pattern is not None:
         matches = list(pattern.finditer(text))
     name_starts = {match.start() for match in matches}
     candidates = {}
     horizontal_space = r'[^\S\r\n\v\f\x85\u2028\u2029]'
     invisible = r'[\u200b-\u200d\u2060\ufeff]'
     separator = rf'(?:{horizontal_space}|{invisible})'
+    following_pattern = re.compile(separator + r'+(\w+)')
     for match in matches:
         # API có thể giữ ký tự ẩn từ bản gốc giữa tên và từ tiếp theo
         # (đặc biệt ZWNJ U+200C). Giữ các ký tự này, chỉ sửa chữ hoa.
         # Không đi qua dấu câu hoặc xuống dòng (đầu câu mới).
-        following = re.match(
-            separator + r'+(\w+)',
-            text[match.end():],
-        )
+        following = following_pattern.match(text, match.end())
         if not following:
             continue
-        start = match.end() + following.start(1)
+        start = following.start(1)
         word = following.group(1)
         candidates[start] = word
 
@@ -116,9 +117,31 @@ def fix_capitalization_after_names(text: str, vi_names: list) -> str:
         if word.istitle() and not (word.isupper() and len(word) > 1):
             edits.append((start, start + len(word), word.lower()))
 
-    for start, end, replacement in reversed(edits):
-        text = text[:start] + replacement + text[end:]
-    return text
+    parts = []
+    cursor = 0
+    for start, end, replacement in edits:
+        parts.extend((text[cursor:start], replacement))
+        cursor = end
+    parts.append(text[cursor:])
+    return ''.join(parts)
+
+
+def prepare_name_updates(vi_lines, wrong, right, vi_names):
+    """Compute changed lines only; safe to run without accessing Tk widgets."""
+    if not wrong:
+        return []
+    wrong_pattern = re.compile(re.escape(wrong), re.IGNORECASE)
+    name_pattern = compile_name_pattern(vi_names)
+    updates = []
+    for index, original in enumerate(vi_lines):
+        if not wrong_pattern.search(original):
+            continue
+        translated = wrong_pattern.sub(lambda match: right, original)
+        translated = unicodedata.normalize('NFC', translated)
+        translated = fix_capitalization_after_names(translated, vi_names, name_pattern)
+        if translated != original:
+            updates.append((index, translated))
+    return updates
 
 
 # --- CLASS REVIEW WINDOW MỚI ---
@@ -295,7 +318,6 @@ class ReviewWindow:
         
         if is_cn and selected_text:
             # Gợi ý Name bằng cách gọi API dịch tiếng Trung và tự title-case
-            import threading
             def fetch_suggestion(cn_text):
                 try:
                     res = self.app.translate_api(cn_text)
@@ -341,54 +363,61 @@ class ReviewWindow:
 
             import re
             
-            # Tự động gọi API để tìm từ bị dịch sai nếu người dùng để trống Ô 2
-            if not wrong_val and cn_val:
-                try:
-                    self.app.lbl_status.config(text="Đang tự động tìm từ dịch sai qua API...", fg="#f59e0b")
-                    self.app.root.update()
-                    auto_vi = self.app.translate_api(cn_val)
-                    if auto_vi:
-                        wrong_val = unicodedata.normalize('NFC', auto_vi.strip())
-                except Exception:
-                    pass
-
             if not wrong_val and not cn_val:
                 messagebox.showwarning("Chú ý", "Vui lòng nhập ít nhất 'Tiếng Trung' hoặc 'Từ sai'!", parent=dialog)
                 return
 
-            if not wrong_val:
-                if not messagebox.askyesno("Xác nhận", "Bạn chưa nhập 'Cụm từ VN bị dịch sai' (Ô số 2) và hệ thống không thể tự động nhận diện.\n\nHệ thống sẽ lưu Name vào từ điển để áp dụng cho các chương sau, nhưng SẼ KHÔNG THỂ cập nhật nhanh trong đoạn text hiện tại.\n\nBạn có muốn tiếp tục?", parent=dialog):
-                    return
+            def set_busy(busy):
+                for widget in (ent_cn, ent_wrong, ent_right, *btn_frame.winfo_children()):
+                    widget.config(state="disabled" if busy else "normal")
+                dialog.title("Đang cập nhật Name..." if busy else "Sửa lỗi & Thêm Name Mới")
 
-            # Replace toàn bộ chữ sai thành chữ đúng trên mảng RAM (áp dụng cho TOÀN BỘ file truyện)
+            set_busy(True)
             vi_names = list(self.app.load_name_config().values()) + [right_val]
-            for i in range(len(self.vi_lines)):
-                # 1. Thay thế global nếu người dùng có nhập wrong_val
-                if wrong_val:
-                    # Dùng Regex để thay thế không phân biệt hoa thường (case-insensitive)
-                    pattern_wrong = re.compile(re.escape(wrong_val), re.IGNORECASE)
-                    self.vi_lines[i] = pattern_wrong.sub(right_val, self.vi_lines[i])
-                    self.vi_lines[i] = unicodedata.normalize('NFC', self.vi_lines[i])
-                    
-                    # Sửa lỗi viết hoa của chữ đi ngay sau name
-                    self.vi_lines[i] = fix_capitalization_after_names(self.vi_lines[i], vi_names)
+            snapshot = tuple(self.vi_lines)
+            results = queue.Queue()
 
+            def compute():
+                try:
+                    wrong = wrong_val
+                    if not wrong and cn_val:
+                        try:
+                            auto_vi = self.app.translate_api(cn_val)
+                            if auto_vi:
+                                wrong = unicodedata.normalize('NFC', auto_vi.strip())
+                        except Exception:
+                            pass
+                    updates = prepare_name_updates(snapshot, wrong, right_val, vi_names)
+                    results.put((wrong, updates, None))
+                except Exception as error:
+                    results.put(('', [], str(error)))
 
+            def finish():
+                if cn_val:
+                    self.save_name_to_cfg(cn_val, right_val)
+                save_config({"builder_add_name": dialog.geometry()})
+                dialog.destroy()
 
-            # Ghi Tiếng Trung = Name đúng vào file config
-            if cn_val:
-                self.save_name_to_cfg(cn_val, right_val)
+            def poll():
+                try:
+                    wrong, updates, error = results.get_nowait()
+                except queue.Empty:
+                    dialog.after(25, poll)
+                    return
+                if error:
+                    set_busy(False)
+                    messagebox.showerror("Lỗi cập nhật Name", error, parent=dialog)
+                    return
+                if not wrong:
+                    if not messagebox.askyesno("Xác nhận", "Không tìm được cụm từ VN cần thay. Chỉ lưu Name để áp dụng cho những lần dịch sau?", parent=dialog):
+                        set_busy(False)
+                        return
+                # Prevent closing midway through a multi-batch UI update.
+                dialog.protocol("WM_DELETE_WINDOW", lambda: None)
+                self.apply_name_updates(updates, finish)
 
-            # Cập nhật trực tiếp lên màn hình mà không xóa đi nạp lại, CHỐNG NHẢY CHUỘT 100%
-            self.text_editor.config(state=tk.NORMAL)
-            for i in range(len(self.vi_lines)):
-                line_idx = i * 3 + 2
-                self.text_editor.delete(f"{line_idx}.0", f"{line_idx}.end")
-                self.text_editor.insert(f"{line_idx}.0", self.vi_lines[i], "vi")
-            self.text_editor.config(state=tk.DISABLED)
-            
-            save_config({"builder_add_name": dialog.geometry()})
-            dialog.destroy()
+            threading.Thread(target=compute, daemon=True).start()
+            dialog.after(25, poll)
 
 
         btn_frame = tk.Frame(dialog, bg="#18181b")
@@ -396,6 +425,33 @@ class ReviewWindow:
         
         tk.Button(btn_frame, text="🚀 Cập nhật nhanh", command=lambda: apply_name(False), bg="#3b82f6", fg="white", borderwidth=0).pack(side="left", padx=10, ipadx=10, ipady=5)
         tk.Button(btn_frame, text="🔄 Dịch Lại Toàn Bộ", command=lambda: apply_name(True), bg="#f59e0b", fg="white", borderwidth=0).pack(side="left", padx=10, ipadx=10, ipady=5)
+
+    def apply_name_updates(self, updates, on_done):
+        """Write changed VI rows in short batches, leaving CN rows untouched."""
+        pending = iter(updates)
+
+        def paint():
+            deadline = time.perf_counter() + 0.008
+            complete = False
+            self.text_editor.config(state=tk.NORMAL)
+            try:
+                while time.perf_counter() < deadline:
+                    try:
+                        index, translated = next(pending)
+                    except StopIteration:
+                        complete = True
+                        break
+                    line = index * 3 + 2
+                    self.text_editor.replace(f"{line}.0", f"{line}.end", translated, "vi")
+                    self.vi_lines[index] = translated
+            finally:
+                self.text_editor.config(state=tk.DISABLED)
+            if complete:
+                on_done()
+            else:
+                self.top.after(1, paint)
+
+        paint()
 
     def save_name_to_cfg(self, cn, vi):
         if getattr(sys, 'frozen', False):

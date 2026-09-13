@@ -592,17 +592,12 @@ class ChapterEditorApp:
 		next_id = max_id + 1
 		return f"{next_id:04d}"
 
-	def get_next_chapter_id(self, story_slug):
+	def get_next_chapter_id(self, story_slug, catalog=None):
 		if not story_slug:
 			return "000001"
 
-		catalog = []
-		if os.path.exists(CATALOG_PATH):
-			try:
-				with open(CATALOG_PATH, "r", encoding="utf-8") as f:
-					catalog = json.load(f)
-			except Exception:
-				pass
+		if catalog is None:
+			catalog = self._read_chapter_catalog()
 
 		story = next((item for item in catalog if item.get('slug') == story_slug), None)
 		if not story or 'chapters' not in story or not story['chapters']:
@@ -618,6 +613,16 @@ class ChapterEditorApp:
 
 		next_id = max_id + 1
 		return f"{next_id:06d}"
+
+	def _read_chapter_catalog(self):
+		if os.path.exists(CATALOG_PATH):
+			try:
+				with open(CATALOG_PATH, "r", encoding="utf-8") as f:
+					return json.load(f)
+			except Exception:
+				pass
+
+		return []
 
 	def on_story_selected(self, event=None):
 		story_value = self.story_combo.get().strip()
@@ -637,15 +642,10 @@ class ChapterEditorApp:
 		# Populate chapter select combobox
 		self._refresh_chap_select(story_slug)
 
-	def _refresh_chap_select(self, story_slug):
+	def _refresh_chap_select(self, story_slug, catalog=None, selected_id=None):
 		"""Load chapter list for the selected story into chap_select_combo."""
-		catalog = []
-		if os.path.exists(CATALOG_PATH):
-			try:
-				with open(CATALOG_PATH, "r", encoding="utf-8") as f:
-					catalog = json.load(f)
-			except Exception:
-				pass
+		if catalog is None:
+			catalog = self._read_chapter_catalog()
 
 		story = next((item for item in catalog if item.get("slug") == story_slug), None)
 		chap_options = []
@@ -656,7 +656,21 @@ class ChapterEditorApp:
 				chap_options.append(f"{cid} | {cname}")
 
 		self.chap_select_combo["values"] = chap_options
-		self.chap_select_combo.set("")
+		selected = next((option for option in chap_options
+			if option.split("|", 1)[0].strip() == selected_id), "")
+		self.chap_select_combo.set(selected)
+
+	def _sync_saved_chapters(self, story_slug, catalog, selected_id):
+		"""Refresh from the catalog just saved, without repeated disk reads."""
+		self.story_options = [f'{item["slug"]} | {item.get("title", "")}'
+			for item in catalog if item.get("slug")]
+		self.story_combo["values"] = self.story_options
+		selected_story = next((option for option in self.story_options
+			if option.split("|", 1)[0].strip() == story_slug), "")
+		self.story_combo.set(selected_story)
+		self._refresh_chap_select(story_slug, catalog, selected_id)
+		self.chap_entry.delete(0, tk.END)
+		self.chap_entry.insert(0, self.get_next_chapter_id(story_slug, catalog))
 
 
 	def load_chapter_for_edit(self):
@@ -1047,12 +1061,9 @@ class ChapterEditorApp:
 			messagebox.showerror("Lỗi", f"Không thể cập nhật list.json:\n{e}")
 			return
 
-		self.load_story_list()
+		self._sync_saved_chapters(story_slug, catalog, chap_slug)
 
 		# Dọn dẹp editor và điền sẵn ID chương tiếp theo
-		next_chap_id = self.get_next_chapter_id(story_slug)
-		self.chap_entry.delete(0, tk.END)
-		self.chap_entry.insert(0, next_chap_id)
 		self.chap_title_entry.delete(0, tk.END)
 		self.content_text.delete("1.0", tk.END)
 
@@ -1297,18 +1308,38 @@ class ChapterEditorApp:
 		# Restore saved geometry
 		cfg = load_config()
 		geo = cfg.get("editor_split_dialog", "860x640")
-		dlg.geometry(geo)
+		try:
+			dlg.geometry(geo)
+		except tk.TclError:
+			geo = "860x640"
+			dlg.geometry(geo)
 		dlg.minsize(700, 500)
 
 		resize_timer = None
+		closing = False
 		normal_geometry = geo
 		window_state = cfg.get("editor_split_dialog_state", "normal")
 		if window_state not in ("normal", "zoomed"):
 			window_state = "normal"
 
-		def save_dialog_geometry():
+		def capture_dialog_geometry():
+			nonlocal normal_geometry, window_state
+			if not dlg.winfo_exists() or not dlg.winfo_ismapped():
+				return
+			state = dlg.state()
+			if state not in ("normal", "zoomed"):
+				return
+			window_state = state
+			if state == "normal" and dlg.winfo_width() >= 700 and dlg.winfo_height() >= 500:
+				normal_geometry = dlg.geometry()
+
+		def save_dialog_geometry(capture=True):
 			nonlocal resize_timer
+			if resize_timer is not None:
+				self.root.after_cancel(resize_timer)
 			resize_timer = None
+			if capture:
+				capture_dialog_geometry()
 			save_config({
 				"editor_split_dialog": normal_geometry,
 				"editor_split_dialog_state": window_state,
@@ -1317,34 +1348,52 @@ class ChapterEditorApp:
 		def on_dialog_configure(event):
 			nonlocal resize_timer, normal_geometry, window_state
 			# Child widgets also emit Configure events; only track the dialog.
-			if event.widget is not dlg or event.width < 700 or event.height < 500:
+			if closing or event.widget is not dlg or event.width < 700 or event.height < 500:
 				return
 			state = dlg.state()
 			if state not in ("normal", "zoomed"):
 				return
 			window_state = state
 			if state == "normal":
-				normal_geometry = dlg.geometry()
+				# Configure carries the new size even if wm geometry still lags it.
+				position = re.sub(r'^\d+x\d+', '', dlg.geometry())
+				normal_geometry = f"{event.width}x{event.height}{position}"
 			if resize_timer is not None:
 				self.root.after_cancel(resize_timer)
 			resize_timer = self.root.after(600, save_dialog_geometry)
 
 		def on_dialog_destroy(event):
 			nonlocal resize_timer
-			if event.widget is not dlg:
+			if event.widget is not dlg or closing:
 				return
-			if resize_timer is not None:
-				self.root.after_cancel(resize_timer)
-			save_dialog_geometry()
+			# Fallback for parent shutdown or a direct destroy(). Tk can no
+			# longer be queried here, so use the last Configure snapshot.
+			save_dialog_geometry(capture=False)
+
+		destroy_dialog = dlg.destroy
 
 		def on_dlg_close():
-			dlg.destroy()
+			nonlocal closing
+			if closing:
+				return
+			# Save synchronously before destruction, including a recent resize
+			# whose debounce timer has not fired yet (X, Cancel and Save All).
+			save_dialog_geometry()
+			closing = True
+			destroy_dialog()
 
+		# Parent shutdown and callers using destroy() must save before Tk
+		# discards the window too, not only the title-bar close action.
+		dlg.destroy = on_dlg_close
 		dlg.bind("<Configure>", on_dialog_configure, add="+")
 		dlg.bind("<Destroy>", on_dialog_destroy, add="+")
 		dlg.protocol("WM_DELETE_WINDOW", on_dlg_close)
 		if window_state == "zoomed":
-			dlg.after_idle(lambda: dlg.state("zoomed"))
+			def restore_zoom(event):
+				if event.widget is dlg:
+					dlg.unbind("<Map>", map_binding)
+					dlg.after(0, lambda: dlg.state("zoomed"))
+			map_binding = dlg.bind("<Map>", restore_zoom, add="+")
 
 		# ── HEADER ──
 		hdr = tk.Frame(dlg, bg="#18181b", pady=10)
@@ -1442,6 +1491,10 @@ class ChapterEditorApp:
 		dlg.bind("<MouseWheel>", on_mousewheel)
 
 		def build_chapter_list():
+			n = len(detected_chapters)
+			count_label.config(text=f"BƯỚC 2 — Xem & chỉnh sửa ({n} chương phát hiện):",
+				fg="#10b981" if n else "#ef4444")
+			save_btn.config(text=f"💾 Lưu tất cả ({n} chương)")
 			for w in inner_frame.winfo_children():
 				w.destroy()
 
@@ -1465,6 +1518,10 @@ class ChapterEditorApp:
 
 				tk.Label(row, text=str(i+1), fg="#52525b", bg=row_bg, font=("Arial", 8), width=4).pack(side=tk.LEFT, padx=(8,0), pady=4)
 				tk.Label(row, text=chap["id"], fg="#3b82f6", bg=row_bg, font=("Consolas", 9), width=8).pack(side=tk.LEFT, padx=4)
+				tk.Button(row, text="Xóa mốc", command=lambda index=i: remove_boundary(index),
+					state=tk.NORMAL if i > 0 else tk.DISABLED,
+					bg="#3f2025", fg="#fca5a5", relief="flat", borderwidth=0,
+					font=("Arial", 8), padx=6).pack(side=tk.RIGHT, padx=4)
 
 				entry = tk.Entry(row, textvariable=chap["title_var"], bg=row_bg, fg="#e4e4e7",
 								 insertbackground="white", font=("Arial", 9), relief="flat",
@@ -1474,6 +1531,32 @@ class ChapterEditorApp:
 
 				tk.Label(row, text=str(len(chap["paragraphs"])), fg="#10b981", bg=row_bg,
 						 font=("Arial", 8), width=6).pack(side=tk.RIGHT, padx=8)
+
+		def remove_boundary(index):
+			if index <= 0 or index >= len(detected_chapters):
+				return
+			position = canvas.yview()[0]
+			removed = detected_chapters.pop(index)
+			previous = detected_chapters[index - 1]
+			# Restore the original header as body text, not its edited display title.
+			if removed["original_title"]:
+				previous["paragraphs"].append(removed["original_title"])
+			previous["paragraphs"].extend(removed["paragraphs"])
+			start = int(detected_chapters[0]["id"])
+			for offset, chapter in enumerate(detected_chapters):
+				chapter["id"] = f"{start + offset:06d}"
+			build_chapter_list()
+			canvas.update_idletasks()
+			canvas.yview_moveto(position)
+
+		def change_split_story(event=None):
+			# Switching the destination must not restore deleted boundaries or titles.
+			value = story_combo.get().strip()
+			slug = value.split("|", 1)[0].strip() if "|" in value else slugify_vn(value)
+			start = int(self.get_next_chapter_id(slug))
+			for offset, chapter in enumerate(detected_chapters):
+				chapter["id"] = f"{start + offset:06d}"
+			build_chapter_list()
 
 		def run_detect():
 			nonlocal detected_chapters
@@ -1510,16 +1593,11 @@ class ChapterEditorApp:
 				title_val = ch["title"] if ch["title"] else f"Chương {id_int + i}"
 				detected_chapters.append({
 					"id": chap_id,
+					"original_title": ch["title"],
 					"title_var": tk.StringVar(value=title_val),
 					"paragraphs": ch["paragraphs"],
 				})
 
-			n = len(detected_chapters)
-			count_label.config(
-				text=f"BƯỚC 2 — Xem & chỉnh sửa ({n} chương phát hiện):",
-				fg="#10b981" if n > 0 else "#ef4444"
-			)
-			save_btn.config(text=f"💾 Lưu tất cả ({n} chương)")
 			build_chapter_list()
 
 		# ── STEP 3: Story selector + Save ──
@@ -1539,7 +1617,7 @@ class ChapterEditorApp:
 		if cur in self.story_options:
 			story_combo.set(cur)
 		story_combo.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
-		story_combo.bind("<<ComboboxSelected>>", lambda e: run_detect() if detected_chapters else None)
+		story_combo.bind("<<ComboboxSelected>>", change_split_story)
 
 		tk.Frame(dlg, bg="#27272a", height=1).pack(fill=tk.X, padx=12)
 		btn_row = tk.Frame(dlg, bg="#09090b", pady=10)
@@ -1621,6 +1699,7 @@ class ChapterEditorApp:
 			catalog.append(existing_story)
 
 		saved_count = 0
+		last_saved_id = None
 		errors = []
 
 		for ch in detected_chapters:
@@ -1673,6 +1752,7 @@ class ChapterEditorApp:
 				existing_story["chapters"].append(chap_data)
 
 			saved_count += 1
+			last_saved_id = chap_slug
 
 		# Update story timestamp
 		existing_story["date"] = now.strftime("%d/%m/%Y")
@@ -1686,7 +1766,8 @@ class ChapterEditorApp:
 			messagebox.showerror("Lỗi", f"Không thể cập nhật list.json:\n{e}", parent=dlg)
 			return
 
-		self.load_story_list()
+		if saved_count:
+			self._sync_saved_chapters(story_slug, catalog, last_saved_id)
 
 		if errors:
 			messagebox.showwarning("Hoàn thành (có lỗi)",

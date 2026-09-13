@@ -1,15 +1,19 @@
 {
   "editor_main": "1370x791+78+78",
-  "editor_add_story_dialog": "788x219+58+128",
+  "editor_add_story_dialog": "700x219+67+127",
   "builder_main": "1375x792+127+97",
-  "builder_add_name": "788x365+58+128",
-  "editor_split_dialog": "788x620+58+128",
+  "builder_add_name": "437x274+67+127",
+  "editor_split_dialog": "700x571+67+127",
   "builder_review": "900x700+11+269",
   "builder_scan_names": "700x500+0+0",
   "split_patterns": [
     [
       "Thứ X chương",
       "^thứ\\s+\\d+\\s+chương"
+    ],
+    [
+      "Chương X (mặc định)",
+      "^.+\\((\\d+)\\)"
     ]
   ],
   "editor_split_dialog_state": "normal"
