@@ -1316,6 +1316,8 @@ class ChapterEditorApp:
 		dlg.minsize(700, 500)
 
 		resize_timer = None
+		restore_timer = None
+		restored = False
 		closing = False
 		normal_geometry = geo
 		window_state = cfg.get("editor_split_dialog_state", "normal")
@@ -1324,7 +1326,7 @@ class ChapterEditorApp:
 
 		def capture_dialog_geometry():
 			nonlocal normal_geometry, window_state
-			if not dlg.winfo_exists() or not dlg.winfo_ismapped():
+			if not restored or not dlg.winfo_exists() or not dlg.winfo_ismapped():
 				return
 			state = dlg.state()
 			if state not in ("normal", "zoomed"):
@@ -1348,7 +1350,7 @@ class ChapterEditorApp:
 		def on_dialog_configure(event):
 			nonlocal resize_timer, normal_geometry, window_state
 			# Child widgets also emit Configure events; only track the dialog.
-			if closing or event.widget is not dlg or event.width < 700 or event.height < 500:
+			if not restored or closing or event.widget is not dlg or event.width < 700 or event.height < 500:
 				return
 			state = dlg.state()
 			if state not in ("normal", "zoomed"):
@@ -1373,9 +1375,12 @@ class ChapterEditorApp:
 		destroy_dialog = dlg.destroy
 
 		def on_dlg_close():
-			nonlocal closing
+			nonlocal closing, restore_timer
 			if closing:
 				return
+			if restore_timer is not None:
+				dlg.after_cancel(restore_timer)
+				restore_timer = None
 			# Save synchronously before destruction, including a recent resize
 			# whose debounce timer has not fired yet (X, Cancel and Save All).
 			save_dialog_geometry()
@@ -1388,12 +1393,29 @@ class ChapterEditorApp:
 		dlg.bind("<Configure>", on_dialog_configure, add="+")
 		dlg.bind("<Destroy>", on_dialog_destroy, add="+")
 		dlg.protocol("WM_DELETE_WINDOW", on_dlg_close)
-		if window_state == "zoomed":
-			def restore_zoom(event):
-				if event.widget is dlg:
-					dlg.unbind("<Map>", map_binding)
-					dlg.after(0, lambda: dlg.state("zoomed"))
-			map_binding = dlg.bind("<Map>", restore_zoom, add="+")
+		def restore_dialog_geometry():
+			nonlocal restore_timer, restored
+			restore_timer = None
+			if closing:
+				return
+			# Desktop window-placement utilities can resize a newly mapped window.
+			# Reapply the saved size after that first placement, and never save
+			# the temporary startup dimensions as the user's preference.
+			dlg.geometry(geo)
+			if window_state == "zoomed":
+				dlg.state("zoomed")
+			dlg.update_idletasks()
+			restored = True
+
+		def on_dialog_map(event):
+			nonlocal restore_timer
+			if event.widget is dlg:
+				dlg.unbind("<Map>", map_binding)
+				# Allow the desktop's initial placement pass to finish first.
+				# On Windows this can arrive well after Map/after_idle (~500 ms).
+				restore_timer = dlg.after(1000, restore_dialog_geometry)
+
+		map_binding = dlg.bind("<Map>", on_dialog_map, add="+")
 
 		# ── HEADER ──
 		hdr = tk.Frame(dlg, bg="#18181b", pady=10)
