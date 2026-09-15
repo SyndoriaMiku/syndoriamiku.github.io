@@ -46,6 +46,30 @@ class PhraseParser(HTMLParser):
 
 _CJK = re.compile(r'[\u3400-\u4dbf\u4e00-\u9fff]')
 _PUNCTUATION = str.maketrans({'，': ',', '。': '.', '！': '!', '？': '?', '：': ':', '；': ';'})
+def _space_quotation_marks(text):
+    """Separate quoted passages from adjacent words without changing their case."""
+    opening = '“‘「『'
+    closing = '”’」』'
+    straight_open = {'"': False, '＂': False}
+    parts = []
+    previous_closed = False
+    for char in text:
+        is_open = char in opening
+        is_close = char in closing
+        if char in straight_open:
+            is_open = not straight_open[char]
+            is_close = not is_open
+            straight_open[char] = is_open
+        previous = parts[-1] if parts else ''
+        if previous and not previous.isspace():
+            if ((is_open and (previous.isalnum() or previous in ',.!?:;)]}' or previous_closed))
+                    or (previous_closed and (char.isalnum() or is_open))):
+                parts.append(' ')
+        parts.append(char)
+        previous_closed = is_close
+    return ''.join(parts)
+
+
 def _omitted_tokens(source, start, end):
     """Trust API omissions instead of maintaining a fixed particle dictionary.
 
@@ -55,6 +79,29 @@ def _omitted_tokens(source, start, end):
     """
     return [(match.start(), match.end(), '')
             for match in _CJK.finditer(source, start, end)]
+
+
+def _fix_case_after_quote(prefix, translated, phrase):
+    """Use a lowercase API alternative only for a continuation after a quote."""
+    if not phrase or phrase['pos'].lower() in {'nr', 'ns', 'nt', 'nz', 'np'}:
+        return translated
+    tail = prefix.rstrip(' \t\u00a0\u200b\u200c\u200d\u2060\ufeff')
+    if not tail or tail[-1] not in '"＂”’」』':
+        return translated
+    quote = tail[-1]
+    if quote in '"＂' and tail.count(quote) % 2:
+        return translated  # Opening straight quote, not a completed quotation.
+    inside = tail[:-1].rstrip()
+    if not inside or inside[-1] in '.!?。！？…':
+        return translated
+    word = re.match(r'\w+', translated)
+    if not word or not word.group().istitle() or word.group().isupper():
+        return translated
+    lowered = translated[0].lower() + translated[1:]
+    # Do not infer case for names or free-form API text without dictionary evidence.
+    if lowered in (option.strip() for option in phrase['alternatives'].split('/')):
+        return lowered
+    return translated
 
 
 def response_by_line(response, source):
@@ -130,6 +177,7 @@ def render_translation(response, source, names=None, translate_fragment=None):
         )
 
     tokens = []
+    phrase_at = {}
     cursor = 0
     for phrase in parser.phrases:
         start = source.find(phrase['source'], cursor)
@@ -140,6 +188,7 @@ def render_translation(response, source, names=None, translate_fragment=None):
         if '\n' in source[start:end] or '\r' in source[start:end]:
             raise TranslationFormatError('Một cụm từ API vượt qua ranh giới đoạn văn.')
         tokens.append((start, end, phrase['text']))
+        phrase_at[(start, end)] = phrase
         cursor = end
     tokens.extend(_omitted_tokens(source, cursor, len(source)))
 
@@ -170,12 +219,15 @@ def render_translation(response, source, names=None, translate_fragment=None):
     # are formatting and must not become extra paragraphs in the review window.
     result = ''
     cursor = 0
+    name_spans = {(start, end) for start, end, _ in replacements}
     for start, end, translated in sorted(spans):
         gap = source[cursor:start].translate(_PUNCTUATION)
         result += gap
+        if (start, end) not in name_spans:
+            translated = _fix_case_after_quote(result, translated, phrase_at.get((start, end)))
         if (translated and result and not result[-1].isspace()
-                and result[-1] not in '([{"“‘「『' and translated[0] not in ',.!?:;)]}"”’」』'):
+                and result[-1] not in '([{"＂“‘「『' and translated[0] not in ',.!?:;)]}"＂”’」』'):
             result += ' '
         result += translated
         cursor = end
-    return result + source[cursor:].translate(_PUNCTUATION)
+    return _space_quotation_marks(result + source[cursor:].translate(_PUNCTUATION))

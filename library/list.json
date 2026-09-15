@@ -7375,5 +7375,106 @@
                 "date": "13/09/2026"
             }
         ]
+    },
+    {
+        "title": "Cực Phẩm Gia Đinh Ngọc Đức Tiên Phường",
+        "slug": "0142",
+        "date": "15/09/2026",
+        "timestamp": 1789466515.196796,
+        "chapters": [
+            {
+                "id": "000001",
+                "name": "An Bình hoa tỷ muội phụng dưỡng ngũ lão",
+                "date": "15/09/2026"
+            }
+        ]
+    },
+    {
+        "title": "Nghịch thiên dâm đế",
+        "slug": "0143",
+        "date": "15/09/2026",
+        "timestamp": 1789466560.734856,
+        "chapters": [
+            {
+                "id": "000001",
+                "name": "Chương mở đầu",
+                "date": "15/09/2026"
+            },
+            {
+                "id": "000002",
+                "name": "Thứ 1 chương Nam Minh dắt khuyển vào tử cung",
+                "date": "15/09/2026"
+            },
+            {
+                "id": "000003",
+                "name": "Thứ 2 chương Từ nguyệt phó tuyết",
+                "date": "15/09/2026"
+            },
+            {
+                "id": "000004",
+                "name": "Thứ 3 chương Hàn trì ám độ",
+                "date": "15/09/2026"
+            },
+            {
+                "id": "000005",
+                "name": "Thứ 4 chương Hoàng rơi lạnh đài",
+                "date": "15/09/2026"
+            },
+            {
+                "id": "000006",
+                "name": "Thứ 5 chương Tuyết nguyệt chữ viết nét",
+                "date": "15/09/2026"
+            },
+            {
+                "id": "000007",
+                "name": "Thứ 6 chương Băng tư đọa trần",
+                "date": "15/09/2026"
+            },
+            {
+                "id": "000008",
+                "name": "Thứ 7 chương Đế Cung khóa kiều",
+                "date": "15/09/2026"
+            },
+            {
+                "id": "000009",
+                "name": "Thứ 8 chương Bức nguyệt quan xuân",
+                "date": "15/09/2026"
+            },
+            {
+                "id": "000010",
+                "name": "Thứ 9 chương Nguyệt chỉ thúc dục triều",
+                "date": "15/09/2026"
+            },
+            {
+                "id": "000011",
+                "name": "Thứ 10 chương Hàn Nguyệt bị long đong",
+                "date": "15/09/2026"
+            },
+            {
+                "id": "000012",
+                "name": "Thứ 11 chương Gang tấc uyên bùn",
+                "date": "15/09/2026"
+            },
+            {
+                "id": "000013",
+                "name": "Thứ 12 chương Mưa gió nổi lên",
+                "date": "15/09/2026"
+            },
+            {
+                "id": "000014",
+                "name": "Thứ 13 chương Thần nữ quỳ gối",
+                "date": "15/09/2026"
+            },
+            {
+                "id": "000015",
+                "name": "Thứ 14 chương Cởi áo nịnh nọt",
+                "date": "15/09/2026"
+            },
+            {
+                "id": "000016",
+                "name": "Thứ 15 chương Họa dẫn long hậu",
+                "date": "15/09/2026"
+            }
+        ]
     }
 ]
