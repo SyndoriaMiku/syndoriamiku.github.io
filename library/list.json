@@ -5349,8 +5349,8 @@
     {
         "title": "Kiếp trước giết ta tiên tử, kiếp này là mẫu thân của ta",
         "slug": "0112",
-        "date": "13/09/2026",
-        "timestamp": 1789274492.378897,
+        "date": "16/09/2026",
+        "timestamp": 1789547869.386627,
         "chapters": [
             {
                 "id": "000001",
@@ -5511,6 +5511,66 @@
                 "id": "000032",
                 "name": "Thứ 31 chương Ngọc nữ phong",
                 "date": "13/09/2026"
+            },
+            {
+                "id": "000033",
+                "name": "Thứ 32 chương Đan Lân dẫn đường",
+                "date": "16/09/2026"
+            },
+            {
+                "id": "000034",
+                "name": "Thứ 33 chương Trong núi nam tử tóc trắng",
+                "date": "16/09/2026"
+            },
+            {
+                "id": "000035",
+                "name": "Thứ 34 chương Kiêm gia",
+                "date": "16/09/2026"
+            },
+            {
+                "id": "000036",
+                "name": "Thứ 35 chương Tiền nhiệm Kiếm chủ",
+                "date": "16/09/2026"
+            },
+            {
+                "id": "000037",
+                "name": "Thứ 36 chương Thần thú Bạch Hổ",
+                "date": "16/09/2026"
+            },
+            {
+                "id": "000038",
+                "name": "Thứ 37 chương Bay nguyệt cùng lạc nguyệt",
+                "date": "16/09/2026"
+            },
+            {
+                "id": "000039",
+                "name": "Thứ 38 chương Chỉ có một thế này làm thật",
+                "date": "16/09/2026"
+            },
+            {
+                "id": "000040",
+                "name": "Thứ 39 chương Ngàn năm chấp niệm",
+                "date": "16/09/2026"
+            },
+            {
+                "id": "000041",
+                "name": "Thứ 40 chương Vách núi dây sắt",
+                "date": "16/09/2026"
+            },
+            {
+                "id": "000042",
+                "name": "Thứ 41 chương Trên vực sâu",
+                "date": "16/09/2026"
+            },
+            {
+                "id": "000043",
+                "name": "Thứ 42 chương Xuất thân điều tra",
+                "date": "16/09/2026"
+            },
+            {
+                "id": "000044",
+                "name": "Thứ 43 chương Vượt qua!",
+                "date": "16/09/2026"
             }
         ]
     },
@@ -6244,7 +6304,7 @@
         "title": "Tổng hợp truyện ngắn",
         "slug": "0130",
         "date": "16/09/2026",
-        "timestamp": 1789544258.359324,
+        "timestamp": 1789547843.314023,
         "chapters": [
             {
                 "id": "000001",
@@ -6309,6 +6369,11 @@
             {
                 "id": "000013",
                 "name": "Sụp đổ nữ thần chuyên chúc dạy dỗ",
+                "date": "16/09/2026"
+            },
+            {
+                "id": "000014",
+                "name": "Mỹ lệ lão sư mụ mụ",
                 "date": "16/09/2026"
             }
         ]
