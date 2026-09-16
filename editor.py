@@ -5,6 +5,7 @@ import re
 import unicodedata
 import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext, simpledialog, ttk
+from editor_widgets import StorySearchCombo, StyledScrolledText, story_options, configure_theme
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LIBRARY_DIR = os.path.join(BASE_DIR, "library")
@@ -55,65 +56,44 @@ def slugify_vn(text):
 
 
 def setup_text_shortcuts(widget):
-	def select_all(event):
-		widget.tag_add("sel", "1.0", "end")
+	# Keep native Text editing semantics (selection replacement, cursor and undo).
+	widget.configure(exportselection=False, undo=True, autoseparators=True)
+	def select_all(event=None):
+		widget.tag_add("sel", "1.0", "end-1c")
 		return "break"
 
-	def copy(event):
+	def action(virtual):
+		def invoke(event=None):
+			widget.event_generate(virtual)
+			return "break"
+		return invoke
+
+	widget.bind("<<SelectAll>>", select_all)
+	for key in ("a", "A"):
+		widget.bind(f"<Control-{key}>", select_all)
+	for keys, virtual in (("cC", "<<Copy>>"), ("xX", "<<Cut>>"),
+		("vV", "<<Paste>>"), ("zZ", "<<Undo>>"), ("yY", "<<Redo>>")):
+		for key in keys:
+			widget.bind(f"<Control-{key}>", action(virtual))
+	widget.bind("<Control-Shift-Z>", action("<<Redo>>"))
+	widget.bind("<Control-Shift-z>", action("<<Redo>>"))
+
+	menu = tk.Menu(widget, tearoff=0, bg="#172338", fg="#e2e8f0",
+		activebackground="#0f766e", activeforeground="white", bd=0)
+	for label, virtual, shortcut in (("Hoàn tác", "<<Undo>>", "Ctrl+Z"),
+		("Làm lại", "<<Redo>>", "Ctrl+Y"), ("Cắt", "<<Cut>>", "Ctrl+X"),
+		("Sao chép", "<<Copy>>", "Ctrl+C"), ("Dán", "<<Paste>>", "Ctrl+V"),
+		("Chọn tất cả", "<<SelectAll>>", "Ctrl+A")):
+		menu.add_command(label=label, accelerator=shortcut, command=action(virtual))
+
+	def popup(event):
+		widget.focus_set()
 		try:
-			selected = widget.get("sel.first", "sel.last")
-			widget.clipboard_clear()
-			widget.clipboard_append(selected)
-		except tk.TclError:
-			pass
+			menu.tk_popup(event.x_root, event.y_root)
+		finally:
+			menu.grab_release()
 		return "break"
-
-	def cut(event):
-		try:
-			selected = widget.get("sel.first", "sel.last")
-			widget.clipboard_clear()
-			widget.clipboard_append(selected)
-			widget.delete("sel.first", "sel.last")
-		except tk.TclError:
-			pass
-		return "break"
-
-	def paste(event):
-		try:
-			text = widget.clipboard_get()
-			if widget.tag_ranges("sel"):
-				widget.delete("sel.first", "sel.last")
-			widget.insert(tk.INSERT, text)
-		except tk.TclError:
-			pass
-		return "break"
-
-	def undo(event):
-		try:
-			widget.edit_undo()
-		except tk.TclError:
-			pass
-		return "break"
-
-	def redo(event):
-		try:
-			widget.edit_redo()
-		except tk.TclError:
-			pass
-		return "break"
-
-	widget.bind("<Control-a>", select_all)
-	widget.bind("<Control-A>", select_all)
-	widget.bind("<Control-c>", copy)
-	widget.bind("<Control-C>", copy)
-	widget.bind("<Control-x>", cut)
-	widget.bind("<Control-X>", cut)
-	widget.bind("<Control-v>", paste)
-	widget.bind("<Control-V>", paste)
-	widget.bind("<Control-z>", undo)
-	widget.bind("<Control-Z>", undo)
-	widget.bind("<Control-y>", redo)
-	widget.bind("<Control-Y>", redo)
+	widget.bind("<Button-3>", popup)
 
 
 def setup_entry_shortcuts(widget):
@@ -163,7 +143,7 @@ class ChapterEditorApp:
 	def __init__(self, root):
 		self.root = root
 		self.root.title("Trình Chỉnh Sửa Chapter & Quản Lý Thư Viện")
-		self.root.configure(bg="#09090b")
+		self.root.configure(bg="#0b1220")
 
 		self.loaded_json = None
 		self.story_options = []
@@ -192,262 +172,104 @@ class ChapterEditorApp:
 		save_config({"editor_main": geo})
 
 
+	def _button(self, parent, text, command, primary=False):
+		return tk.Button(parent, text=text, command=command, bg="#0f766e" if primary else "#25344b",
+			fg="#ffffff", activebackground="#115e59" if primary else "#334155",
+			activeforeground="white", font=("Segoe UI", 10, "bold"), bd=0,
+			relief="flat", padx=14, pady=8, cursor="hand2")
+
 	def setup_ui(self):
-		header = tk.Frame(self.root, bg="#09090b")
-		header.pack(fill="x", padx=20, pady=(20, 10))
-
-		tk.Label(
-			header,
-			text="📚 TRÌNH CHỈNH SỬA CHAPTER & QUẢN LÝ THƯ VIỆN",
-			fg="#ffffff",
-			bg="#09090b",
-			font=("Arial", 14, "bold"),
-		).pack(side="left")
-
-		container = tk.Frame(self.root, bg="#09090b")
-		container.pack(fill="both", expand=True, padx=20, pady=10)
-
-		left = tk.Frame(container, bg="#18181b", bd=1, relief="solid")
-		left.pack(side="left", fill="both", expand=True, padx=(0, 10))
-
-		right = tk.Frame(container, bg="#18181b", bd=1, relief="solid")
-		right.pack(side="left", fill="both", expand=True, padx=(10, 0))
-
+		configure_theme(self.root)
+		self.root.minsize(1040, 680)
+		header = tk.Frame(self.root, bg="#0b1220")
+		header.pack(fill="x", padx=24, pady=(20, 14))
+		tk.Label(header, text="THƯ VIỆN  /  BIÊN TẬP", fg="#5eead4", bg="#0b1220",
+			font=("Segoe UI", 9, "bold")).pack(anchor="w")
+		tk.Label(header, text="Không gian biên tập", fg="#f8fafc", bg="#0b1220",
+			font=("Segoe UI", 23, "bold")).pack(anchor="w", pady=(3, 2))
+		tk.Label(header, text="Chọn truyện · Chỉnh sửa nội dung · Phân chương và lưu vào thư viện",
+			fg="#94a3b8", bg="#0b1220", font=("Segoe UI", 10)).pack(anchor="w")
+		panes = tk.PanedWindow(self.root, orient=tk.HORIZONTAL, bg="#0b1220", bd=0,
+			sashwidth=12, sashrelief="flat", showhandle=False)
+		panes.pack(fill="both", expand=True, padx=24, pady=(0, 16))
+		left = tk.Frame(panes, bg="#111c2e", highlightthickness=1, highlightbackground="#263449")
+		right = tk.Frame(panes, bg="#111c2e", highlightthickness=1, highlightbackground="#263449")
+		panes.add(left, minsize=460, stretch="always")
+		panes.add(right, minsize=460, stretch="always")
 		self.build_left(left)
 		self.build_right(right)
+		footer = tk.Frame(self.root, bg="#0b1220")
+		footer.pack(fill="x", padx=24, pady=(0, 12))
+		self.library_status = tk.Label(footer, text="Thư viện", bg="#0b1220", fg="#94a3b8", font=("Segoe UI", 9))
+		self.library_status.pack(side="left")
+		tk.Label(footer, text="Ctrl + F  Tìm trong nguồn    •    Kéo vạch giữa để đổi độ rộng", bg="#0b1220",
+			fg="#64748b", font=("Segoe UI", 9)).pack(side="right")
 
 	def build_left(self, parent):
-		tk.Label(
-			parent,
-			text="📝 Text Editor (Chỉnh sửa nội dung & Lưu thư viện)",
-			fg="#ffffff",
-			bg="#18181b",
-			font=("Arial", 11, "bold"),
-		).pack(anchor="w", padx=16, pady=(14, 10))
-
-		form = tk.Frame(parent, bg="#18181b")
-		form.pack(fill="both", expand=True, padx=16)
-
-		# Story selection row with "Them Truyen" button
-		story_frame = tk.Frame(form, bg="#18181b")
-		story_frame.pack(fill="x", pady=(0, 12))
-
-		tk.Label(
-			story_frame,
-			text="Chọn Truyện:",
-			fg="#a1a1aa",
-			bg="#18181b",
-		).pack(anchor="w")
-
-		self.story_combo = ttk.Combobox(story_frame, values=self.story_options, font=("Arial", 10))
-		self.story_combo.pack(side="left", fill="x", expand=True, pady=(4, 0))
-		self.story_combo.bind("<<ComboboxSelected>>", self.on_story_selected)
-
-		tk.Button(
-			story_frame,
-			text="➕ Thêm Truyện Mới",
-			bg="#10b981",
-			fg="#ffffff",
-			command=self.add_new_story,
-			borderwidth=0,
-			padx=10,
-			pady=4,
-			font=("Arial", 9, "bold"),
-			cursor="hand2"
-		).pack(side="right", padx=(10, 0), pady=(4, 0))
-
-		# Chapter ID and Title row
-		chap_select_frame = tk.Frame(form, bg="#18181b")
-		chap_select_frame.pack(fill="x", pady=(0, 6))
-
-		tk.Label(
-			chap_select_frame,
-			text="Chọn Chương để chỉnh sửa:",
-			fg="#a1a1aa",
-			bg="#18181b",
-		).pack(anchor="w")
-
-		chap_select_inner = tk.Frame(chap_select_frame, bg="#18181b")
-		chap_select_inner.pack(fill="x", pady=(4, 0))
-
-		self.chap_select_combo = ttk.Combobox(chap_select_inner, font=("Arial", 10), state="readonly")
+		tk.Label(parent, text="01   Biên tập chương", fg="#f8fafc", bg="#111c2e",
+			font=("Segoe UI", 14, "bold")).pack(anchor="w", padx=18, pady=(16, 12))
+		form = tk.Frame(parent, bg="#111c2e")
+		form.pack(fill="both", expand=True, padx=18)
+		tk.Label(form, text="TRUYỆN  ·  Gõ tên hoặc mã để tìm", fg="#94a3b8", bg="#111c2e",
+			font=("Segoe UI", 9, "bold")).pack(anchor="w")
+		story_row = tk.Frame(form, bg="#111c2e")
+		story_row.pack(fill="x", pady=(6, 12))
+		self._button(story_row, "+ Truyện mới", self.add_new_story).pack(side="right", padx=(8, 0))
+		self.story_combo = StorySearchCombo(story_row, values=self.story_options, font=("Segoe UI", 10), width=20)
+		self.story_combo.pack(side="left", fill="x", expand=True)
+		self.story_combo.bind("<<ComboboxSelected>>", self.on_story_selected, add="+")
+		tk.Label(form, text="CHƯƠNG ĐÃ LƯU", fg="#94a3b8", bg="#111c2e", font=("Segoe UI", 9, "bold")).pack(anchor="w")
+		chapter_row = tk.Frame(form, bg="#111c2e")
+		chapter_row.pack(fill="x", pady=(6, 12))
+		self._button(chapter_row, "Mở chương", self.load_chapter_for_edit).pack(side="right", padx=(8, 0))
+		self.chap_select_combo = ttk.Combobox(chapter_row, font=("Segoe UI", 10), state="readonly", width=20)
 		self.chap_select_combo.pack(side="left", fill="x", expand=True)
-
-		tk.Button(
-			chap_select_inner,
-			text="✏️ Load chương",
-			bg="#3b82f6",
-			fg="#ffffff",
-			command=self.load_chapter_for_edit,
-			borderwidth=0,
-			padx=10,
-			pady=3,
-			font=("Arial", 9, "bold"),
-			cursor="hand2"
-		).pack(side="right", padx=(10, 0))
-
-		# Chapter ID and Title row
-		chap_meta_frame = tk.Frame(form, bg="#18181b")
-		chap_meta_frame.pack(fill="x", pady=(0, 12))
-
-
-		# Left side: Chapter ID (slug)
-		chap_id_frame = tk.Frame(chap_meta_frame, bg="#18181b")
-		chap_id_frame.pack(side="left", fill="x", expand=True, padx=(0, 6))
-
-		tk.Label(
-			chap_id_frame,
-			text="Chapter ID (Auto 6 chữ số, VD: 000001):",
-			fg="#a1a1aa",
-			bg="#18181b",
-		).pack(anchor="w")
-
-		self.chap_entry = tk.Entry(chap_id_frame, bg="#09090b", fg="#ffffff", insertbackground="white", font=("Arial", 10))
-		self.chap_entry.pack(fill="x", pady=(4, 0), ipady=4)
+		meta = tk.Frame(form, bg="#111c2e")
+		meta.pack(fill="x", pady=(0, 12))
+		meta.columnconfigure(1, weight=1)
+		for column, label in enumerate(("ID KẾ TIẾP", "TÊN CHƯƠNG")):
+			tk.Label(meta, text=label, bg="#111c2e", fg="#94a3b8", font=("Segoe UI", 9, "bold")).grid(row=0, column=column, sticky="w", pady=(0, 6))
+		self.chap_entry = tk.Entry(meta, width=10, bg="#0b1220", fg="#e2e8f0", insertbackground="white", bd=0, font=("Segoe UI", 11))
+		self.chap_entry.grid(row=1, column=0, sticky="ew", padx=(0, 12), ipady=8)
+		self.chap_title_entry = tk.Entry(meta, bg="#0b1220", fg="#e2e8f0", insertbackground="white", bd=0, font=("Segoe UI", 11))
+		self.chap_title_entry.grid(row=1, column=1, sticky="ew", ipady=8)
 		setup_entry_shortcuts(self.chap_entry)
-
-		# Right side: Chapter Title (Tên chương)
-		chap_title_frame = tk.Frame(chap_meta_frame, bg="#18181b")
-		chap_title_frame.pack(side="left", fill="x", expand=True, padx=(6, 0))
-
-		tk.Label(
-			chap_title_frame,
-			text="Tên Chương (VD: Chương 1: Sự khởi đầu):",
-			fg="#a1a1aa",
-			bg="#18181b",
-		).pack(anchor="w")
-
-		self.chap_title_entry = tk.Entry(chap_title_frame, bg="#09090b", fg="#ffffff", insertbackground="white", font=("Arial", 10))
-		self.chap_title_entry.pack(fill="x", pady=(4, 0), ipady=4)
 		setup_entry_shortcuts(self.chap_title_entry)
-
-		# Vietnamese content
-		tk.Label(
-			form,
-			text="Nội dung Tiếng Việt:",
-			fg="#a1a1aa",
-			bg="#18181b",
-		).pack(anchor="w")
-
-		self.content_text = scrolledtext.ScrolledText(
-			form,
-			height=18,
-			bg="#09090b",
-			fg="#e4e4e7",
-			insertbackground="white",
-			font=("Consolas", 11),
-			wrap=tk.WORD,
-			undo=True
-		)
-		self.content_text.pack(fill="both", expand=True, pady=(4, 12))
+		tk.Label(form, text="NỘI DUNG CHƯƠNG", fg="#94a3b8", bg="#111c2e", font=("Segoe UI", 9, "bold")).pack(anchor="w")
+		self.content_text = StyledScrolledText(form, height=8, width=30, bg="#0b1220", fg="#e2e8f0",
+			insertbackground="white", font=("Segoe UI", 11), wrap=tk.WORD, undo=True,
+			bd=0, padx=12, pady=10, spacing1=3, spacing3=5, selectbackground="#115e59")
+		self.content_text.pack(fill="both", expand=True, pady=(6, 12))
 		setup_text_shortcuts(self.content_text)
-
-		btns = tk.Frame(form, bg="#18181b")
-		btns.pack(fill="x", pady=(0, 16))
-
-		tk.Button(
-			btns,
-			text="💾 Lưu trực tiếp vào Thư Viện",
-			bg="#10b981",
-			fg="#ffffff",
-			command=self.save_chapter,
-			borderwidth=0,
-			padx=20,
-			pady=8,
-			font=("Arial", 10, "bold"),
-			cursor="hand2"
-		).pack(side="left")
-
-
+		self._button(form, "Lưu chương vào thư viện", self.save_chapter, primary=True).pack(fill="x", pady=(0, 16))
 
 	def build_right(self, parent):
-		tk.Label(
-			parent,
-			text="📂 Giải mã JSON (Từ stories/ hoặc data.json cũ)",
-			fg="#ffffff",
-			bg="#18181b",
-			font=("Arial", 11, "bold"),
-		).pack(anchor="w", padx=16, pady=(14, 10))
-
-		tk.Label(
-			parent,
-			text="Chọn file data.json của chương để trích xuất tiếng Việt đã dịch.",
-			fg="#a1a1aa",
-			bg="#18181b",
-		).pack(anchor="w", padx=16)
-
-		tk.Button(
-			parent,
-			text="📁 Chọn file JSON",
-			bg="#3b82f6",
-			fg="#ffffff",
-			command=self.pick_json,
-			borderwidth=0,
-			padx=16,
-			pady=6,
-			font=("Arial", 10),
-			cursor="hand2"
-		).pack(anchor="w", padx=16, pady=(10, 6))
-
-		tk.Button(
-			parent,
-			text="📥 Thêm toàn bộ Tiếng Việt sang Editor ←",
-			bg="#10b981",
-			fg="#ffffff",
-			command=self.process_json,
-			borderwidth=0,
-			padx=16,
-			pady=6,
-			font=("Arial", 10, "bold"),
-			cursor="hand2"
-		).pack(anchor="w", padx=16, pady=(0, 6))
-
-		tk.Button(
-			parent,
-			text="✂️ Chuyển phần bôi đen sang Editor ←",
-			bg="#f59e0b",
-			fg="#ffffff",
-			command=self.move_selected_text,
-			borderwidth=0,
-			padx=16,
-			pady=6,
-			font=("Arial", 10, "bold"),
-			cursor="hand2"
-		).pack(anchor="w", padx=16, pady=(0, 6))
-
-		tk.Button(
-			parent,
-			text="🔪 Phân Chương Tự Động",
-			bg="#8b5cf6",
-			fg="#ffffff",
-			command=self.open_split_chapters_dialog,
-			borderwidth=0,
-			padx=16,
-			pady=6,
-			font=("Arial", 10, "bold"),
-			cursor="hand2"
-		).pack(anchor="w", padx=16, pady=(0, 10))
-
-
-		# Status Label for loaded JSON info
-		self.temp_status = tk.Label(
-			parent,
-			text="Trạng thái: Chưa chọn file...",
-			fg="#a1a1aa",
-			bg="#18181b",
-			anchor="w",
-			justify="left",
-			font=("Arial", 9)
-		)
-		self.temp_status.pack(anchor="w", padx=16, pady=(0, 10))
+		tk.Label(parent, text="02   Nguồn & phân chương", fg="#f8fafc", bg="#111c2e",
+			font=("Segoe UI", 14, "bold")).pack(anchor="w", padx=18, pady=(16, 8))
+		tk.Label(parent, text="Mở bản dịch, chọn nội dung hoặc tách thành nhiều chương.",
+			fg="#94a3b8", bg="#111c2e", font=("Segoe UI", 10)).pack(anchor="w", padx=18, pady=(0, 12))
+		actions = tk.Frame(parent, bg="#111c2e")
+		actions.pack(fill="x", padx=18, pady=(0, 10))
+		actions.columnconfigure((0, 1), weight=1, uniform="actions")
+		for index, (label, command, primary) in enumerate((
+			("Mở file JSON", self.pick_json, False),
+			("Phân chương tự động", self.open_split_chapters_dialog, True),
+			("← Chuyển toàn bộ", self.process_json, False),
+			("← Chuyển phần chọn", self.move_selected_text, False))):
+			self._button(actions, label, command, primary).grid(row=index//2, column=index%2,
+				sticky="ew", padx=(0, 6) if index%2 == 0 else (6, 0), pady=4)
+		self.temp_status = tk.Label(parent, text="Chưa mở nguồn · Chọn file JSON để bắt đầu", fg="#94a3b8",
+			bg="#111c2e", anchor="w", justify="left", wraplength=440, font=("Segoe UI", 9))
+		self.temp_status.pack(fill="x", padx=18, pady=(0, 10))
+		parent.bind("<Configure>", lambda e: self.temp_status.config(wraplength=max(200, e.width - 36)), add="+")
 
 		# Sleek search bar (hidden by default)
-		self.search_frame = tk.Frame(parent, bg="#27272a", bd=1, relief="solid")
+		self.search_frame = tk.Frame(parent, bg="#25344b", bd=1, relief="solid")
 		
 		# Elements inside search bar
-		tk.Label(self.search_frame, text="🔍 Tìm:", fg="#ffffff", bg="#27272a", font=("Arial", 9, "bold")).pack(side="left", padx=(8, 4))
+		tk.Label(self.search_frame, text="🔍 Tìm:", fg="#ffffff", bg="#25344b", font=("Segoe UI", 9, "bold")).pack(side="left", padx=(8, 4))
 		
-		self.search_entry = tk.Entry(self.search_frame, bg="#09090b", fg="#ffffff", insertbackground="white", font=("Arial", 9))
+		self.search_entry = tk.Entry(self.search_frame, bg="#0b1220", fg="#ffffff", insertbackground="white", font=("Segoe UI", 9))
 		self.search_entry.pack(side="left", fill="x", expand=True, pady=4, padx=4)
 		setup_entry_shortcuts(self.search_entry)
 		
@@ -456,40 +278,40 @@ class ChapterEditorApp:
 			self.search_frame,
 			text="Regex",
 			variable=self.regex_var,
-			bg="#27272a",
+			bg="#25344b",
 			fg="#ffffff",
-			selectcolor="#09090b",
-			activebackground="#27272a",
+			selectcolor="#0b1220",
+			activebackground="#25344b",
 			activeforeground="#ffffff",
-			font=("Arial", 8),
+			font=("Segoe UI", 8),
 			command=self.perform_search
 		)
 		self.regex_check.pack(side="left", padx=4)
 		
-		self.search_status = tk.Label(self.search_frame, text="0/0", fg="#a1a1aa", bg="#27272a", font=("Arial", 8))
+		self.search_status = tk.Label(self.search_frame, text="0/0", fg="#94a3b8", bg="#25344b", font=("Segoe UI", 8))
 		self.search_status.pack(side="left", padx=4)
 		
 		tk.Button(
 			self.search_frame,
 			text="←",
-			bg="#3f3f46",
+			bg="#334155",
 			fg="#ffffff",
 			command=self.find_prev,
 			borderwidth=0,
 			padx=6,
-			font=("Arial", 8),
+			font=("Segoe UI", 8),
 			cursor="hand2"
 		).pack(side="left", padx=2)
 		
 		tk.Button(
 			self.search_frame,
 			text="→",
-			bg="#3f3f46",
+			bg="#334155",
 			fg="#ffffff",
 			command=self.find_next,
 			borderwidth=0,
 			padx=6,
-			font=("Arial", 8),
+			font=("Segoe UI", 8),
 			cursor="hand2"
 		).pack(side="left", padx=2)
 		
@@ -501,7 +323,7 @@ class ChapterEditorApp:
 			command=self.select_above_match,
 			borderwidth=0,
 			padx=8,
-			font=("Arial", 8, "bold"),
+			font=("Segoe UI", 8, "bold"),
 			cursor="hand2"
 		).pack(side="left", padx=(2, 4))
 		
@@ -513,18 +335,20 @@ class ChapterEditorApp:
 			command=self.hide_search_dialog,
 			borderwidth=0,
 			padx=8,
-			font=("Arial", 8, "bold"),
+			font=("Segoe UI", 8, "bold"),
 			cursor="hand2"
 		).pack(side="left", padx=(4, 8))
 
 		# Temp text window
-		self.temp_text = scrolledtext.ScrolledText(
+		self.temp_text = StyledScrolledText(
 			parent,
-			height=20,
-			bg="#09090b",
+			height=10,
+			width=30,
+			bd=0, padx=12, pady=10, spacing1=3, spacing3=5,
+			bg="#0b1220",
 			fg="#e4e4e7",
 			insertbackground="white",
-			font=("Consolas", 10),
+			font=("Segoe UI", 11),
 			wrap=tk.WORD,
 			undo=True
 		)
@@ -533,7 +357,7 @@ class ChapterEditorApp:
 		
 		# Configure match tags
 		self.temp_text.tag_configure("match", background="#b45309", foreground="#ffffff")
-		self.temp_text.tag_configure("active_match", background="#10b981", foreground="#ffffff")
+		self.temp_text.tag_configure("active_match", background="#0f766e", foreground="#ffffff")
 		
 		# Binds
 		self.temp_text.bind("<Control-f>", self.show_search_dialog)
@@ -562,15 +386,13 @@ class ChapterEditorApp:
 			try:
 				with open(CATALOG_PATH, "r", encoding="utf-8") as f:
 					data = json.load(f)
-				for item in data:
-					slug = item.get("slug")
-					title = item.get("title", "")
-					if slug:
-						self.story_options.append(f"{slug} | {title}")
+				self.story_options = story_options(data)
 			except Exception:
 				pass
 
 		self.story_combo["values"] = self.story_options
+		if hasattr(self, "library_status"):
+			self.library_status.config(text=f"{len(self.story_options)} truyện  ·  Mới cập nhật trước")
 
 	def get_next_story_id(self):
 		catalog = []
@@ -662,9 +484,10 @@ class ChapterEditorApp:
 
 	def _sync_saved_chapters(self, story_slug, catalog, selected_id):
 		"""Refresh from the catalog just saved, without repeated disk reads."""
-		self.story_options = [f'{item["slug"]} | {item.get("title", "")}'
-			for item in catalog if item.get("slug")]
+		self.story_options = story_options(catalog)
 		self.story_combo["values"] = self.story_options
+		if hasattr(self, "library_status"):
+			self.library_status.config(text=f"{len(self.story_options)} truyện  ·  Mới cập nhật trước")
 		selected_story = next((option for option in self.story_options
 			if option.split("|", 1)[0].strip() == story_slug), "")
 		self.story_combo.set(selected_story)
@@ -737,44 +560,44 @@ class ChapterEditorApp:
 		dialog.resizable(True, False)
 		dialog.transient(self.root)
 		dialog.grab_set()
-		dialog.configure(bg="#18181b")
+		dialog.configure(bg="#111c2e")
 
 		# Header
-		header_frame = tk.Frame(dialog, bg="#09090b", pady=12)
+		header_frame = tk.Frame(dialog, bg="#0b1220", pady=12)
 		header_frame.pack(fill=tk.X)
 		tk.Label(
 			header_frame,
 			text="➕ Thêm Truyện Mới",
 			fg="#ffffff",
-			bg="#09090b",
-			font=("Arial", 11, "bold"),
+			bg="#0b1220",
+			font=("Segoe UI", 11, "bold"),
 		).pack(padx=16, anchor="w")
 
 		# Body
-		body_frame = tk.Frame(dialog, bg="#18181b")
+		body_frame = tk.Frame(dialog, bg="#111c2e")
 		body_frame.pack(fill=tk.X, padx=16, pady=(14, 0))
 
 		tk.Label(
 			body_frame,
 			text="Tên hiển thị của truyện:",
-			fg="#a1a1aa",
-			bg="#18181b",
-			font=("Arial", 9),
+			fg="#94a3b8",
+			bg="#111c2e",
+			font=("Segoe UI", 9),
 		).pack(anchor="w")
 
 		entry_var = tk.StringVar(value=default_title)
 		entry = tk.Entry(
 			body_frame,
 			textvariable=entry_var,
-			bg="#09090b",
+			bg="#0b1220",
 			fg="#ffffff",
 			insertbackground="#ffffff",
 			relief="flat",
-			font=("Arial", 11),
+			font=("Segoe UI", 11),
 			bd=0,
 			highlightthickness=1,
-			highlightbackground="#3f3f46",
-			highlightcolor="#10b981",
+			highlightbackground="#334155",
+			highlightcolor="#0f766e",
 		)
 		entry.pack(fill=tk.X, pady=(6, 0), ipady=7)
 		entry.select_range(0, tk.END)
@@ -785,15 +608,15 @@ class ChapterEditorApp:
 			body_frame,
 			text="ID 4 chữ số sẽ được tạo tự động.",
 			fg="#52525b",
-			bg="#18181b",
-			font=("Arial", 8),
+			bg="#111c2e",
+			font=("Segoe UI", 8),
 		).pack(anchor="w", pady=(4, 0))
 
 		# Separator
-		tk.Frame(dialog, bg="#27272a", height=1).pack(fill=tk.X, pady=(14, 0))
+		tk.Frame(dialog, bg="#25344b", height=1).pack(fill=tk.X, pady=(14, 0))
 
 		# Buttons
-		btn_frame = tk.Frame(dialog, bg="#18181b")
+		btn_frame = tk.Frame(dialog, bg="#111c2e")
 		btn_frame.pack(fill=tk.X, padx=16, pady=12)
 
 		title_result = [None]
@@ -810,15 +633,15 @@ class ChapterEditorApp:
 		tk.Button(
 			btn_frame,
 			text="Hủy",
-			bg="#27272a",
-			fg="#a1a1aa",
-			activebackground="#3f3f46",
+			bg="#25344b",
+			fg="#94a3b8",
+			activebackground="#334155",
 			activeforeground="#ffffff",
 			relief="flat",
 			borderwidth=0,
 			padx=18,
 			pady=6,
-			font=("Arial", 9),
+			font=("Segoe UI", 9),
 			cursor="hand2",
 			command=on_cancel,
 		).pack(side=tk.RIGHT, padx=(6, 0))
@@ -826,7 +649,7 @@ class ChapterEditorApp:
 		tk.Button(
 			btn_frame,
 			text="✅ Tạo Truyện",
-			bg="#10b981",
+			bg="#0f766e",
 			fg="#ffffff",
 			activebackground="#059669",
 			activeforeground="#ffffff",
@@ -834,7 +657,7 @@ class ChapterEditorApp:
 			borderwidth=0,
 			padx=18,
 			pady=6,
-			font=("Arial", 9, "bold"),
+			font=("Segoe UI", 9, "bold"),
 			cursor="hand2",
 			command=on_ok,
 		).pack(side=tk.RIGHT)
@@ -937,6 +760,9 @@ class ChapterEditorApp:
 
 	def save_chapter(self):
 		story_value = self.story_combo.get().strip()
+		if story_value and story_value not in self.story_options:
+			messagebox.showwarning("Chọn truyện", "Hãy chọn một truyện trong danh sách gợi ý trước khi lưu.", parent=self.root)
+			return
 		chap_slug = self.chap_entry.get().strip()
 		chap_title = self.chap_title_entry.get().strip()
 		content = self.content_text.get("1.0", tk.END).strip()
@@ -1158,7 +984,7 @@ class ChapterEditorApp:
 
 		# Update status label
 		info_str = f"Đã nạp: {os.path.basename(file_path)} | Truyện: {title} | Chương: {chap_title if chap_title else 'Chưa rõ'} | {count} đoạn"
-		self.temp_status.config(text=info_str, fg="#10b981")
+		self.temp_status.config(text=info_str, fg="#0f766e")
 
 	def process_json(self):
 		new_text = self.temp_text.get("1.0", tk.END).strip()
@@ -1300,7 +1126,7 @@ class ChapterEditorApp:
 		# --- Build Dialog ---
 		dlg = tk.Toplevel(self.root)
 		dlg.title("🔪 Phân Chương Tự Động")
-		dlg.configure(bg="#09090b")
+		dlg.configure(bg="#0b1220")
 		dlg.transient(self.root)
 		dlg.grab_set()
 		dlg.resizable(True, True)
@@ -1418,30 +1244,30 @@ class ChapterEditorApp:
 		map_binding = dlg.bind("<Map>", on_dialog_map, add="+")
 
 		# ── HEADER ──
-		hdr = tk.Frame(dlg, bg="#18181b", pady=10)
+		hdr = tk.Frame(dlg, bg="#111c2e", pady=10)
 		hdr.pack(fill=tk.X)
-		tk.Label(hdr, text="🔪 Phân Chương Tự Động", fg="#ffffff", bg="#18181b",
-				 font=("Arial", 12, "bold")).pack(side=tk.LEFT, padx=16)
+		tk.Label(hdr, text="🔪 Phân Chương Tự Động", fg="#ffffff", bg="#111c2e",
+				 font=("Segoe UI", 12, "bold")).pack(side=tk.LEFT, padx=16)
 
 		# ── STEP 1: Pattern selector ──
-		step1 = tk.Frame(dlg, bg="#18181b", padx=16, pady=8)
+		step1 = tk.Frame(dlg, bg="#111c2e", padx=16, pady=8)
 		step1.pack(fill=tk.X, padx=12, pady=(8, 0))
-		tk.Label(step1, text="BƯỚC 1 — Chọn pattern nhận diện header chương:", fg="#a1a1aa",
-				 bg="#18181b", font=("Arial", 9, "bold")).pack(anchor="w")
+		tk.Label(step1, text="BƯỚC 1 — Chọn pattern nhận diện header chương:", fg="#94a3b8",
+				 bg="#111c2e", font=("Segoe UI", 9, "bold")).pack(anchor="w")
 
-		pattern_row = tk.Frame(step1, bg="#18181b")
+		pattern_row = tk.Frame(step1, bg="#111c2e")
 		pattern_row.pack(fill=tk.X, pady=(6, 0))
 
 		pattern_names = [p[0] for p in patterns]
 		pattern_var = tk.StringVar(value=pattern_names[0])
 		pattern_combo = ttk.Combobox(pattern_row, textvariable=pattern_var, values=pattern_names,
-									 state="readonly", font=("Arial", 9), width=28)
+									 state="readonly", font=("Segoe UI", 9), width=28)
 		pattern_combo.pack(side=tk.LEFT, padx=(0, 8))
 
 		regex_var = tk.StringVar(value=patterns[0][1])
-		regex_entry = tk.Entry(pattern_row, textvariable=regex_var, bg="#27272a", fg="#e4e4e7",
+		regex_entry = tk.Entry(pattern_row, textvariable=regex_var, bg="#25344b", fg="#e4e4e7",
 							   insertbackground="white", font=("Consolas", 9),
-							   highlightthickness=1, highlightbackground="#3f3f46",
+							   highlightthickness=1, highlightbackground="#334155",
 							   highlightcolor="#8b5cf6", relief="flat")
 		regex_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=4, padx=(0, 8))
 
@@ -1465,8 +1291,8 @@ class ChapterEditorApp:
 			self.save_split_pattern(name, rx)
 			messagebox.showinfo("Đã lưu", f"Pattern '{name}' đã được lưu vào config.", parent=dlg)
 
-		tk.Button(pattern_row, text="💾 Lưu pattern", bg="#3f3f46", fg="#ffffff",
-				  relief="flat", borderwidth=0, padx=8, pady=4, font=("Arial", 8),
+		tk.Button(pattern_row, text="💾 Lưu pattern", bg="#334155", fg="#ffffff",
+				  relief="flat", borderwidth=0, padx=8, pady=4, font=("Segoe UI", 8),
 				  cursor="hand2", command=save_custom_pattern).pack(side=tk.LEFT, padx=(0, 4))
 
 		# ── Detected chapters state ──
@@ -1474,27 +1300,27 @@ class ChapterEditorApp:
 		chapter_rows_frame = None
 
 		# ── STEP 2: Preview ──
-		step2_header = tk.Frame(dlg, bg="#09090b", padx=16, pady=6)
+		step2_header = tk.Frame(dlg, bg="#0b1220", padx=16, pady=6)
 		step2_header.pack(fill=tk.X, padx=12, pady=(10, 0))
-		count_label = tk.Label(step2_header, text="BƯỚC 2 — Xem & chỉnh sửa tên chương:", fg="#a1a1aa",
-							   bg="#09090b", font=("Arial", 9, "bold"))
+		count_label = tk.Label(step2_header, text="BƯỚC 2 — Xem & chỉnh sửa tên chương:", fg="#94a3b8",
+							   bg="#0b1220", font=("Segoe UI", 9, "bold"))
 		count_label.pack(side=tk.LEFT)
 
 		tk.Button(step2_header, text="🔍 Phân tích lại", bg="#8b5cf6", fg="#ffffff",
-				  relief="flat", borderwidth=0, padx=10, pady=3, font=("Arial", 9, "bold"),
+				  relief="flat", borderwidth=0, padx=10, pady=3, font=("Segoe UI", 9, "bold"),
 				  cursor="hand2", command=lambda: run_detect()).pack(side=tk.RIGHT)
 
 		# Scrollable list
-		list_outer = tk.Frame(dlg, bg="#09090b")
+		list_outer = tk.Frame(dlg, bg="#0b1220")
 		list_outer.pack(fill=tk.BOTH, expand=True, padx=12, pady=(4, 0))
 
-		canvas = tk.Canvas(list_outer, bg="#09090b", highlightthickness=0)
-		scrollbar = tk.Scrollbar(list_outer, orient="vertical", command=canvas.yview)
+		canvas = tk.Canvas(list_outer, bg="#0b1220", highlightthickness=0)
+		scrollbar = ttk.Scrollbar(list_outer, orient="vertical", style="Editor.Vertical.TScrollbar", command=canvas.yview)
 		canvas.configure(yscrollcommand=scrollbar.set)
 		scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 		canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-		inner_frame = tk.Frame(canvas, bg="#09090b")
+		inner_frame = tk.Frame(canvas, bg="#0b1220")
 		canvas_window = canvas.create_window((0, 0), window=inner_frame, anchor="nw")
 
 		def on_inner_configure(event):
@@ -1515,44 +1341,44 @@ class ChapterEditorApp:
 		def build_chapter_list():
 			n = len(detected_chapters)
 			count_label.config(text=f"BƯỚC 2 — Xem & chỉnh sửa ({n} chương phát hiện):",
-				fg="#10b981" if n else "#ef4444")
+				fg="#0f766e" if n else "#ef4444")
 			save_btn.config(text=f"💾 Lưu tất cả ({n} chương)")
 			for w in inner_frame.winfo_children():
 				w.destroy()
 
 			if not detected_chapters:
 				tk.Label(inner_frame, text="Không phát hiện được chương nào với pattern này.",
-						 fg="#ef4444", bg="#09090b", font=("Arial", 10)).pack(pady=20)
+						 fg="#ef4444", bg="#0b1220", font=("Segoe UI", 10)).pack(pady=20)
 				return
 
 			# Column headers
-			hrow = tk.Frame(inner_frame, bg="#27272a")
+			hrow = tk.Frame(inner_frame, bg="#25344b")
 			hrow.pack(fill=tk.X, padx=4, pady=(4, 2))
-			tk.Label(hrow, text="#", fg="#71717a", bg="#27272a", font=("Arial", 8, "bold"), width=4).pack(side=tk.LEFT, padx=(8,0))
-			tk.Label(hrow, text="ID", fg="#71717a", bg="#27272a", font=("Arial", 8, "bold"), width=8).pack(side=tk.LEFT, padx=4)
-			tk.Label(hrow, text="Tên chương (có thể sửa)", fg="#71717a", bg="#27272a", font=("Arial", 8, "bold")).pack(side=tk.LEFT, padx=4, fill=tk.X, expand=True)
-			tk.Label(hrow, text="Đoạn", fg="#71717a", bg="#27272a", font=("Arial", 8, "bold"), width=6).pack(side=tk.RIGHT, padx=8)
+			tk.Label(hrow, text="#", fg="#64748b", bg="#25344b", font=("Segoe UI", 8, "bold"), width=4).pack(side=tk.LEFT, padx=(8,0))
+			tk.Label(hrow, text="ID", fg="#64748b", bg="#25344b", font=("Segoe UI", 8, "bold"), width=8).pack(side=tk.LEFT, padx=4)
+			tk.Label(hrow, text="Tên chương (có thể sửa)", fg="#64748b", bg="#25344b", font=("Segoe UI", 8, "bold")).pack(side=tk.LEFT, padx=4, fill=tk.X, expand=True)
+			tk.Label(hrow, text="Đoạn", fg="#64748b", bg="#25344b", font=("Segoe UI", 8, "bold"), width=6).pack(side=tk.RIGHT, padx=8)
 
 			for i, chap in enumerate(detected_chapters):
-				row_bg = "#18181b" if i % 2 == 0 else "#1c1c1f"
+				row_bg = "#111c2e" if i % 2 == 0 else "#1c1c1f"
 				row = tk.Frame(inner_frame, bg=row_bg)
 				row.pack(fill=tk.X, padx=4, pady=1)
 
-				tk.Label(row, text=str(i+1), fg="#52525b", bg=row_bg, font=("Arial", 8), width=4).pack(side=tk.LEFT, padx=(8,0), pady=4)
+				tk.Label(row, text=str(i+1), fg="#52525b", bg=row_bg, font=("Segoe UI", 8), width=4).pack(side=tk.LEFT, padx=(8,0), pady=4)
 				tk.Label(row, text=chap["id"], fg="#3b82f6", bg=row_bg, font=("Consolas", 9), width=8).pack(side=tk.LEFT, padx=4)
 				tk.Button(row, text="Xóa mốc", command=lambda index=i: remove_boundary(index),
 					state=tk.NORMAL if i > 0 else tk.DISABLED,
 					bg="#3f2025", fg="#fca5a5", relief="flat", borderwidth=0,
-					font=("Arial", 8), padx=6).pack(side=tk.RIGHT, padx=4)
+					font=("Segoe UI", 8), padx=6).pack(side=tk.RIGHT, padx=4)
 
 				entry = tk.Entry(row, textvariable=chap["title_var"], bg=row_bg, fg="#e4e4e7",
-								 insertbackground="white", font=("Arial", 9), relief="flat",
-								 highlightthickness=1, highlightbackground="#27272a",
+								 insertbackground="white", font=("Segoe UI", 9), relief="flat",
+								 highlightthickness=1, highlightbackground="#25344b",
 								 highlightcolor="#8b5cf6")
 				entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=3, padx=4)
 
-				tk.Label(row, text=str(len(chap["paragraphs"])), fg="#10b981", bg=row_bg,
-						 font=("Arial", 8), width=6).pack(side=tk.RIGHT, padx=8)
+				tk.Label(row, text=str(len(chap["paragraphs"])), fg="#0f766e", bg=row_bg,
+						 font=("Segoe UI", 8), width=6).pack(side=tk.RIGHT, padx=8)
 
 		def remove_boundary(index):
 			if index <= 0 or index >= len(detected_chapters):
@@ -1623,35 +1449,35 @@ class ChapterEditorApp:
 			build_chapter_list()
 
 		# ── STEP 3: Story selector + Save ──
-		tk.Frame(dlg, bg="#27272a", height=1).pack(fill=tk.X, padx=12, pady=(8, 0))
-		step3 = tk.Frame(dlg, bg="#18181b", padx=16, pady=10)
+		tk.Frame(dlg, bg="#25344b", height=1).pack(fill=tk.X, padx=12, pady=(8, 0))
+		step3 = tk.Frame(dlg, bg="#111c2e", padx=16, pady=10)
 		step3.pack(fill=tk.X, padx=12, pady=(0, 0))
-		tk.Label(step3, text="BƯỚC 3 — Chọn truyện để lưu:", fg="#a1a1aa", bg="#18181b",
-				 font=("Arial", 9, "bold")).pack(anchor="w", pady=(0, 6))
+		tk.Label(step3, text="BƯỚC 3 — Chọn truyện để lưu:", fg="#94a3b8", bg="#111c2e",
+				 font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(0, 6))
 
-		story_row = tk.Frame(step3, bg="#18181b")
+		story_row = tk.Frame(step3, bg="#111c2e")
 		story_row.pack(fill=tk.X)
 
-		story_combo = ttk.Combobox(story_row, values=self.story_options, font=("Arial", 10),
+		story_combo = StorySearchCombo(story_row, values=self.story_options, font=("Segoe UI", 10),
 								   state="readonly")
 		# Pre-select current story if available
 		cur = self.story_combo.get().strip()
 		if cur in self.story_options:
 			story_combo.set(cur)
 		story_combo.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
-		story_combo.bind("<<ComboboxSelected>>", change_split_story)
+		story_combo.bind("<<ComboboxSelected>>", change_split_story, add="+")
 
-		tk.Frame(dlg, bg="#27272a", height=1).pack(fill=tk.X, padx=12)
-		btn_row = tk.Frame(dlg, bg="#09090b", pady=10)
+		tk.Frame(dlg, bg="#25344b", height=1).pack(fill=tk.X, padx=12)
+		btn_row = tk.Frame(dlg, bg="#0b1220", pady=10)
 		btn_row.pack(fill=tk.X, padx=12)
 
-		tk.Button(btn_row, text="Hủy", bg="#27272a", fg="#a1a1aa", activebackground="#3f3f46",
-				  relief="flat", borderwidth=0, padx=16, pady=6, font=("Arial", 9),
+		tk.Button(btn_row, text="Hủy", bg="#25344b", fg="#94a3b8", activebackground="#334155",
+				  relief="flat", borderwidth=0, padx=16, pady=6, font=("Segoe UI", 9),
 				  cursor="hand2", command=on_dlg_close).pack(side=tk.RIGHT, padx=(6, 0))
 
 		save_btn = tk.Button(btn_row, text="💾 Lưu tất cả (0 chương)", bg="#8b5cf6", fg="#ffffff",
 				  activebackground="#7c3aed", relief="flat", borderwidth=0,
-				  padx=16, pady=6, font=("Arial", 9, "bold"), cursor="hand2",
+				  padx=16, pady=6, font=("Segoe UI", 9, "bold"), cursor="hand2",
 				  command=lambda: self.save_all_split_chapters(dlg, story_combo, detected_chapters, on_dlg_close))
 		save_btn.pack(side=tk.RIGHT)
 
@@ -1664,6 +1490,9 @@ class ChapterEditorApp:
 		import shutil
 
 		story_value = story_combo.get().strip()
+		if story_value and story_value not in self.story_options:
+			messagebox.showwarning("Chọn truyện", "Hãy chọn một truyện trong danh sách gợi ý trước khi lưu.", parent=dlg)
+			return
 		if not story_value:
 			messagebox.showwarning("Chú ý", "Vui lòng chọn Truyện!", parent=dlg)
 			return
@@ -1819,7 +1648,7 @@ class ChapterEditorApp:
 
 		query = self.search_entry.get()
 		if not query:
-			self.search_status.config(text="0/0", fg="#a1a1aa")
+			self.search_status.config(text="0/0", fg="#94a3b8")
 			return
 
 		is_regex = self.regex_var.get()
@@ -1876,7 +1705,7 @@ class ChapterEditorApp:
 		self.temp_text.see(start)
 		
 		total = len(coords)
-		self.search_status.config(text=f"{self.current_match_idx + 1}/{total}", fg="#10b981")
+		self.search_status.config(text=f"{self.current_match_idx + 1}/{total}", fg="#0f766e")
 
 	def find_next(self, event=None):
 		coords = self.get_match_coords()
@@ -1963,7 +1792,7 @@ if __name__ == "__main__":
 	root = tk.Tk()
 	style = ttk.Style()
 	style.theme_use("clam")
-	root.option_add("*TCombobox*Listbox.background", "#09090b")
+	root.option_add("*TCombobox*Listbox.background", "#0b1220")
 	root.option_add("*TCombobox*Listbox.foreground", "#ffffff")
 	app = ChapterEditorApp(root)
 	root.mainloop()

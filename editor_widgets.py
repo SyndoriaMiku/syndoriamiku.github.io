@@ -1,6 +1,6 @@
 """Shared styling and searchable story selector for the desktop editor."""
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, scrolledtext
 import unicodedata
 from datetime import datetime
 
@@ -33,6 +33,7 @@ class StorySearchCombo(ttk.Combobox):
         super().__init__(master, **kwargs)
         self._popup = None
         self._timer = None
+        self._focus_timer = None
         self._matches = []
         self._index = 0
         self._cached_values = None
@@ -41,7 +42,7 @@ class StorySearchCombo(ttk.Combobox):
         self.bind('<Up>', lambda e: self._move(-1))
         self.bind('<Return>', self._accept)
         self.bind('<Escape>', self._hide)
-        self.bind('<FocusOut>', lambda e: self.after(150, self._hide))
+        self.bind('<FocusOut>', self._schedule_focus_check)
         self.bind('<Button-1>', self._hide, add='+')
         self.bind('<<ComboboxSelected>>', self._hide, add='+')
         self.bind('<<Paste>>', lambda e: self.after_idle(self._show), add='+')
@@ -56,7 +57,7 @@ class StorySearchCombo(ttk.Combobox):
 
     def _show(self):
         self._timer = None
-        if not self.winfo_exists() or self.focus_get() is not self:
+        if not self.winfo_exists() or not self._owns_focus():
             return
         values = tuple(self['values'])
         if values != self._cached_values:
@@ -74,7 +75,7 @@ class StorySearchCombo(ttk.Combobox):
                 selectbackground='#0f766e', selectforeground='white',
                 font=('Segoe UI', 10), bd=0, highlightthickness=0,
                 activestyle='none', exportselection=False, takefocus=False)
-            scrollbar = ttk.Scrollbar(self._popup, command=self._list.yview)
+            scrollbar = ttk.Scrollbar(self._popup, style='Editor.Vertical.TScrollbar', command=self._list.yview)
             scrollbar.pack(side='right', fill='y', padx=(0, 1), pady=1)
             self._list.configure(yscrollcommand=scrollbar.set)
             self._list.pack(fill='both', expand=True, padx=1, pady=1)
@@ -127,15 +128,62 @@ class StorySearchCombo(ttk.Combobox):
         if self._timer:
             self.after_cancel(self._timer)
             self._timer = None
-        if self._popup is not None:
+        if self._popup is not None and self._popup.winfo_exists():
             self._popup.withdraw()
         return 'break' if event is not None and getattr(event, 'keysym', '') == 'Escape' else None
 
+    def _hide_if_unfocused(self):
+        self._focus_timer = None
+        if not self.winfo_exists():
+            return
+        if not self._owns_focus():
+            self._hide()
+
+    def _schedule_focus_check(self, event=None):
+        if self._focus_timer:
+            self.after_cancel(self._focus_timer)
+        self._focus_timer = self.after(150, self._hide_if_unfocused)
+
+    def _owns_focus(self):
+        """Compare Tcl widget paths without resolving Tk's transient popdown."""
+        try:
+            focused = str(self.tk.call('focus') or '')
+        except tk.TclError:
+            return False
+        if focused == str(self):
+            return True
+        return (self._popup is not None and self._popup.winfo_exists()
+                and focused.startswith(str(self._popup) + '.'))
+
     def _destroy(self, event):
         if event.widget is self:
+            if self._focus_timer:
+                self.after_cancel(self._focus_timer)
+                self._focus_timer = None
             self._hide()
-            if self._popup is not None:
+            if self._popup is not None and self._popup.winfo_exists():
                 self._popup.destroy()
+
+
+class StyledScrolledText(scrolledtext.ScrolledText):
+    """Keep the Text interface while using the editor's themed scrollbar."""
+    def __init__(self, master=None, **kwargs):
+        kwargs.setdefault('exportselection', False)
+        kwargs.setdefault('selectbackground', '#0f766e')
+        kwargs.setdefault('selectforeground', '#ffffff')
+        kwargs.setdefault('inactiveselectbackground', '#254d58')
+        kwargs.setdefault('takefocus', True)
+        kwargs.setdefault('highlightthickness', 1)
+        kwargs.setdefault('highlightbackground', '#25344b')
+        kwargs.setdefault('highlightcolor', '#0f766e')
+        super().__init__(master, **kwargs)
+        self.vbar.destroy()
+        self.vbar = ttk.Scrollbar(self.frame, orient='vertical',
+            style='Editor.Vertical.TScrollbar', command=self.yview)
+        self.vbar.pack(side='right', fill='y', before=self._w, padx=(4, 0))
+        self.configure(yscrollcommand=self.vbar.set)
+        # Keep the Text class bindings for cursor placement and drag selection.
+        self.bind('<Button-1>', lambda event: self.focus_set(), add='+')
 
 
 def configure_theme(root):
@@ -148,6 +196,13 @@ def configure_theme(root):
         foreground=[('readonly', '#e2e8f0')], selectbackground=[('!disabled', '#0f766e')])
     style.configure('Vertical.TScrollbar', background='#334155', troughcolor='#0b1220',
         borderwidth=0, arrowcolor='#94a3b8')
+    style.layout('Editor.Vertical.TScrollbar', [
+        ('Vertical.Scrollbar.trough', {'sticky': 'ns', 'children': [
+            ('Vertical.Scrollbar.thumb', {'expand': '1', 'sticky': 'nswe'})]})])
+    style.configure('Editor.Vertical.TScrollbar', background='#475569',
+        troughcolor='#111c2e', bordercolor='#111c2e', lightcolor='#475569',
+        darkcolor='#475569', borderwidth=0, width=12, arrowsize=12, gripcount=0)
+    style.map('Editor.Vertical.TScrollbar', background=[('pressed', '#0f766e'), ('active', '#64748b')])
     root.option_add('*Font', ('Segoe UI', 10))
     root.option_add('*TCombobox*Listbox.background', '#172338')
     root.option_add('*TCombobox*Listbox.foreground', '#e2e8f0')

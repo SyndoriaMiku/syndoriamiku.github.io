@@ -6304,7 +6304,7 @@
         "title": "Tổng hợp truyện ngắn",
         "slug": "0130",
         "date": "16/09/2026",
-        "timestamp": 1789547843.314023,
+        "timestamp": 1789565684.18672,
         "chapters": [
             {
                 "id": "000001",
@@ -6374,6 +6374,41 @@
             {
                 "id": "000014",
                 "name": "Mỹ lệ lão sư mụ mụ",
+                "date": "16/09/2026"
+            },
+            {
+                "id": "000015",
+                "name": "Màu đen thuốc đặc hiệu",
+                "date": "16/09/2026"
+            },
+            {
+                "id": "000016",
+                "name": "Nhân sinh đỉnh phong ta đây được ta cứu thối tên ăn mày bạo đùa nghịch",
+                "date": "16/09/2026"
+            },
+            {
+                "id": "000017",
+                "name": "Cứu tử nóng lòng phù đồ cổ tộc Thanh mạch thần nữ thân hãm dâm trận ngay trước nhi tử mặt bị cừu nhân đại kê ba tùy ý gian thao",
+                "date": "16/09/2026"
+            },
+            {
+                "id": "000018",
+                "name": "Vạn cổ bất hủ phật môn khí linh đẹp thục phụ thảm bại cho đê tiện dâm phật cự căn",
+                "date": "16/09/2026"
+            },
+            {
+                "id": "000019",
+                "name": "Đại dương mã dùng tao bi đổi thẻ lục",
+                "date": "16/09/2026"
+            },
+            {
+                "id": "000020",
+                "name": "Thân là tối cường Tiên Tôn dâm thục mỹ mẫu, nhược điểm lại là núm vú cùng âm đế",
+                "date": "16/09/2026"
+            },
+            {
+                "id": "000021",
+                "name": "Bị ngoài ý muốn thôi miên tẩy não sau trở thành nhân vật phản diện tính nô thanh mai",
                 "date": "16/09/2026"
             }
         ]
@@ -7554,6 +7589,64 @@
                 "id": "000016",
                 "name": "Thứ 15 chương Họa dẫn long hậu",
                 "date": "15/09/2026"
+            }
+        ]
+    },
+    {
+        "title": "Mến yêu luật sư lão bà cùng tổng giám đốc tỷ tỷ vậy mà trợ giúp cừu địch đối phó ta",
+        "slug": "0144",
+        "date": "16/09/2026",
+        "timestamp": 1789564561.156999,
+        "chapters": [
+            {
+                "id": "000001",
+                "name": "Chương 1:: Cừu hận nguyên nhân, luật sư thê tử ngoài ý muốn đến cừu nhân công ty hợp tác công tác",
+                "date": "16/09/2026"
+            },
+            {
+                "id": "000002",
+                "name": "Chương 02: luật sư thê tử Lâm Mộng Dao vượt quá giới hạn phía trước nội tâm biến hóa",
+                "date": "16/09/2026"
+            },
+            {
+                "id": "000003",
+                "name": "Chương 3: Lâm Mộng Dao lần đầu vượt quá giới hạn sau bị cừu địch dạy dỗ bắt đầu sa đọa",
+                "date": "16/09/2026"
+            },
+            {
+                "id": "000004",
+                "name": "Chương 04",
+                "date": "16/09/2026"
+            },
+            {
+                "id": "000005",
+                "name": "Chương 05",
+                "date": "16/09/2026"
+            },
+            {
+                "id": "000006",
+                "name": "Chương 06",
+                "date": "16/09/2026"
+            },
+            {
+                "id": "000007",
+                "name": "Chương 07",
+                "date": "16/09/2026"
+            },
+            {
+                "id": "000008",
+                "name": "Chương 08",
+                "date": "16/09/2026"
+            },
+            {
+                "id": "000009",
+                "name": "Chương 09",
+                "date": "16/09/2026"
+            },
+            {
+                "id": "000010",
+                "name": "Chương 10",
+                "date": "16/09/2026"
             }
         ]
     }
