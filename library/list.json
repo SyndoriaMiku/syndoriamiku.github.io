@@ -6303,8 +6303,8 @@
     {
         "title": "Tổng hợp truyện ngắn",
         "slug": "0130",
-        "date": "16/09/2026",
-        "timestamp": 1789565684.18672,
+        "date": "18/09/2026",
+        "timestamp": 1789737364.402984,
         "chapters": [
             {
                 "id": "000001",
@@ -6410,6 +6410,11 @@
                 "id": "000021",
                 "name": "Bị ngoài ý muốn thôi miên tẩy não sau trở thành nhân vật phản diện tính nô thanh mai",
                 "date": "16/09/2026"
+            },
+            {
+                "id": "000022",
+                "name": "Ningguang khóa tinh dạy dỗ",
+                "date": "18/09/2026"
             }
         ]
     },
