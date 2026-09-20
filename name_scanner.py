@@ -1,4 +1,4 @@
-"""Chinese person-name candidates from syntactic boundaries; no n-gram counting.
+"""Chinese name and named-entity candidates from syntactic boundaries.
 
 Run ``python name_scanner.py`` for a sample scan.
 Counts are distinct (text position, signal) hits, not fabricated repetitions.
@@ -21,25 +21,42 @@ def _alternatives(words):
 
 
 class NameScanner:
-    """Collect PERSON suggestions; confidence is a rule score, not probability."""
+    """Collect name suggestions; confidence is a rule score, not probability."""
 
     def __init__(self):
+        self.generic_entities = {
+            '办法', '方法', '说法', '想法', '做法', '看法', '功法', '剑法',
+            '长剑', '短剑', '宝剑', '刀剑', '丹药', '法器', '武器', '宝物',
+            '国家', '山上', '山下', '海上', '海边', '河边', '城中', '城内', '城外',
+        }
         self.verbs = hv.VERB_SAY | hv.VERB_ACT
         self.verb_pattern = re.compile(_alternatives(self.verbs))
         self.call_pattern = re.compile(_alternatives(hv.NAME_CALL_PREFIXES))
         self.title_pattern = re.compile(_alternatives(hv.TITLE_SUFFIXES))
-        self.stopword_pattern = re.compile(_alternatives(hv.STOPWORD_TERMS))
+        self.stopword_pattern = re.compile(_alternatives(hv.STOPWORD_TERMS | self.generic_entities))
         self.surname_pattern = re.compile(_alternatives(set(hv.DOUBLE_SURNAMES) | hv.SINGLE_SURNAMES | {'阿'}))
         self.address_pattern = re.compile(r'[「『“"‘]\s*(' + _CJK + r'{1,4})(?=[，,!！])')
         self.followers = tuple(sorted(
             self.verbs | hv.TITLE_SUFFIXES | {'的', '向', '朝', '对', '与', '和', '被', '把', '也', '却', '便', '又', '正', '已', '是', '有', '行礼'},
             key=lambda s: (-len(s), s),
         ))
+        self.entity_boundaries = tuple(sorted({
+            '来自', '加入', '前往', '位于', '进入', '回到', '离开', '攻打', '赶往',
+            '拜入', '出自', '隶属', '乃是', '便是', '得到', '获得', '施展', '修炼',
+            '使出', '拿出', '祭出', '炼制', '服下', '吞下', '抵达', '返回',
+            '在', '于', '往',
+        }, key=lambda s: (-len(s), s)))
+        self.entity_followers = tuple(sorted(
+            self.verbs | {'修炼', '弟子', '长老', '宗主', '门主', '之中', '之内',
+                          '附近', '外面', '里面', '所在', '的人', '中', '内', '上', '下',
+                          '后', '前', '时', '外'},
+            key=lambda s: (-len(s), s)))
 
     def _valid(self, name):
         if not 1 <= len(name) <= 4 or not _CJK_RUN.fullmatch(name):
             return False
-        if name in hv.STOPWORD_TERMS or name in self.verbs or name in hv.TITLE_SUFFIXES:
+        if (name in hv.STOPWORD_TERMS or name in self.generic_entities
+                or name in self.verbs or name in hv.TITLE_SUFFIXES):
             return False
         # Do not trim grammar characters: doing so manufactures shorter names.
         return not any(ch in hv.INVALID_NAME_CHARS for ch in name)
@@ -96,7 +113,12 @@ class NameScanner:
 
             def record(start, end, signal):
                 name = sentence[start:end]
-                if not self._valid(name) or name in glossary:
+                is_entity = signal.startswith('entity:')
+                valid = ((2 <= len(name) <= 6 and _CJK_RUN.fullmatch(name)
+                          and name not in hv.STOPWORD_TERMS
+                          and name not in self.generic_entities)
+                         if is_entity else self._valid(name))
+                if not valid or name in glossary:
                     return
                 if any(lo <= start and end <= hi for lo, hi in protected):
                     return
@@ -148,6 +170,36 @@ class NameScanner:
             for address in self.address_pattern.finditer(sentence):
                 record(*address.span(1), 'address')
 
+            # F: named sects, places, skills and items. Only accept a full bounded
+            # CJK run or text following a strong grammatical boundary.
+            for run in _CJK_RUN.finditer(sentence):
+                run_text = run.group()
+                for relative, char in enumerate(run_text):
+                    entity_type = hv.ENTITY_SUFFIXES.get(char)
+                    if not entity_type:
+                        continue
+                    end = run.start() + relative + 1
+                    start = run.start()
+                    prefix = sentence[max(run.start(), end - 10):end - 1]
+                    boundary_end = -1
+                    for boundary in self.entity_boundaries:
+                        pos = prefix.rfind(boundary)
+                        if pos >= 0:
+                            boundary_end = max(boundary_end, pos + len(boundary))
+                    if boundary_end >= 0:
+                        start = max(run.start(), end - 10) + boundary_end
+                    elif end - start > 4:
+                        continue
+                    if not 2 <= end - start <= 6:
+                        continue
+                    if end < len(sentence) and _CJK_RUN.fullmatch(sentence[end]):
+                        if not sentence.startswith(self.entity_followers, end):
+                            continue
+                    name = sentence[start:end]
+                    if name in glossary:
+                        continue
+                    record(start, end, 'entity:' + entity_type)
+
         # Remove a substring only when every occurrence is inside the longer name
         # and both names have exactly the same number of physical occurrences.
         # This preserves a short name used independently, even with equal counts.
@@ -169,11 +221,16 @@ class NameScanner:
                 continue
             signals = [event[2] for event in data['events']]
             count = len(signals)
+            entity_signals = [signal for signal in signals if signal.startswith('entity:')]
+            person_signals = [signal for signal in signals if not signal.startswith('entity:')]
+            item_type = ('PERSON' if person_signals else
+                         entity_signals[0].split(':', 1)[1])
             confidence = (0.50 * ('surname' in signals)
                           + min(0.50, 0.25 * signals.count('verb_context'))
                           + 0.60 * ('direct_call' in signals)
                           + 0.30 * ('honorific' in signals)
                           + 0.30 * ('address' in signals)
+                          + 0.55 * bool(entity_signals)
                           + 0.10 * (count >= 2) + 0.10 * (count >= 5))
             if confidence < 0.30 and count == 1:
                 continue
@@ -181,6 +238,7 @@ class NameScanner:
                 'cn': name, 'confidence': round(min(confidence, 0.99), 2),
                 'count': count, 'signals': sorted(set(signals)),
                 'contexts': data['contexts'], 'suggested_vi': hv.han_viet_name(name),
+                'type': item_type,
             })
         results.sort(key=lambda item: (-item['confidence'], -item['count'], len(item['cn']), item['cn']))
         return results[:max_results]

@@ -95,15 +95,15 @@ HAN_VIET: dict[str, str] = {
 
 
 def han_viet_name(cn_text: str) -> str:
-    """Convert a Chinese name/term to Hán-Việt, title-cased."""
+    """Convert a Chinese term to Hán-Việt; return empty if any reading is unknown."""
     parts = []
     for ch in cn_text:
         if ch in HAN_VIET:
             parts.append(HAN_VIET[ch])
         elif '\u4e00' <= ch <= '\u9fff':
-            parts.append(ch)
+            return ''
     if not parts:
-        return cn_text
+        return ''
     return ' '.join(p.capitalize() for p in parts)
 
 

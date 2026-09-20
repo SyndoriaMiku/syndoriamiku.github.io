@@ -6303,8 +6303,8 @@
     {
         "title": "Tổng hợp truyện ngắn",
         "slug": "0130",
-        "date": "18/09/2026",
-        "timestamp": 1789737364.402984,
+        "date": "21/09/2026",
+        "timestamp": 1789931326.483703,
         "chapters": [
             {
                 "id": "000001",
@@ -6415,6 +6415,16 @@
                 "id": "000022",
                 "name": "Ningguang khóa tinh dạy dỗ",
                 "date": "18/09/2026"
+            },
+            {
+                "id": "000023",
+                "name": "Ta tại diễn đàn phát tuyệt yoga kiều thê chiếu sau, nàng trở thành thợ săn pháo giá đỡ",
+                "date": "21/09/2026"
+            },
+            {
+                "id": "000024",
+                "name": "Thiên tài thiên kim cùng chuyển sinh công chúa gặp rủi ro sa đọa chuyện tình",
+                "date": "21/09/2026"
             }
         ]
     },
@@ -7652,6 +7662,175 @@
                 "id": "000010",
                 "name": "Chương 10",
                 "date": "16/09/2026"
+            }
+        ]
+    },
+    {
+        "title": "Cửu Chuyển Huyền Tẫn giám",
+        "slug": "0145",
+        "date": "21/09/2026",
+        "timestamp": 1789931257.814375,
+        "chapters": [
+            {
+                "id": "000001",
+                "name": "Thứ 1 chương Tô Mặc xuất sư, tình kiếp truyền nhân lẻn vào Kiếm Tông",
+                "date": "21/09/2026"
+            },
+            {
+                "id": "000002",
+                "name": "Thứ 2 chương Hàn đàm đêm gặp, Huyền chỉ chơi huyệt bức cao trào",
+                "date": "21/09/2026"
+            },
+            {
+                "id": "000003",
+                "name": "Thứ 3 chương Thác nước sau vào, phá thân điên cuồng thao bên trong xạ khóa tình",
+                "date": "21/09/2026"
+            },
+            {
+                "id": "000004",
+                "name": "Thứ 4 chương Nghe triều các buộc chặt, giả quỳ cầu xin tha thứ thật nhục nhã",
+                "date": "21/09/2026"
+            },
+            {
+                "id": "000005",
+                "name": "Thứ 5 chương Tấc chỉ dạy dỗ, bức nhận chủ mẹ người cẩu",
+                "date": "21/09/2026"
+            },
+            {
+                "id": "000006",
+                "name": "Thứ 6 chương Nô Ấn hoàn thành, Kiếm Tông tiểu sư muội triệt để luân hãm",
+                "date": "21/09/2026"
+            },
+            {
+                "id": "000007",
+                "name": "Thứ 7 chương Tiếp tục sâu điều, gợn nô mới nếm thử côn thịt tư vị",
+                "date": "21/09/2026"
+            },
+            {
+                "id": "000008",
+                "name": "Thứ 8 chương Lâm Thanh Hàn hiện thân, song xu đồng thời vào cuộc",
+                "date": "21/09/2026"
+            },
+            {
+                "id": "000009",
+                "name": "Thứ 9 chương Xâm nhập Thanh Hàn hiên, mật thất song phi dạy dỗ",
+                "date": "21/09/2026"
+            },
+            {
+                "id": "000010",
+                "name": "Thứ 10 chương Song xu cùng nô, triệt để biến thành chuyên chúc nhục tiện khí",
+                "date": "21/09/2026"
+            },
+            {
+                "id": "000011",
+                "name": "Thứ 11 chương Đưa vào Quần Phương các, tiên tử bị kỹ nữ làm nhục",
+                "date": "21/09/2026"
+            },
+            {
+                "id": "000012",
+                "name": "Thứ 12 chương Nhận về song nô, bày ra thanh lâu mới kỹ xảo",
+                "date": "21/09/2026"
+            },
+            {
+                "id": "000013",
+                "name": "Thứ 13 chương Tân duệ thi đấu mở ra, bí cảnh sắp đặt",
+                "date": "21/09/2026"
+            },
+            {
+                "id": "000014",
+                "name": "Thứ 14 chương Cố ý hất ra vướng bận giả, lộ ra dâm hoang đế quốc",
+                "date": "21/09/2026"
+            },
+            {
+                "id": "000015",
+                "name": "Thứ 15 chương Lạc nguyệt cốc hạ dược, Tần trưởng lão trúng chiêu",
+                "date": "21/09/2026"
+            },
+            {
+                "id": "000016",
+                "name": "Thứ 16 chương Thục nữ bị thao đến sụp đổ, trước mặt mọi người nhận chủ",
+                "date": "21/09/2026"
+            },
+            {
+                "id": "000017",
+                "name": "Thứ 17 chương Tần Mạn Nương triệt để biến thành tài sản riêng ( Tiến độ hiện tại )",
+                "date": "21/09/2026"
+            }
+        ]
+    },
+    {
+        "title": "Tông chủ mẫu thân của ta",
+        "slug": "0146",
+        "date": "21/09/2026",
+        "timestamp": 1789931273.9162,
+        "chapters": [
+            {
+                "id": "000001",
+                "name": "Thứ 0 chương Lời mở đầu",
+                "date": "21/09/2026"
+            },
+            {
+                "id": "000002",
+                "name": "Thứ 1 chương Đầu ngón tay sơ bộ",
+                "date": "21/09/2026"
+            },
+            {
+                "id": "000003",
+                "name": "Thứ 2 chương Đêm tối thăm dò tông chủ các",
+                "date": "21/09/2026"
+            },
+            {
+                "id": "000004",
+                "name": "Thứ 3 chương Nàng ngăn không được, hắn nhịn không được",
+                "date": "21/09/2026"
+            },
+            {
+                "id": "000005",
+                "name": "Thứ 4 chương Chữa thương đêm lỗ hổng",
+                "date": "21/09/2026"
+            },
+            {
+                "id": "000006",
+                "name": "Thứ 5 chương Sơn đạo ngoái nhìn",
+                "date": "21/09/2026"
+            },
+            {
+                "id": "000007",
+                "name": "Thứ 6 chương Mê chướng đêm",
+                "date": "21/09/2026"
+            },
+            {
+                "id": "000008",
+                "name": "Thứ 7 chương Ma đạo cổ trận",
+                "date": "21/09/2026"
+            }
+        ]
+    },
+    {
+        "title": "Loạn thế Thương Lan 1-4",
+        "slug": "0147",
+        "date": "21/09/2026",
+        "timestamp": 1789931310.22258,
+        "chapters": [
+            {
+                "id": "000001",
+                "name": "Chương 1: Nữ hiệp bị các tiểu quỷ dạy dỗ trở thành dưới hông ngựa cái",
+                "date": "21/09/2026"
+            },
+            {
+                "id": "000002",
+                "name": "Chương 02: Kỹ viện dâm hí kịch",
+                "date": "21/09/2026"
+            },
+            {
+                "id": "000003",
+                "name": "Chương 03: Nữ hiệp hai người dâm hí kịch",
+                "date": "21/09/2026"
+            },
+            {
+                "id": "000004",
+                "name": "Chương 04: Bạch nữ hiệp khăng khăng muốn hướng về hắc thủy ổ, Sở trang chủ dưới ánh trăng múa kiếm ức vong phu",
+                "date": "21/09/2026"
             }
         ]
     }

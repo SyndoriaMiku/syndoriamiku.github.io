@@ -1,9 +1,11 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext, simpledialog, ttk
-import json, os, sys, base64, datetime, time, threading
+import json, os, sys, base64, datetime, time, threading, queue
 import unicodedata, re
 from tkinterdnd2 import TkinterDnD, DND_FILES
-from phrase_translation import render_translation, split_source_text, response_by_line, TranslationFormatError
+from phrase_translation import (PhraseParser, TranslationFormatError, render_translation,
+                                response_by_line, split_source_text)
+from name_glossary import update_name_cfg
 try:
     from curl_cffi import requests as browser_requests, CurlHttpVersion
 except ImportError:
@@ -658,10 +660,8 @@ class TranslatorGUI:
                 print(f"Lỗi khi đọc file name.cfg: {e}")
         return name_dict
 
-    def translate_api(self, text, name_dict=None):
-        text = unicodedata.normalize('NFC', text)
-        if not text.strip():
-            return text
+    def _request_api_response(self, text):
+        """Return the structured phrase response without rendering Vietnamese."""
         if not self.api_cookie:
             raise RuntimeError("API theo cụm từ yêu cầu đăng nhập. Hãy nhập Cookie qua nút 'Phiên API'.")
         if browser_requests is None:
@@ -670,18 +670,7 @@ class TranslatorGUI:
                 f'"{sys.executable}" -m pip install curl_cffi==0.16.3'
             )
         if len(text) > CHUNK_LIMIT:
-            result = ''
-            for index, part in enumerate(split_source_text(text, CHUNK_LIMIT, name_dict)):
-                if index:
-                    time.sleep(DELAY)
-                translated = self.translate_api(part, name_dict)
-                if translated is None:
-                    return None
-                if result and translated and not result[-1].isspace() and not translated[0].isspace():
-                    result += ' '
-                result += translated
-            self.phrase_cache[text] = ''.join(self.phrase_cache.get(part, '') for part in split_source_text(text, CHUNK_LIMIT, name_dict))
-            return result
+            raise ValueError(f"Nội dung request vượt quá giới hạn {CHUNK_LIMIT} ký tự.")
         headers = {"Origin": API_BASE_URL, "Referer": API_BASE_URL + "/trans/",
                    "Cookie": self.api_cookie}
         preferred = getattr(self, '_api_preferred_version', None)
@@ -716,16 +705,36 @@ class TranslatorGUI:
         if res.status_code in (301, 302, 303, 307, 308, 401, 403):
             raise RuntimeError("API từ chối phiên đăng nhập hoặc chuyển hướng. Hãy cập nhật Cookie qua 'Phiên API'.")
         if res.status_code != 200:
-            return None
+            raise RuntimeError(f"API trả mã lỗi HTTP {res.status_code}.")
         res.encoding = 'utf-8'
+        return res.text
+
+    def translate_api(self, text, name_dict=None):
+        text = unicodedata.normalize('NFC', text)
+        if not text.strip():
+            return text
+        if len(text) > CHUNK_LIMIT:
+            result = ''
+            for index, part in enumerate(split_source_text(text, CHUNK_LIMIT, name_dict)):
+                if index:
+                    time.sleep(DELAY)
+                translated = self.translate_api(part, name_dict)
+                if translated is None:
+                    return None
+                if result and translated and not result[-1].isspace() and not translated[0].isspace():
+                    result += ' '
+                result += translated
+            self.phrase_cache[text] = ''.join(self.phrase_cache.get(part, '') for part in split_source_text(text, CHUNK_LIMIT, name_dict))
+            return result
+        response = self._request_api_response(text)
         translated = render_translation(
-            res.text, text, name_dict,
+            response, text, name_dict,
             translate_fragment=self.translate_cached_fragment,
         )
-        self.phrase_cache[text] = res.text
-        for line, response in response_by_line(res.text, text):
-            if response:
-                self.phrase_cache[line] = response
+        self.phrase_cache[text] = response
+        for line, line_response in response_by_line(response, text):
+            if line_response:
+                self.phrase_cache[line] = line_response
         return translated
 
     def translate_cached_fragment(self, text):
@@ -780,15 +789,70 @@ class TranslatorGUI:
         return cn
 
     def scan_name_candidates(self, text: str, max_results: int = 250) -> list:
-        """Scan person names using syntactic boundaries and the saved glossary."""
+        """Scan names and named entities using syntactic boundaries."""
         if not _NAME_SCANNER_OK:
             raise RuntimeError("Không tải được name_scanner.py. Hãy kiểm tra module và han_viet.py.")
         results = _NameScanner().scan(
             text, existing_glossary=set(self.load_name_config()), max_results=max_results,
         )
-        for item in results:
-            item['type'] = 'PERSON'
         return results
+
+    @staticmethod
+    def _format_han_viet(reading):
+        reading = unicodedata.normalize('NFC', reading or '').strip()
+        if not reading or re.search(r'[\u3400-\u4dbf\u4e00-\u9fff]', reading):
+            return ''
+        return ' '.join(word[:1].upper() + word[1:].lower()
+                        for word in reading.split() if word)
+
+    def _han_viet_from_api_line(self, source, response):
+        parser = PhraseParser()
+        parser.feed(response)
+        parser.close()
+        cursor = 0
+        parts = []
+
+        def append_reading(segment, api_reading=''):
+            if not segment:
+                return True
+            reading = self._format_han_viet(api_reading) or self._suggest_vi(segment)
+            if not reading:
+                return False
+            parts.append(reading)
+            return True
+
+        for phrase in parser.phrases:
+            start = source.find(phrase['source'], cursor)
+            if start < 0 or not append_reading(source[cursor:start]):
+                return ''
+            if not append_reading(phrase['source'], phrase['han_viet']):
+                return ''
+            cursor = start + len(phrase['source'])
+        if not append_reading(source[cursor:]):
+            return ''
+        return ' '.join(parts)
+
+    def _fill_han_viet_from_api(self, candidates):
+        """Fill all Scan Names suggestions from one structured API request."""
+        if not candidates:
+            return
+        payload = '\n'.join(candidate['cn'] for candidate in candidates)
+        response = self._request_api_response(payload)
+        parser = PhraseParser()
+        parser.feed(response)
+        parser.close()
+        if parser.unsupported or parser.current is not None or not parser.phrases:
+            raise TranslationFormatError(
+                'API không trả các thẻ cụm từ có thuộc tính h. Hãy kiểm tra lại Cookie phiên.'
+            )
+        lines = response_by_line(response, payload)
+        if len(lines) != len(candidates):
+            raise TranslationFormatError('API trả số dòng Hán-Việt không khớp danh sách tên.')
+        for candidate, (source, line_response) in zip(candidates, lines):
+            suggestion = self._han_viet_from_api_line(source, line_response)
+            if suggestion:
+                candidate['suggested_vi'] = suggestion
+                candidate['han_viet_source'] = 'api'
 
     def open_scan_names_dialog(self):
         """Open the Scan Names dialog."""
@@ -796,24 +860,50 @@ class TranslatorGUI:
         if not raw_text:
             messagebox.showwarning("Chú ý", "Vui lòng nhập nội dung tiếng Trung trước!")
             return
+        if not self.api_cookie:
+            self.prompt_api_session()
+            if not self.api_cookie:
+                return
 
         self.root.config(cursor="watch")
         self.btn_scan.config(state="disabled", text="⏳ Đang quét...")
         self.root.update_idletasks()
 
-        try:
-            candidates = self.scan_name_candidates(raw_text)
-        except Exception as e:
-            self.root.config(cursor="")
-            self.btn_scan.config(state="normal", text="🔍 Scan Names")
-            messagebox.showerror("Lỗi", f"Lỗi khi quét tên:\n{e}")
-            return
-        finally:
-            self.root.config(cursor="")
-            self.btn_scan.config(state="normal", text="🔍 Scan Names")
+        results = queue.Queue()
+        def worker():
+            try:
+                candidates = self.scan_name_candidates(raw_text)
+                api_warning = None
+                try:
+                    self._fill_han_viet_from_api(candidates)
+                except Exception as error:
+                    api_warning = str(error)
+                results.put((candidates, api_warning, None))
+            except Exception as error:
+                results.put((None, None, error))
 
-        self.lbl_status.config(text=f"Đã quét xong: tìm thấy {len(candidates)} ứng viên")
-        self._show_scan_names_dialog(candidates)
+        def poll():
+            try:
+                candidates, api_warning, error = results.get_nowait()
+            except queue.Empty:
+                self.root.after(50, poll)
+                return
+            self.root.config(cursor="")
+            self.btn_scan.config(state="normal", text="🔍 Scan Names")
+            if error:
+                messagebox.showerror("Lỗi", f"Lỗi khi quét tên:\n{error}")
+                return
+            self.lbl_status.config(text=f"Đã quét xong: tìm thấy {len(candidates)} ứng viên")
+            if api_warning:
+                messagebox.showwarning(
+                    "Không lấy được Hán-Việt từ API",
+                    f"Danh sách vẫn được mở bằng gợi ý cục bộ nếu có.\n\n{api_warning}",
+                    parent=self.root,
+                )
+            self._show_scan_names_dialog(candidates)
+
+        threading.Thread(target=worker, daemon=True).start()
+        self.root.after(50, poll)
 
     def _show_scan_names_dialog(self, candidates):
 
@@ -828,8 +918,13 @@ class TranslatorGUI:
         geo = cfg.get("builder_scan_names", "860x560")
         dlg.geometry(geo)
         dlg.minsize(700, 420)
+        filter_after_id = None
 
         def on_close():
+            nonlocal filter_after_id
+            if filter_after_id is not None:
+                dlg.after_cancel(filter_after_id)
+                filter_after_id = None
             save_config({"builder_scan_names": dlg.geometry()})
             dlg.destroy()
         dlg.protocol("WM_DELETE_WINDOW", on_close)
@@ -877,6 +972,13 @@ class TranslatorGUI:
                    font=("Arial", 9)).pack(side=tk.LEFT, padx=(2, 0))
         tk.Label(filter_frame, text="%", fg="#a1a1aa", bg="#18181b", font=("Arial", 9)).pack(side=tk.LEFT, padx=(2, 12))
 
+        search_var = tk.StringVar()
+        tk.Label(filter_frame, text="Tìm:", fg="#a1a1aa", bg="#18181b", font=("Arial", 9)).pack(side=tk.LEFT)
+        search_entry = tk.Entry(filter_frame, textvariable=search_var, width=20,
+                                bg="#27272a", fg="white", insertbackground="white",
+                                relief="flat", font=("Arial", 9))
+        search_entry.pack(side=tk.LEFT, padx=(4, 0), ipady=2)
+
         # Column headers
         col_hdr = tk.Frame(dlg, bg="#27272a")
         col_hdr.pack(fill=tk.X, padx=12, pady=(6, 0))
@@ -912,7 +1014,9 @@ class TranslatorGUI:
                  font=("Arial", 8)).pack(anchor="w", padx=16, pady=4)
 
         ignored: set = set()
-        row_widgets: list = []  # list of (frame, cn)
+        row_widgets: list = []  # list of (frame, cn, vi_var)
+        edited_values = {c['cn']: c.get('suggested_vi', '') for c in candidates}
+        selected = {c['cn'] for c in candidates if c.get('suggested_vi', '').strip()}
 
         type_badge_colors = {
             'PERSON': '#1d4ed8', 'SECT': '#7c3aed', 'PLACE': '#065f46',
@@ -920,17 +1024,19 @@ class TranslatorGUI:
         }
 
         MAX_DISPLAY = 150
-
         def build_list(filter_type="TẤT CẢ", min_conf=0):
             for w in inner.winfo_children():
                 w.destroy()
             row_widgets.clear()
 
+            query = search_var.get().strip().casefold()
             matching = [
                 c for c in candidates
                 if c['cn'] not in ignored
                 and (filter_type == "TẤT CẢ" or c['type'] == filter_type)
                 and (c['confidence'] * 100 >= min_conf)
+                and (not query or query in c['cn'].casefold()
+                     or query in edited_values[c['cn']].casefold())
             ]
 
             shown = 0
@@ -938,7 +1044,16 @@ class TranslatorGUI:
                 row_bg = "#18181b" if shown % 2 == 0 else "#1c1c1f"
                 row = tk.Frame(inner, bg=row_bg)
                 row.pack(fill=tk.X, pady=1)
-                row_widgets.append((row, c['cn']))
+
+                selected_var = tk.BooleanVar(value=c['cn'] in selected)
+                def toggle_selected(cn=c['cn'], var=selected_var):
+                    if var.get():
+                        selected.add(cn)
+                    else:
+                        selected.discard(cn)
+                tk.Checkbutton(row, variable=selected_var, command=toggle_selected,
+                               bg=row_bg, activebackground=row_bg, selectcolor="#27272a",
+                               highlightthickness=0, borderwidth=0).pack(side=tk.LEFT, padx=(4, 0))
 
                 # CN label (clickable to show context)
                 cn_lbl = tk.Label(row, text=c['cn'], fg="#ffffff", bg=row_bg,
@@ -972,18 +1087,22 @@ class TranslatorGUI:
                          font=("Arial", 9, "bold"), width=6).pack(side=tk.LEFT, padx=4)
 
                 # Editable VI suggestion
-                vi_var = tk.StringVar(value=c['suggested_vi'])
+                vi_var = tk.StringVar(value=edited_values[c['cn']])
+                vi_var.trace_add("write", lambda *_args, cn=c['cn'], var=vi_var:
+                                 edited_values.__setitem__(cn, var.get()))
                 vi_entry = tk.Entry(row, textvariable=vi_var, bg=row_bg, fg="#e4e4e7",
                                     insertbackground="white", font=("Arial", 10), relief="flat",
                                     highlightthickness=1, highlightbackground="#3f3f46",
                                     highlightcolor="#7c3aed")
                 vi_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=3, padx=6)
+                row_widgets.append((row, c['cn'], vi_var))
 
                 # Ignore button (fast: removes just this row)
                 def do_ignore(target_row=row, cn=c['cn']):
                     ignored.add(cn)
                     target_row.destroy()
-                    for idx, (r, name) in enumerate(row_widgets):
+                    selected.discard(cn)
+                    for idx, (r, name, _var) in enumerate(row_widgets):
                         if name == cn:
                             row_widgets.pop(idx)
                             break
@@ -999,10 +1118,12 @@ class TranslatorGUI:
                     if not vi_text:
                         messagebox.showwarning("Chú ý", "Vui lòng nhập tên tiếng Việt!", parent=dlg)
                         return
-                    self._add_name_to_cfg(cn, vi_text)
+                    if not self._add_name_to_cfg(cn, vi_text, parent=dlg):
+                        return
                     ignored.add(cn)
+                    selected.discard(cn)
                     target_row.destroy()
-                    for idx, (r, name) in enumerate(row_widgets):
+                    for idx, (r, name, _var) in enumerate(row_widgets):
                         if name == cn:
                             row_widgets.pop(idx)
                             break
@@ -1021,74 +1142,92 @@ class TranslatorGUI:
                 status_var.set(f"Hiển thị {MAX_DISPLAY}/{len(matching)} ứng viên hàng đầu (dùng bộ lọc để thu hẹp)")
 
         def apply_filter(event=None):
-            build_list(type_filter_var.get(), min_conf_var.get())
+            nonlocal filter_after_id
+            filter_after_id = None
+            try:
+                minimum = min_conf_var.get()
+            except tk.TclError:
+                return
+            build_list(type_filter_var.get(), minimum)
+
+        def schedule_filter(*_args):
+            nonlocal filter_after_id
+            if filter_after_id is not None:
+                dlg.after_cancel(filter_after_id)
+            filter_after_id = dlg.after(120, apply_filter)
 
         type_combo.bind("<<ComboboxSelected>>", apply_filter)
-        min_conf_var.trace_add("write", lambda *_: apply_filter())
+        min_conf_var.trace_add("write", schedule_filter)
+        search_var.trace_add("write", schedule_filter)
 
         build_list()
 
-        # Bottom bar: Add All Visible
+        # Bottom bar: select and add in one batch (one name.cfg write).
         tk.Frame(dlg, bg="#27272a", height=1).pack(fill=tk.X, padx=12)
         bot = tk.Frame(dlg, bg="#09090b", pady=8)
         bot.pack(fill=tk.X, padx=12)
 
-        def add_all_visible():
-            added = 0
-            for _row, _cn in list(row_widgets):
-                for child in _row.winfo_children():
-                    if isinstance(child, tk.Entry):
-                        vi_text = child.get().strip()
-                        if vi_text and _cn not in ignored:
-                            self._add_name_to_cfg(_cn, vi_text)
-                            ignored.add(_cn)
-                            added += 1
-                        break
-            build_list(type_filter_var.get(), min_conf_var.get())
-            status_var.set(f"✅ Đã thêm {added} tên vào name.cfg")
+        def select_visible(value):
+            for _row, cn, _vi_var in row_widgets:
+                if value and edited_values[cn].strip():
+                    selected.add(cn)
+                else:
+                    selected.discard(cn)
+            apply_filter()
+
+        def add_selected():
+            entries = [(c['cn'], edited_values[c['cn']].strip()) for c in candidates
+                       if c['cn'] in selected and c['cn'] not in ignored
+                       and edited_values[c['cn']].strip()]
+            missing = sum(1 for cn in selected
+                          if cn not in ignored and not edited_values[cn].strip())
+            if not entries:
+                messagebox.showwarning("Chú ý", "Chưa chọn tên nào có bản dịch tiếng Việt.", parent=dlg)
+                return
+            if not self._add_names_to_cfg(entries, parent=dlg):
+                return
+            saved = {cn for cn, _vi in entries}
+            ignored.update(saved)
+            selected.difference_update(saved)
+            apply_filter()
+            suffix = f"; bỏ qua {missing} mục trống" if missing else ""
+            status_var.set(f"✅ Đã lưu {len(entries)} tên vào name.cfg{suffix}")
+
+        tk.Button(bot, text="Chọn mục đang hiện", bg="#27272a", fg="#d4d4d8",
+                  relief="flat", borderwidth=0, padx=10, pady=6, font=("Arial", 8),
+                  cursor="hand2", command=lambda: select_visible(True)).pack(side=tk.LEFT)
+        tk.Button(bot, text="Bỏ chọn đang hiện", bg="#27272a", fg="#a1a1aa",
+                  relief="flat", borderwidth=0, padx=10, pady=6, font=("Arial", 8),
+                  cursor="hand2", command=lambda: select_visible(False)).pack(side=tk.LEFT, padx=4)
 
         tk.Button(bot, text="Đóng", bg="#27272a", fg="#a1a1aa", activebackground="#3f3f46",
                   relief="flat", borderwidth=0, padx=16, pady=6, font=("Arial", 9),
                   cursor="hand2", command=on_close).pack(side=tk.RIGHT, padx=(6, 0))
 
-        tk.Button(bot, text="✅ Thêm tất cả đang hiển thị", bg="#7c3aed", fg="white",
+        tk.Button(bot, text="✅ Thêm các mục đã chọn", bg="#7c3aed", fg="white",
                   activebackground="#6d28d9", relief="flat", borderwidth=0,
                   padx=16, pady=6, font=("Arial", 9, "bold"), cursor="hand2",
-                  command=add_all_visible).pack(side=tk.RIGHT)
+                  command=add_selected).pack(side=tk.RIGHT)
 
 
-    def _add_name_to_cfg(self, cn: str, vi: str):
-        """Add/update a name entry to name.cfg — reuses ReviewWindow.save_name_to_cfg logic."""
+    def _name_cfg_path(self):
         if getattr(sys, 'frozen', False):
             cfg_dir = os.path.dirname(sys.executable)
         else:
             cfg_dir = BASE_DIR
-        cfg_path = os.path.join(cfg_dir, "name.cfg")
-        cn = unicodedata.normalize("NFC", cn.strip())
-        vi = unicodedata.normalize("NFC", vi.strip())
+        return os.path.join(cfg_dir, "name.cfg")
 
+    def _add_names_to_cfg(self, entries, parent=None):
+        """Validate and persist several names using one atomic file replacement."""
         try:
-            lines = []
-            if os.path.exists(cfg_path):
-                with open(cfg_path, "r", encoding="utf-8") as f:
-                    lines = f.readlines()
-            found = False
-            for i, line in enumerate(lines):
-                stripped = line.strip()
-                if stripped and not stripped.startswith("#") and "=" in stripped:
-                    k, _ = stripped.split("=", 1)
-                    if k.strip() == cn:
-                        lines[i] = f"{cn}={vi}\n"
-                        found = True
-                        break
-            if not found:
-                if lines and not lines[-1].endswith("\n"):
-                    lines.append("\n")
-                lines.append(f"{cn}={vi}\n")
-            with open(cfg_path, "w", encoding="utf-8") as f:
-                f.writelines(lines)
+            update_name_cfg(self._name_cfg_path(), entries)
+            return True
         except Exception as e:
-            messagebox.showerror("Lỗi", f"Không thể ghi name.cfg:\n{e}")
+            messagebox.showerror("Lỗi", f"Không thể ghi name.cfg:\n{e}", parent=parent or self.root)
+            return False
+
+    def _add_name_to_cfg(self, cn: str, vi: str, parent=None):
+        return self._add_names_to_cfg([(cn, vi)], parent=parent)
 
     def start_thread(self):
         if not self.api_cookie:
