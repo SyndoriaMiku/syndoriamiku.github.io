@@ -756,11 +756,25 @@ class TranslatorGUI:
         results = _NameScanner().scan(
             text, existing_glossary=set(self.load_name_config()), max_results=max_results,
         )
-        # The legacy translation API has no structured Hán-Việt field. Leave the
-        # value empty so the user can copy the source and look it up externally.
+        # The legacy API provides a normal Vietnamese translation, filled below
+        # after all candidates have been collected into one request.
         for item in results:
             item['suggested_vi'] = ''
         return results
+
+    def _fill_name_suggestions_from_api(self, candidates):
+        from name_suggestions import NameSuggestions
+        if not hasattr(self, '_name_suggestions'):
+            self._name_suggestions = NameSuggestions()
+
+        def fetch(names):
+            reply = self.translate_api('\n'.join(names))
+            if not reply:
+                raise RuntimeError('API dịch thường không trả kết quả.')
+            return reply.splitlines()
+
+        self._name_suggestions.fill(candidates, fetch, ('legacy', API_URL))
+        return candidates
 
     def open_scan_names_dialog(self):
         """Open the Scan Names dialog."""
@@ -776,13 +790,19 @@ class TranslatorGUI:
         results = queue.Queue()
         def worker():
             try:
-                results.put((self.scan_name_candidates(raw_text), None))
+                candidates = self.scan_name_candidates(raw_text)
+                api_warning = None
+                try:
+                    candidates = self._fill_name_suggestions_from_api(candidates)
+                except Exception as error:
+                    api_warning = str(error)
+                results.put((candidates, api_warning, None))
             except Exception as error:
-                results.put((None, error))
+                results.put((None, None, error))
 
         def poll():
             try:
-                candidates, error = results.get_nowait()
+                candidates, api_warning, error = results.get_nowait()
             except queue.Empty:
                 self.root.after(50, poll)
                 return
@@ -792,6 +812,12 @@ class TranslatorGUI:
                 messagebox.showerror("Lỗi", f"Lỗi khi quét tên:\n{error}")
                 return
             self.lbl_status.config(text=f"Đã quét xong: tìm thấy {len(candidates)} ứng viên")
+            if api_warning:
+                messagebox.showwarning(
+                    "Không tự dịch được tên",
+                    f"Bạn vẫn có thể dùng nút Copy Hán để tra bên ngoài.\n\n{api_warning}",
+                    parent=self.root,
+                )
             self._show_scan_names_dialog(candidates)
 
         threading.Thread(target=worker, daemon=True).start()
@@ -858,7 +884,7 @@ class TranslatorGUI:
         type_combo.pack(side=tk.LEFT, padx=(4, 12))
 
         min_conf_var = tk.IntVar(value=0)
-        tk.Label(filter_frame, text="Conf ≥", fg="#a1a1aa", bg="#18181b", font=("Arial", 9)).pack(side=tk.LEFT)
+        tk.Label(filter_frame, text="Điểm ≥", fg="#a1a1aa", bg="#18181b", font=("Arial", 9)).pack(side=tk.LEFT)
         tk.Spinbox(filter_frame, from_=0, to=99, textvariable=min_conf_var, width=4,
                    bg="#27272a", fg="white", insertbackground="white", relief="flat",
                    font=("Arial", 9)).pack(side=tk.LEFT, padx=(2, 0))
@@ -874,8 +900,8 @@ class TranslatorGUI:
         # Column headers
         col_hdr = tk.Frame(dlg, bg="#27272a")
         col_hdr.pack(fill=tk.X, padx=12, pady=(6, 0))
-        for text_label, w in [("Tiếng Trung", 14), ("Loại", 9), ("Xuất hiện", 8), ("Conf", 6),
-                              ("Hán-Việt đề xuất (có thể sửa)", 0), ("", 14)]:
+        for text_label, w in [("Tiếng Trung", 14), ("Loại", 9), ("Xuất hiện", 8), ("Điểm", 6),
+                              ("Bản dịch đề xuất (có thể sửa)", 0), ("", 14)]:
             anchor = "w" if w == 0 else "center"
             expand = w == 0
             tk.Label(col_hdr, text=text_label, fg="#71717a", bg="#27272a", font=("Arial", 8, "bold"),
@@ -908,14 +934,14 @@ class TranslatorGUI:
         ignored: set = set()
         row_widgets: list = []  # list of (frame, cn, vi_var)
         edited_values = {c['cn']: c.get('suggested_vi', '') for c in candidates}
-        selected = {c['cn'] for c in candidates if c.get('suggested_vi', '').strip()}
+        selected = set()  # Review suggestions before selecting them for saving.
 
         type_badge_colors = {
             'PERSON': '#1d4ed8', 'SECT': '#7c3aed', 'PLACE': '#065f46',
             'SKILL': '#b45309', 'ITEM': '#9f1239', 'UNKNOWN': '#3f3f46',
         }
 
-        MAX_DISPLAY = 150
+        MAX_DISPLAY = len(candidates)
         def build_list(filter_type="TẤT CẢ", min_conf=0):
             for w in inner.winfo_children():
                 w.destroy()
@@ -953,7 +979,7 @@ class TranslatorGUI:
                 cn_lbl.pack(side=tk.LEFT, padx=(8, 4), pady=4)
 
                 def show_ctx(ev, cand=c):
-                    ctxs = cand['contexts']
+                    ctxs = ['Căn cứ: ' + ', '.join(cand.get('signals', []))] + cand['contexts']
                     if ctxs:
                         messagebox.showinfo(
                             f"Ngữ cảnh: {cand['cn']}",

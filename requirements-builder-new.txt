@@ -1,3 +1,4 @@
 # Dependencies for builder_new.py (HTTP/3-capable Windows wheel verified).
 curl_cffi==0.16.3
 tkinterdnd2
+-r requirements-scanner.txt

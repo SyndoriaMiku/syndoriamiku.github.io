@@ -1,12 +1,13 @@
 # -*- mode: python ; coding: utf-8 -*-
+from PyInstaller.utils.hooks import collect_data_files
 
 
 a = Analysis(
     ['builder.py'],
     pathex=[],
     binaries=[],
-    datas=[('C:\\Users\\lyral\\.conda\\envs\\p310\\lib\\site-packages\\tkinterdnd2', 'tkinterdnd2')],
-    hiddenimports=['tkinterdnd2'],
+    datas=collect_data_files('tkinterdnd2') + collect_data_files('jieba'),
+    hiddenimports=['tkinterdnd2', 'jieba.posseg'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

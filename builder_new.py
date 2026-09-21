@@ -815,7 +815,7 @@ class TranslatorGUI:
         def append_reading(segment, api_reading=''):
             if not segment:
                 return True
-            reading = self._format_han_viet(api_reading) or self._suggest_vi(segment)
+            reading = self._format_han_viet(api_reading)
             if not reading:
                 return False
             parts.append(reading)
@@ -833,26 +833,26 @@ class TranslatorGUI:
         return ' '.join(parts)
 
     def _fill_han_viet_from_api(self, candidates):
-        """Fill all Scan Names suggestions from one structured API request."""
-        if not candidates:
-            return
-        payload = '\n'.join(candidate['cn'] for candidate in candidates)
-        response = self._request_api_response(payload)
-        parser = PhraseParser()
-        parser.feed(response)
-        parser.close()
-        if parser.unsupported or parser.current is not None or not parser.phrases:
-            raise TranslationFormatError(
-                'API không trả các thẻ cụm từ có thuộc tính h. Hãy kiểm tra lại Cookie phiên.'
-            )
-        lines = response_by_line(response, payload)
-        if len(lines) != len(candidates):
-            raise TranslationFormatError('API trả số dòng Hán-Việt không khớp danh sách tên.')
-        for candidate, (source, line_response) in zip(candidates, lines):
-            suggestion = self._han_viet_from_api_line(source, line_response)
-            if suggestion:
-                candidate['suggested_vi'] = suggestion
-                candidate['han_viet_source'] = 'api'
+        from name_suggestions import NameSuggestions
+        if not hasattr(self, '_name_suggestions'):
+            self._name_suggestions = NameSuggestions()
+
+        def fetch(names):
+            payload = '\n'.join(names)
+            response = self._request_api_response(payload)
+            parser = PhraseParser()
+            parser.feed(response)
+            parser.close()
+            if parser.unsupported or parser.current is not None or not parser.phrases:
+                raise RuntimeError('API không trả cụm từ hợp lệ. Hãy kiểm tra Cookie phiên.')
+            lines = response_by_line(response, payload)
+            if len(lines) != len(names):
+                raise ValueError('API trả lệch số dòng.')
+            return [self._han_viet_from_api_line(source, markup)
+                    for source, markup in lines]
+
+        self._name_suggestions.fill(candidates, fetch, ('han_viet', API_URL),
+                                    limit=CHUNK_LIMIT)
 
     def open_scan_names_dialog(self):
         """Open the Scan Names dialog."""
@@ -966,7 +966,7 @@ class TranslatorGUI:
         type_combo.pack(side=tk.LEFT, padx=(4, 12))
 
         min_conf_var = tk.IntVar(value=0)
-        tk.Label(filter_frame, text="Conf ≥", fg="#a1a1aa", bg="#18181b", font=("Arial", 9)).pack(side=tk.LEFT)
+        tk.Label(filter_frame, text="Điểm ≥", fg="#a1a1aa", bg="#18181b", font=("Arial", 9)).pack(side=tk.LEFT)
         tk.Spinbox(filter_frame, from_=0, to=99, textvariable=min_conf_var, width=4,
                    bg="#27272a", fg="white", insertbackground="white", relief="flat",
                    font=("Arial", 9)).pack(side=tk.LEFT, padx=(2, 0))
@@ -982,7 +982,7 @@ class TranslatorGUI:
         # Column headers
         col_hdr = tk.Frame(dlg, bg="#27272a")
         col_hdr.pack(fill=tk.X, padx=12, pady=(6, 0))
-        for text_label, w in [("Tiếng Trung", 14), ("Loại", 9), ("Xuất hiện", 8), ("Conf", 6),
+        for text_label, w in [("Tiếng Trung", 14), ("Loại", 9), ("Xuất hiện", 8), ("Điểm", 6),
                               ("Hán-Việt đề xuất (có thể sửa)", 0), ("", 14)]:
             anchor = "w" if w == 0 else "center"
             expand = w == 0
@@ -1016,14 +1016,14 @@ class TranslatorGUI:
         ignored: set = set()
         row_widgets: list = []  # list of (frame, cn, vi_var)
         edited_values = {c['cn']: c.get('suggested_vi', '') for c in candidates}
-        selected = {c['cn'] for c in candidates if c.get('suggested_vi', '').strip()}
+        selected = set()  # Review suggestions before selecting them for saving.
 
         type_badge_colors = {
             'PERSON': '#1d4ed8', 'SECT': '#7c3aed', 'PLACE': '#065f46',
             'SKILL': '#b45309', 'ITEM': '#9f1239', 'UNKNOWN': '#3f3f46',
         }
 
-        MAX_DISPLAY = 150
+        MAX_DISPLAY = len(candidates)
         def build_list(filter_type="TẤT CẢ", min_conf=0):
             for w in inner.winfo_children():
                 w.destroy()
@@ -1061,7 +1061,7 @@ class TranslatorGUI:
                 cn_lbl.pack(side=tk.LEFT, padx=(8, 4), pady=4)
 
                 def show_ctx(ev, cand=c):
-                    ctxs = cand['contexts']
+                    ctxs = ['Căn cứ: ' + ', '.join(cand.get('signals', []))] + cand['contexts']
                     if ctxs:
                         messagebox.showinfo(
                             f"Ngữ cảnh: {cand['cn']}",

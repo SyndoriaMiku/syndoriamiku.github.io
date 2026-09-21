@@ -1,0 +1,2 @@
+# Shared by builder.py and builder_new.py
+jieba==0.42.1

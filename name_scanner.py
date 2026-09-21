@@ -1,253 +1,191 @@
-"""Chinese name and named-entity candidates from syntactic boundaries.
+"""Lexicon-backed Chinese name discovery, independent of translation APIs.
 
-Run ``python name_scanner.py`` for a sample scan.
-Counts are distinct (text position, signal) hits, not fabricated repetitions.
+Names require complete syntactic boundaries and person evidence. Dictionary
+words are never promoted just because they recur. Scores are ranking weights,
+not probabilities; counts are physical occurrences, not rule matches.
 """
 from __future__ import annotations
 
+import logging
 import re
+import sys
+import threading
 import unicodedata
-from collections import defaultdict
+from functools import lru_cache
 
 import han_viet as hv
 
-_CJK = r"[\u3400-\u4dbf\u4e00-\u9fff]"
-_CJK_RUN = re.compile(_CJK + '+')
-_SENTENCE = re.compile(r'[^。！？\r\n]+[。！？]?')
+CJK = r'[\u3400-\u4dbf\u4e00-\u9fff]'
+RUN = re.compile(CJK + '+')
+FILLERS = frozenset('啊阿呀哎唉哦噢喔嗯唔呃诶欸哈呵嘿哼嘻哇啦嘛吧呢哟呐呜')
+COMMON = frozenset('任由 任凭 刘海 花形徽帜 少年 少女 男人 女人 老人 众人 对方 自己 什么 哪里 大家 时候 办法 方法 东西 身体 目光 表情'.split())
+GRAMMAR = frozenset('的了着把被这那你我他她它们吗呢吧地得和与及而则也却就都很更最仍又将正在')
+INTRO = ('名叫', '叫做', '叫作', '名为', '唤作', '人称', '自称')
+LEADS = ('告诉', '看见', '望向', '看向', '跟着', '跟随', '只见', '听见', '问向', '对', '向', '与', '和')
+PERSON_VERBS = (
+    '说道', '说', '问道', '问', '答道', '回答', '道', '笑道', '喊道', '喊',
+    '叫道', '叫', '哭道', '叹道', '点头', '摇头', '皱眉', '看着', '望着',
+    '抬头', '低头', '转身', '走进', '走出', '走来', '走向', '站起', '坐下',
+    '冷笑', '微笑', '苦笑', '沉思', '开口', '行礼', '出手', '拔剑',
+)
+MODIFIERS = ('轻声', '低声', '沉声', '冷声', '大声', '缓缓', '淡淡', '突然', '连忙', '轻轻', '笑着', '哭着', '小声')
+_LEXICON_LOCK = threading.Lock()
 
 
-def _alternatives(words):
-    return '|'.join(re.escape(word) for word in sorted(words, key=lambda s: (-len(s), s)))
+def alternatives(words):
+    return '|'.join(re.escape(w) for w in sorted(words, key=lambda w: (-len(w), w)))
+
+
+@lru_cache(maxsize=1)
+def lexicon():
+    try:
+        import jieba
+        import jieba.posseg
+    except ImportError as error:
+        raise RuntimeError('Thiếu bộ tách từ tiếng Trung. Cài bằng lệnh:\n'
+                           f'"{sys.executable}" -m pip install jieba==0.42.1') from error
+    jieba.setLogLevel(logging.ERROR)
+    tokenizer = jieba.Tokenizer()
+    tagger = jieba.posseg.POSTokenizer(tokenizer)
+    tokenizer.initialize()
+    return tokenizer, tagger.word_tag_tab
+
+
+@lru_cache(maxsize=32768)
+def word_parts(word):
+    tokenizer, tags = lexicon()
+    return tuple((part, tags.get(part, 'x')) for part in tokenizer.cut(word, HMM=False))
 
 
 class NameScanner:
-    """Collect name suggestions; confidence is a rule score, not probability."""
-
     def __init__(self):
-        self.generic_entities = {
-            '办法', '方法', '说法', '想法', '做法', '看法', '功法', '剑法',
-            '长剑', '短剑', '宝剑', '刀剑', '丹药', '法器', '武器', '宝物',
-            '国家', '山上', '山下', '海上', '海边', '河边', '城中', '城内', '城外',
-        }
-        self.verbs = hv.VERB_SAY | hv.VERB_ACT
-        self.verb_pattern = re.compile(_alternatives(self.verbs))
-        self.call_pattern = re.compile(_alternatives(hv.NAME_CALL_PREFIXES))
-        self.title_pattern = re.compile(_alternatives(hv.TITLE_SUFFIXES))
-        self.stopword_pattern = re.compile(_alternatives(hv.STOPWORD_TERMS | self.generic_entities))
-        self.surname_pattern = re.compile(_alternatives(set(hv.DOUBLE_SURNAMES) | hv.SINGLE_SURNAMES | {'阿'}))
-        self.address_pattern = re.compile(r'[「『“"‘]\s*(' + _CJK + r'{1,4})(?=[，,!！])')
-        self.followers = tuple(sorted(
-            self.verbs | hv.TITLE_SUFFIXES | {'的', '向', '朝', '对', '与', '和', '被', '把', '也', '却', '便', '又', '正', '已', '是', '有', '行礼'},
-            key=lambda s: (-len(s), s),
-        ))
-        self.entity_boundaries = tuple(sorted({
-            '来自', '加入', '前往', '位于', '进入', '回到', '离开', '攻打', '赶往',
-            '拜入', '出自', '隶属', '乃是', '便是', '得到', '获得', '施展', '修炼',
-            '使出', '拿出', '祭出', '炼制', '服下', '吞下', '抵达', '返回',
-            '在', '于', '往',
-        }, key=lambda s: (-len(s), s)))
-        self.entity_followers = tuple(sorted(
-            self.verbs | {'修炼', '弟子', '长老', '宗主', '门主', '之中', '之内',
-                          '附近', '外面', '里面', '所在', '的人', '中', '内', '上', '下',
-                          '后', '前', '时', '外'},
-            key=lambda s: (-len(s), s)))
+        self.surnames = tuple(sorted(set(hv.DOUBLE_SURNAMES) | hv.SINGLE_SURNAMES | {'柳', '岳'}, key=lambda w: -len(w)))
+        self.right = re.compile(r'(?:(?:' + alternatives(MODIFIERS) + r'))?(?:' + alternatives(PERSON_VERBS) + ')')
+        self.titles = re.compile(alternatives(hv.TITLE_SUFFIXES))
+        self.intros = re.compile(alternatives(INTRO))
+        self.left = re.compile(alternatives(INTRO + LEADS))
+        self.entity_patterns = [
+            ('SECT', re.compile(r'(?:加入|拜入|出自|来自)(' + CJK + r'{2,6}[宗门派教阁])(?=$|[的中内外，。]|弟子|长老)')),
+            ('PLACE', re.compile(r'(?:来到|抵达|进入|前往|返回)(' + CJK + r'{1,5}[城山岛谷湖国])(?=$|[的中内外后前，。])')),
+            ('SKILL', re.compile(r'(?:施展|修炼|使出)(' + CJK + r'{2,6}(?:剑法|功法|心法|神功|诀|术))(?=$|[的后，。])')),
+            ('ITEM', re.compile(r'(?:拿出|祭出|得到|获得)(' + CJK + r'{2,6}[鼎丹符镜塔])(?=$|[的后，。])')),
+        ]
 
-    def _valid(self, name):
-        if not 1 <= len(name) <= 4 or not _CJK_RUN.fullmatch(name):
+    def surname(self, name):
+        return next((s for s in self.surnames if name.startswith(s) and len(name) > len(s)), '')
+
+    def valid(self, name, explicit=False):
+        if not 2 <= len(name) <= 6 or not RUN.fullmatch(name):
             return False
-        if (name in hv.STOPWORD_TERMS or name in self.generic_entities
-                or name in self.verbs or name in hv.TITLE_SUFFIXES):
+        if name in COMMON or name in hv.STOPWORD_TERMS or all(c in FILLERS for c in name):
             return False
-        # Do not trim grammar characters: doing so manufactures shorter names.
-        return not any(ch in hv.INVALID_NAME_CHARS for ch in name)
+        if any(c in GRAMMAR for c in name):
+            return False
+        _, tags = lexicon()
+        tag = tags.get(name, '')
+        # Complete ordinary dictionary words are negative evidence, regardless
+        # of surname or frequency. Explicit introductions can disambiguate nouns.
+        if tag and not tag.startswith('nr') and not (explicit and tag.startswith('n')):
+            return False
+        parts = word_parts(name)
+        for i, (part, pos) in enumerate(parts):
+            if pos in {'r', 'p', 'c', 'u', 'uj', 'ul', 'uz', 'y', 'e', 'o', 'f'}:
+                return False
+            # Compound common nouns/verbs inside a candidate indicate a phrase.
+            # Given names like 林小米 remain possible under explicit introductions.
+            if len(part) >= 2 and not pos.startswith(('nr', 'ns')) and not explicit:
+                return False
+            if i and len(part) == 1 and pos.startswith('v') and part in hv.INVALID_NAME_CHARS:
+                return False
+        return True
 
-    def _right_boundary(self, sentence, end):
-        return (end == len(sentence) or not _CJK_RUN.match(sentence[end:end + 1])
-                or sentence.startswith(self.followers, end))
+    def _discover(self, run, quoted):
+        """Analyze a bounded run once; return relative spans with evidence."""
+        starts = {0}
+        explicit_starts = set()
+        for match in self.left.finditer(run):
+            starts.add(match.end())
+        for match in self.intros.finditer(run):
+            explicit_starts.add(match.end())
+        spans = {}
+        _, tags = lexicon()
+        for start in sorted(starts):
+            for end in range(start + 2, min(start + 6, len(run)) + 1):
+                name = run[start:end]
+                explicit = start in explicit_starts
+                signals = set()
+                tail = run[end:]
+                if explicit and (not tail or tail[0] in '的是又也' or self.right.match(tail) or self.titles.match(tail)):
+                    signals.add('introduction')
+                surname = self.surname(name)
+                plausible_length = len(name) <= (4 if len(surname) == 2 else 3) or (len(name) == 4 and name[-1] == name[-2])
+                person_shape = bool(surname and plausible_length) or tags.get(name, '').startswith('nr')
+                if person_shape and self.right.match(tail):
+                    signals.add('subject')
+                if person_shape and self.titles.match(tail):
+                    signals.add('honorific')
+                if person_shape and quoted and start == 0 and not tail:
+                    signals.add('address')
+                if signals and self.valid(name, explicit):
+                    spans[(start, end)] = (name, signals)
+        # Prefer a full span over a nested fragment from the same occurrence.
+        found = [(a, b, n, tuple(sorted(s))) for (a, b), (n, s) in spans.items()
+                 if not any(c <= a and b <= d and (c, d) != (a, b) for c, d in spans)]
+        for kind, pattern in self.entity_patterns:
+            for match in pattern.finditer(run):
+                name = match.group(1)
+                if name not in COMMON and not any(c in GRAMMAR for c in name):
+                    found.append((*match.span(1), name, ('entity:' + kind,)))
+        return found
 
-    @staticmethod
-    def _left_boundary(sentence, start):
-        return (start == 0 or not _CJK_RUN.fullmatch(sentence[start - 1])
-                or sentence[start - 1] in hv.INVALID_NAME_CHARS
-                or sentence[:start].endswith(tuple(hv.NAME_CALL_PREFIXES) + ('朝', '和', '见', '告诉', '跟随')))
-
-    def _before(self, sentence, end, max_length=4):
-        """Prefer a complete surname-bearing subject, otherwise a bounded CJK run."""
-        start = end
-        while start > 0 and end - start < max_length and _CJK_RUN.fullmatch(sentence[start - 1]):
-            start -= 1
-        # A leading grammar word can separate the subject from earlier prose.
-        candidates = []
-        for pos in range(start, end):
-            name = sentence[pos:end]
-            if not self._valid(name):
-                continue
-            surname = self.surname_pattern.match(name)
-            if surname and len(name) > len(surname.group()) and self._left_boundary(sentence, pos):
-                candidates.append((pos, end))
-        if candidates:
-            return candidates[0]
-        # Without a surname, require a left syntactic boundary, never arbitrary suffixes.
-        while start < end and sentence[start] in hv.INVALID_NAME_CHARS:
-            start += 1
-        if start < end and (start == 0 or not _CJK_RUN.fullmatch(sentence[start - 1])
-                            or sentence[start - 1] in hv.INVALID_NAME_CHARS):
-            if self._valid(sentence[start:end]):
-                return start, end
-        return None
-
-    def scan(self, text: str, existing_glossary=None, max_results: int = 200) -> list[dict]:
+    def scan(self, text, existing_glossary=None, max_results=250):
         if not text or max_results <= 0:
             return []
+        with _LEXICON_LOCK:
+            lexicon()
         text = unicodedata.normalize('NFC', text)
-        glossary = {unicodedata.normalize('NFC', n.strip()) for n in (existing_glossary or ()) if n.strip()}
-        # Protect entire saved names, including their potential shorter fragments.
-        glossary_pattern = re.compile(_alternatives(glossary)) if glossary else None
-        hits = defaultdict(lambda: {'events': set(), 'positions': set(), 'contexts': []})
-
-        for sentence_match in _SENTENCE.finditer(text):
-            sentence = sentence_match.group()
-            offset = sentence_match.start()
-            protected = [m.span() for m in glossary_pattern.finditer(sentence)] if glossary_pattern else []
-            noise = [m.span() for m in self.stopword_pattern.finditer(sentence)]
-
-            def record(start, end, signal):
-                name = sentence[start:end]
-                is_entity = signal.startswith('entity:')
-                valid = ((2 <= len(name) <= 6 and _CJK_RUN.fullmatch(name)
-                          and name not in hv.STOPWORD_TERMS
-                          and name not in self.generic_entities)
-                         if is_entity else self._valid(name))
-                if not valid or name in glossary:
-                    return
-                if any(lo <= start and end <= hi for lo, hi in protected):
-                    return
-                if any(lo <= start < hi for lo, hi in noise):
-                    return
-                event = (offset + start, offset + end, signal)
-                data = hits[name]
-                if event in data['events']:
-                    return
-                data['events'].add(event)
-                data['positions'].add(event[:2])
-                context = sentence[max(0, start - 12):min(len(sentence), end + 12)].strip()
-                if context not in data['contexts'] and len(data['contexts']) < 3:
-                    data['contexts'].append(context)
-
-            # A: surnames trigger candidates only when the right edge is syntactic.
-            # finditer consumes compound surnames, avoiding a second trigger inside them.
-            for surname in self.surname_pattern.finditer(sentence):
-                start = surname.start()
-                if not self._left_boundary(sentence, start):
-                    continue
-                for end in range(surname.end() + 1, min(start + 4, len(sentence)) + 1):
-                    if self._right_boundary(sentence, end) and self._valid(sentence[start:end]):
-                        record(start, end, 'surname')
-
-            # B: locate verbs first so a greedy capture cannot swallow their first char.
-            for verb in self.verb_pattern.finditer(sentence):
-                span = self._before(sentence, verb.start())
-                if span:
-                    record(*span, 'verb_context')
-
-            # C: bound the introduced name at punctuation, grammar, title or next verb.
-            for prefix in self.call_pattern.finditer(sentence):
-                start = prefix.end()
-                while start < len(sentence) and sentence[start] in ' :：「『“"‘':
-                    start += 1
-                for end in range(start + 1, min(start + 4, len(sentence)) + 1):
-                    if self._valid(sentence[start:end]) and self._right_boundary(sentence, end):
-                        record(start, end, 'direct_call')
-                        break
-
-            # D: honorifics also support a single-character surname (e.g. 王老师).
-            for title in self.title_pattern.finditer(sentence):
-                span = self._before(sentence, title.start())
-                if span:
-                    record(*span, 'honorific')
-
-            # E: only the beginning of actual quoted speech, not every sentence.
-            for address in self.address_pattern.finditer(sentence):
-                record(*address.span(1), 'address')
-
-            # F: named sects, places, skills and items. Only accept a full bounded
-            # CJK run or text following a strong grammatical boundary.
-            for run in _CJK_RUN.finditer(sentence):
-                run_text = run.group()
-                for relative, char in enumerate(run_text):
-                    entity_type = hv.ENTITY_SUFFIXES.get(char)
-                    if not entity_type:
-                        continue
-                    end = run.start() + relative + 1
-                    start = run.start()
-                    prefix = sentence[max(run.start(), end - 10):end - 1]
-                    boundary_end = -1
-                    for boundary in self.entity_boundaries:
-                        pos = prefix.rfind(boundary)
-                        if pos >= 0:
-                            boundary_end = max(boundary_end, pos + len(boundary))
-                    if boundary_end >= 0:
-                        start = max(run.start(), end - 10) + boundary_end
-                    elif end - start > 4:
-                        continue
-                    if not 2 <= end - start <= 6:
-                        continue
-                    if end < len(sentence) and _CJK_RUN.fullmatch(sentence[end]):
-                        if not sentence.startswith(self.entity_followers, end):
-                            continue
-                    name = sentence[start:end]
-                    if name in glossary:
-                        continue
-                    record(start, end, 'entity:' + entity_type)
-
-        # Remove a substring only when every occurrence is inside the longer name
-        # and both names have exactly the same number of physical occurrences.
-        # This preserves a short name used independently, even with equal counts.
-        suppressed = set()
-        for name, data in hits.items():
-            for length in range(1, len(name)):
-                for index in range(len(name) - length + 1):
-                    short = name[index:index + length]
-                    if short not in hits:
-                        continue
-                    contained_positions = {(start + index, start + index + length)
-                                           for start, _ in data['positions']}
-                    if hits[short]['positions'] == contained_positions:
-                        suppressed.add(short)
-
+        saved = {unicodedata.normalize('NFC', n.strip()) for n in (existing_glossary or ()) if n.strip()}
+        # Mask saved names to preserve offsets and prevent shorter fragments.
+        if saved:
+            pattern = re.compile(alternatives(saved))
+            source = pattern.sub(lambda m: ' ' * len(m.group()), text)
+        else:
+            source = text
+        local_cache = {}
+        hits = {}
+        for match in RUN.finditer(source):
+            run = match.group()
+            quoted = match.start() > 0 and source[match.start()-1] in '“「『"‘'
+            key = (run, quoted)
+            if key not in local_cache:
+                if len(local_cache) >= 8192:
+                    local_cache.clear()
+                local_cache[key] = self._discover(run, quoted)
+            for start, end, name, signals in local_cache[key]:
+                record = hits.setdefault(name, {'positions': set(), 'signals': set(), 'contexts': []})
+                absolute = match.start() + start
+                record['positions'].add(absolute)
+                record['signals'].update(signals)
+                if len(record['contexts']) < 3:
+                    context = text[max(0, absolute-24):min(len(text), match.start()+end+24)]
+                    if context not in record['contexts']:
+                        record['contexts'].append(context)
         results = []
+        # Once a full name has evidence, count all non-overlapping occurrences,
+        # including object/possessive uses not used for discovery.
+        if hits:
+            for data in hits.values():
+                data['positions'].clear()
+            for occurrence in re.finditer(alternatives(hits), source):
+                hits[occurrence.group()]['positions'].add(occurrence.start())
         for name, data in hits.items():
-            if name in suppressed:
-                continue
-            signals = [event[2] for event in data['events']]
-            count = len(signals)
-            entity_signals = [signal for signal in signals if signal.startswith('entity:')]
-            person_signals = [signal for signal in signals if not signal.startswith('entity:')]
-            item_type = ('PERSON' if person_signals else
-                         entity_signals[0].split(':', 1)[1])
-            confidence = (0.50 * ('surname' in signals)
-                          + min(0.50, 0.25 * signals.count('verb_context'))
-                          + 0.60 * ('direct_call' in signals)
-                          + 0.30 * ('honorific' in signals)
-                          + 0.30 * ('address' in signals)
-                          + 0.55 * bool(entity_signals)
-                          + 0.10 * (count >= 2) + 0.10 * (count >= 5))
-            if confidence < 0.30 and count == 1:
-                continue
-            results.append({
-                'cn': name, 'confidence': round(min(confidence, 0.99), 2),
-                'count': count, 'signals': sorted(set(signals)),
-                'contexts': data['contexts'], 'suggested_vi': hv.han_viet_name(name),
-                'type': item_type,
-            })
-        results.sort(key=lambda item: (-item['confidence'], -item['count'], len(item['cn']), item['cn']))
+            signals = data['signals']
+            # Repetition affects ordering/count only, never confidence.
+            score = max({'introduction': .92, 'subject': .76, 'honorific': .82, 'address': .68}.get(s, .72) for s in signals)
+            score = min(.96, score + .04 * (len(signals)-1))
+            kind = next((s.split(':')[1] for s in sorted(signals) if s.startswith('entity:')), 'PERSON')
+            results.append({'cn': name, 'type': kind, 'confidence': round(score, 2),
+                            'count': len(data['positions']), 'signals': sorted(signals),
+                            'contexts': data['contexts'], 'suggested_vi': ''})
+        results.sort(key=lambda c: (-c['confidence'], -c['count'], c['cn']))
         return results[:max_results]
-
-
-if __name__ == '__main__':
-    import sys
-    if hasattr(sys.stdout, 'reconfigure'):
-        sys.stdout.reconfigure(encoding='utf-8')
-    sample = '林铭看着前方。“裴湘君，你来了！”他名叫阿宝。欧阳雪大人点头。独孤皂低头沉思。'
-    for result in NameScanner().scan(sample):
-        print(f"{result['cn']} -> {result['suggested_vi']} ({result['confidence']:.2f}, {result['signals']})")
