@@ -1,2 +1,4 @@
 # Shared by builder.py and builder_new.py
 jieba==0.42.1
+transformers==4.57.6
+torch==2.8.0

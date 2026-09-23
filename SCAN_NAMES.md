@@ -1,23 +1,53 @@
-# Scan Names
+# Scan Names — CUDA NER
 
-Both builders use `name_scanner.py` for discovery and `name_suggestions.py`
-for API suggestions. Install `requirements-scanner.txt` in the Python
-environment that runs the builder (`jieba==0.42.1`).
+Both builders now use `gpu_name_scanner.py` for recognition, and
+`name_suggestions.py` for API suggestions. The previous rule scanner remains
+in `name_scanner.py` but is not the default.
+
+## Install (Python 3.10, NVIDIA)
+
+Run in the environment used to start the builder:
+
+```powershell
+python -m pip install -r requirements-scanner-gpu.txt
+python -c "import torch; print(torch.cuda.is_available())"
+```
+
+The NVIDIA driver must support CUDA 12.8. No separate CUDA toolkit is needed.
+CPU-only users can install `requirements-scanner.txt` instead.
 
 ## Recognition
 
-The scanner checks Chinese dictionary words and word classes with jieba,
-then requires name evidence: an introduction, a speaking/acting subject,
-an honorific, or a direct address. Entity discovery uses explicit contexts
-for organizations, places, skills and items. The scanner does not infer that
-a Chinese word is a name from its Vietnamese translation.
+Model: https://huggingface.co/shibing624/bert4ner-base-chinese (Apache 2.0).
+Pinned revision: `5d660ed2aa9da482bf2d99c6bc8cf2ce66758f6a`.
+Only safetensors weights are loaded; remote Python code is disabled.
+The first scan downloads about 400 MB to the Hugging Face user cache,
+outside the repository. Later scans reuse the local files and the in-memory
+model. Source text is processed locally for recognition; discovered names
+are sent to the existing translation API for suggestions.
 
-Saved glossary entries are masked before discovery. Counts represent actual
-non-overlapping occurrences after discovery. Repetition does not raise the
-ranking score. Scores are rule weights, not calibrated probabilities.
-Repeated runs and candidate word segmentation are cached within bounded
-memory. Very unusual names, aliases and foreign transliterations may be
-missed; manual name entry remains available.
+The scanner recognizes PERSON, PLACE and ORG using Chinese context. It does
+not separately classify fantasy skills or items. This model was trained on
+news/general Chinese, so fantasy names still require review. Scores are
+model confidence, not a guarantee that a candidate is a proper name.
+Counts represent detected, deduplicated occurrences. Saved names and their
+fragments are excluded. Overlapping token windows avoid truncating novels.
+
+CUDA runs FP16 with small batches. VRAM exhaustion reduces batch size, then
+falls back to the same model on CPU. Progress displays the active device.
+The GUI and API suggestion rules remain independent of CUDA.
+To force a device before launching:
+
+```powershell
+$env:STV_NER_DEVICE = "cpu" # auto (default), cpu, cuda
+python builder.py
+```
+
+To download/cache the model without opening the GUI:
+
+```powershell
+python -c "from gpu_name_scanner import NameScanner; NameScanner().scan('王宏伟来自北京。', on_progress=print)"
+```
 
 ## Suggestions and review
 
@@ -32,14 +62,19 @@ missed; manual name entry remains available.
 - Nothing is selected for saving by default. Click a Chinese name to inspect
   the evidence and surrounding source text before editing and adding it.
 
-## Reference and verification
+## Reference
 
-Reference: https://moxhi.pages.dev/ . Its deployed scanner uses the `r6b TP`
-WebGPU model. This Python implementation does **not** embed or reproduce that
-model: it uses a lexicon and contextual rules. The reference informed the
-separation between discovery, readings and manual glossary review.
+https://moxhi.pages.dev/ inspired contextual recognition and separate review
+of suggested readings. Its WebGPU r6b model is not included; this application
+uses PyTorch CUDA BERT. GPU accelerates recognition, not remote API requests
+or Tk text editing. Frozen executable packaging has not been verified; rebuild
+with the updated spec and installed dependencies if distributing an EXE.
 
-Local checks cover reported false positives, personal/organization/place/
-skill/item examples, counts, existing glossary exclusion, API response
-alignment, caching and both Tk review dialogs. The 1.44 MB speed sample is
-synthetic; it is not a real-novel accuracy benchmark.
+## Local verification
+
+Verified on RTX 3060 Ti with PyTorch 2.8.0+cu128: CUDA inference, CPU inference,
+both builder scan wrappers, saved-name exclusion and overlapping-window counts.
+A repeated synthetic Chinese sample of 1,053,000 UTF-8 bytes took 18.86 seconds
+after model loading; all expected occurrence counts matched. This is a speed
+and stitching check, not a real-novel accuracy benchmark. No test files are
+stored in the project.

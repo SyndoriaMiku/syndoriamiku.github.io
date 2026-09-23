@@ -18,7 +18,7 @@ except ImportError:
     _HAN_VIET_OK = False
 
 try:
-    from name_scanner import NameScanner as _NameScanner
+    from gpu_name_scanner import NameScanner as _NameScanner
     _NAME_SCANNER_OK = True
 except ImportError:
     _NameScanner = None
@@ -788,12 +788,12 @@ class TranslatorGUI:
         # Minimal inline fallback (empty if no table)
         return cn
 
-    def scan_name_candidates(self, text: str, max_results: int = 250) -> list:
-        """Scan names and named entities using syntactic boundaries."""
+    def scan_name_candidates(self, text: str, max_results: int = 250, on_progress=None) -> list:
+        """Recognize Chinese entities locally with CUDA/CPU NER."""
         if not _NAME_SCANNER_OK:
-            raise RuntimeError("Không tải được name_scanner.py. Hãy kiểm tra module và han_viet.py.")
+            raise RuntimeError("Không tải được gpu_name_scanner.py. Xem SCAN_NAMES.md để cài đặt.")
         results = _NameScanner().scan(
-            text, existing_glossary=set(self.load_name_config()), max_results=max_results,
+            text, existing_glossary=set(self.load_name_config()), max_results=max_results, on_progress=on_progress,
         )
         return results
 
@@ -872,7 +872,8 @@ class TranslatorGUI:
         results = queue.Queue()
         def worker():
             try:
-                candidates = self.scan_name_candidates(raw_text)
+                candidates = self.scan_name_candidates(
+                    raw_text, on_progress=lambda msg: results.put((None, msg, "progress")))
                 api_warning = None
                 try:
                     self._fill_han_viet_from_api(candidates)
@@ -888,6 +889,10 @@ class TranslatorGUI:
             except queue.Empty:
                 self.root.after(50, poll)
                 return
+            if error == "progress":
+                self.lbl_status.config(text=api_warning)
+                self.root.after(50, poll)
+                return
             self.root.config(cursor="")
             self.btn_scan.config(state="normal", text="🔍 Scan Names")
             if error:
@@ -897,7 +902,7 @@ class TranslatorGUI:
             if api_warning:
                 messagebox.showwarning(
                     "Không lấy được Hán-Việt từ API",
-                    f"Danh sách vẫn được mở bằng gợi ý cục bộ nếu có.\n\n{api_warning}",
+                    f"Danh sách vẫn được mở để bạn điền hoặc sửa tên.\n\n{api_warning}",
                     parent=self.root,
                 )
             self._show_scan_names_dialog(candidates)
@@ -960,7 +965,7 @@ class TranslatorGUI:
         tk.Label(filter_frame, text="Lọc:", fg="#a1a1aa", bg="#18181b", font=("Arial", 9)).pack(side=tk.LEFT)
 
         type_filter_var = tk.StringVar(value="TẤT CẢ")
-        type_options = ["TẤT CẢ", "PERSON", "SECT", "PLACE", "SKILL", "ITEM", "UNKNOWN"]
+        type_options = ["TẤT CẢ", "PERSON", "PLACE", "ORG"]
         type_combo = ttk.Combobox(filter_frame, textvariable=type_filter_var,
                                   values=type_options, state="readonly", width=12, font=("Arial", 9))
         type_combo.pack(side=tk.LEFT, padx=(4, 12))
@@ -1019,7 +1024,7 @@ class TranslatorGUI:
         selected = set()  # Review suggestions before selecting them for saving.
 
         type_badge_colors = {
-            'PERSON': '#1d4ed8', 'SECT': '#7c3aed', 'PLACE': '#065f46',
+            'ORG': '#b45309', 'PERSON': '#1d4ed8', 'SECT': '#7c3aed', 'PLACE': '#065f46',
             'SKILL': '#b45309', 'ITEM': '#9f1239', 'UNKNOWN': '#3f3f46',
         }
 
