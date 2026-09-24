@@ -35,12 +35,13 @@ def _load(progress):
             tokenizer = BertTokenizerFast.from_pretrained(MODEL, local_files_only=True, **kwargs)
             model = BertForTokenClassification.from_pretrained(
                 MODEL, local_files_only=True, use_safetensors=True, **kwargs)
-        except OSError:
+        except (OSError, TypeError):
+            # An empty tokenizer cache may report vocab_file=None as TypeError.
             tokenizer = BertTokenizerFast.from_pretrained(MODEL, **kwargs)
             model = BertForTokenClassification.from_pretrained(MODEL, use_safetensors=True, **kwargs)
     except Exception as exc:
         raise RuntimeError('Không nạp được mô hình NER. Kiểm tra kết nối Hugging Face; '
-                           'xem SCAN_NAMES.md để tải trước.') from exc
+                           f'xem SCAN_NAMES.md để tải trước. Chi tiết: {exc}') from exc
     if [model.config.id2label.get(i) for i in range(len(LABELS))] != LABELS:
         raise RuntimeError('Mô hình NER có bộ nhãn không đúng phiên bản.')
     model.eval()

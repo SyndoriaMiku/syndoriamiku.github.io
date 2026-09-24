@@ -6,9 +6,10 @@ in `name_scanner.py` but is not the default.
 
 ## Install (Python 3.10, NVIDIA)
 
-Run in the environment used to start the builder:
+Run in the Conda environment used to start the builder (for this project, `p310`):
 
 ```powershell
+conda activate p310
 python -m pip install -r requirements-scanner-gpu.txt
 python -c "import torch; print(torch.cuda.is_available())"
 ```
@@ -46,7 +47,8 @@ python builder.py
 To download/cache the model without opening the GUI:
 
 ```powershell
-python -c "from gpu_name_scanner import NameScanner; NameScanner().scan('王宏伟来自北京。', on_progress=print)"
+conda activate p310
+python -c "from gpu_name_scanner import NameScanner; print(len(NameScanner().scan('王宏伟来自北京。')))"
 ```
 
 ## Suggestions and review
