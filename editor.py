@@ -66,6 +66,53 @@ def delete_library_chapter(story_slug, chapter_id):
 	return catalog, cleanup_warning
 
 
+def delete_library_story(story_slug):
+	"""Remove one story directory and atomically update the catalog."""
+	if not re.fullmatch(r"[A-Za-z0-9_-]+", story_slug):
+		raise ValueError("Mã truyện không hợp lệ.")
+	library_root = os.path.realpath(LIBRARY_DIR)
+	story_dir = os.path.join(library_root, story_slug)
+	if os.path.normcase(os.path.realpath(story_dir)) != os.path.normcase(story_dir):
+		raise ValueError("Không xóa truyện qua đường dẫn liên kết.")
+	with open(CATALOG_PATH, "r", encoding="utf-8") as f:
+		catalog = json.load(f)
+	if not any(item.get("slug") == story_slug for item in catalog):
+		raise ValueError("Truyện không còn trong danh mục. Hãy chọn lại truyện.")
+	if os.path.lexists(story_dir) and not os.path.isdir(story_dir):
+		raise ValueError("Đường dẫn truyện không phải thư mục.")
+
+	staging = None
+	catalog_tmp = None
+	try:
+		if os.path.isdir(story_dir):
+			staging = tempfile.mkdtemp(prefix=".delete-story-", dir=library_root)
+			os.replace(story_dir, os.path.join(staging, "story"))
+		catalog = [item for item in catalog if item.get("slug") != story_slug]
+		fd, catalog_tmp = tempfile.mkstemp(prefix=".list-", suffix=".json", dir=library_root)
+		with os.fdopen(fd, "w", encoding="utf-8") as f:
+			json.dump(catalog, f, ensure_ascii=False, indent=4)
+		os.replace(catalog_tmp, CATALOG_PATH)
+		catalog_tmp = None
+	except Exception:
+		if staging:
+			staged_story = os.path.join(staging, "story")
+			if os.path.exists(staged_story):
+				os.replace(staged_story, story_dir)
+			os.rmdir(staging)
+		raise
+	finally:
+		if catalog_tmp and os.path.exists(catalog_tmp):
+			os.remove(catalog_tmp)
+
+	cleanup_warning = None
+	if staging:
+		try:
+			shutil.rmtree(staging)
+		except OSError as error:
+			cleanup_warning = f"Truyện đã được gỡ khỏi thư viện, nhưng chưa dọn được dữ liệu tạm:\n{staging}\n{error}"
+	return catalog, cleanup_warning
+
+
 def load_config():
 	try:
 		if os.path.exists(CONFIG_PATH):
@@ -267,6 +314,9 @@ class ChapterEditorApp:
 			font=("Segoe UI", 9, "bold")).pack(anchor="w")
 		story_row = tk.Frame(form, bg="#111c2e")
 		story_row.pack(fill="x", pady=(6, 12))
+		delete_story_button = self._button(story_row, "Xóa truyện", self.delete_story)
+		delete_story_button.config(bg="#9f1239", activebackground="#be123c")
+		delete_story_button.pack(side="right", padx=(8, 0))
 		self._button(story_row, "+ Truyện mới", self.add_new_story).pack(side="right", padx=(8, 0))
 		self.story_combo = StorySearchCombo(story_row, values=self.story_options, font=("Segoe UI", 10), width=20)
 		self.story_combo.pack(side="left", fill="x", expand=True)
@@ -553,6 +603,41 @@ class ChapterEditorApp:
 
 
 
+	def delete_story(self):
+		"""Delete the selected story and all of its saved chapters."""
+		story_value = self.story_combo.get().strip()
+		if not story_value or story_value not in self.story_options:
+			messagebox.showwarning("Chú ý", "Vui lòng chọn truyện trong danh sách!", parent=self.root)
+			return
+		story_slug, story_title = (part.strip() for part in story_value.split("|", 1))
+		if not messagebox.askyesno(
+			"Xóa truyện",
+			f"Xóa truyện {story_title} cùng toàn bộ chương đã lưu?\n\n"
+			"Dữ liệu truyện sẽ bị xóa khỏi thư viện.",
+			parent=self.root, icon="warning", default="no",
+		):
+			return
+		try:
+			catalog, cleanup_warning = delete_library_story(story_slug)
+		except Exception as error:
+			messagebox.showerror("Lỗi", f"Không thể xóa truyện:\n{error}", parent=self.root)
+			return
+
+		self.story_options = story_options(catalog)
+		self.story_combo["values"] = self.story_options
+		self.story_combo.set("")
+		self.chap_select_combo["values"] = ()
+		self.chap_select_combo.set("")
+		self.chap_entry.delete(0, tk.END)
+		self.chap_entry.insert(0, "000001")
+		self.chap_title_entry.delete(0, tk.END)
+		self.content_text.delete("1.0", tk.END)
+		if hasattr(self, "library_status"):
+			self.library_status.config(text=f"{len(self.story_options)} truyện  ·  Mới cập nhật trước")
+		if cleanup_warning:
+			messagebox.showwarning("Đã xóa truyện", cleanup_warning, parent=self.root)
+		else:
+			messagebox.showinfo("Đã xóa truyện", f"Đã xóa truyện: {story_title}", parent=self.root)
 	def delete_chapter(self):
 		"""Delete the chapter selected in the saved-chapter list."""
 		story_value = self.story_combo.get().strip()
