@@ -17,6 +17,9 @@ def _load(progress):
     if _SESSION is not None:
         return _SESSION
     progress('Đang nạp mô hình NER (lần đầu cần tải khoảng 400 MB)…')
+    # This scanner uses PyTorch; avoid probing the unrelated TensorFlow backend.
+    os.environ['USE_TF'] = '0'
+    os.environ['USE_TORCH'] = '1'
     try:
         import torch
         from transformers import BertTokenizerFast, BertForTokenClassification

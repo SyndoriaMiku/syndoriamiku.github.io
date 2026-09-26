@@ -2,6 +2,8 @@ import base64
 import json
 import os
 import re
+import shutil
+import tempfile
 import unicodedata
 import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext, simpledialog, ttk
@@ -11,6 +13,57 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LIBRARY_DIR = os.path.join(BASE_DIR, "library")
 CATALOG_PATH = os.path.join(LIBRARY_DIR, "list.json")
 CONFIG_PATH = os.path.join(BASE_DIR, "editor_config.json")
+
+
+def delete_library_chapter(story_slug, chapter_id):
+	"""Remove chapter files and atomically update the catalog; rollback on failure."""
+	for value in (story_slug, chapter_id):
+		if not re.fullmatch(r"[A-Za-z0-9_-]+", value):
+			raise ValueError("Mã truyện hoặc chương không hợp lệ.")
+	library_root = os.path.realpath(LIBRARY_DIR)
+	story_dir = os.path.join(library_root, story_slug)
+	chapter_dir = os.path.join(story_dir, chapter_id)
+	for path in (story_dir, chapter_dir):
+		if os.path.normcase(os.path.realpath(path)) != os.path.normcase(path):
+			raise ValueError("Không xóa chương qua đường dẫn liên kết.")
+	with open(CATALOG_PATH, "r", encoding="utf-8") as f:
+		catalog = json.load(f)
+	story = next((item for item in catalog if item.get("slug") == story_slug), None)
+	if story is None or not any(ch.get("id") == chapter_id for ch in story.get("chapters", [])):
+		raise ValueError("Chương không còn trong danh mục. Hãy chọn lại chương.")
+	if os.path.lexists(chapter_dir) and not os.path.isdir(chapter_dir):
+		raise ValueError("Đường dẫn chương không phải thư mục.")
+
+	staging = None
+	catalog_tmp = None
+	try:
+		if os.path.isdir(chapter_dir):
+			staging = tempfile.mkdtemp(prefix=".delete-chapter-", dir=story_dir)
+			os.replace(chapter_dir, os.path.join(staging, "chapter"))
+		story["chapters"] = [ch for ch in story["chapters"] if ch.get("id") != chapter_id]
+		fd, catalog_tmp = tempfile.mkstemp(prefix=".list-", suffix=".json", dir=library_root)
+		with os.fdopen(fd, "w", encoding="utf-8") as f:
+			json.dump(catalog, f, ensure_ascii=False, indent=4)
+		os.replace(catalog_tmp, CATALOG_PATH)
+		catalog_tmp = None
+	except Exception:
+		if staging:
+			staged_chapter = os.path.join(staging, "chapter")
+			if os.path.exists(staged_chapter):
+				os.replace(staged_chapter, chapter_dir)
+			os.rmdir(staging)
+		raise
+	finally:
+		if catalog_tmp and os.path.exists(catalog_tmp):
+			os.remove(catalog_tmp)
+
+	cleanup_warning = None
+	if staging:
+		try:
+			shutil.rmtree(staging)
+		except OSError as error:
+			cleanup_warning = f"Chương đã được gỡ khỏi thư viện, nhưng chưa dọn được dữ liệu tạm:\n{staging}\n{error}"
+	return catalog, cleanup_warning
 
 
 def load_config():
@@ -222,6 +275,9 @@ class ChapterEditorApp:
 		chapter_row = tk.Frame(form, bg="#111c2e")
 		chapter_row.pack(fill="x", pady=(6, 12))
 		self._button(chapter_row, "Mở chương", self.load_chapter_for_edit).pack(side="right", padx=(8, 0))
+		delete_button = self._button(chapter_row, "Xóa chương", self.delete_chapter)
+		delete_button.config(bg="#9f1239", activebackground="#be123c")
+		delete_button.pack(side="right", padx=(8, 0))
 		self.chap_select_combo = ttk.Combobox(chapter_row, font=("Segoe UI", 10), state="readonly", width=20)
 		self.chap_select_combo.pack(side="left", fill="x", expand=True)
 		meta = tk.Frame(form, bg="#111c2e")
@@ -495,6 +551,47 @@ class ChapterEditorApp:
 		self.chap_entry.delete(0, tk.END)
 		self.chap_entry.insert(0, self.get_next_chapter_id(story_slug, catalog))
 
+
+
+	def delete_chapter(self):
+		"""Delete the chapter selected in the saved-chapter list."""
+		story_value = self.story_combo.get().strip()
+		chap_value = self.chap_select_combo.get().strip()
+		if not story_value or story_value not in self.story_options:
+			messagebox.showwarning("Chú ý", "Vui lòng chọn truyện trong danh sách!", parent=self.root)
+			return
+		if not chap_value:
+			messagebox.showwarning("Chú ý", "Vui lòng chọn chương muốn xóa!", parent=self.root)
+			return
+		story_slug = story_value.split("|", 1)[0].strip()
+		chap_slug = chap_value.split("|", 1)[0].strip()
+		if not messagebox.askyesno(
+			"Xóa chương",
+			f"Xóa chương {chap_value} khỏi truyện {story_value}?\n\n"
+			"Dữ liệu chương sẽ bị xóa khỏi thư viện. Nếu đang biên tập chương này, "
+			"nội dung chưa lưu cũng sẽ bị xóa.",
+			parent=self.root, icon="warning", default="no",
+		):
+			return
+		try:
+			catalog, cleanup_warning = delete_library_chapter(story_slug, chap_slug)
+		except Exception as error:
+			messagebox.showerror("Lỗi", f"Không thể xóa chương:\n{error}", parent=self.root)
+			return
+
+		if self.chap_entry.get().strip() == chap_slug:
+			self.chap_title_entry.delete(0, tk.END)
+			self.content_text.delete("1.0", tk.END)
+			self.chap_entry.delete(0, tk.END)
+			self.chap_entry.insert(0, self.get_next_chapter_id(story_slug, catalog))
+		elif not self.chap_title_entry.get().strip() and not self.content_text.get("1.0", tk.END).strip():
+			self.chap_entry.delete(0, tk.END)
+			self.chap_entry.insert(0, self.get_next_chapter_id(story_slug, catalog))
+		self._refresh_chap_select(story_slug, catalog)
+		if cleanup_warning:
+			messagebox.showwarning("Đã xóa chương", cleanup_warning, parent=self.root)
+		else:
+			messagebox.showinfo("Đã xóa chương", f"Đã xóa chương: {chap_value}", parent=self.root)
 
 	def load_chapter_for_edit(self):
 		"""Load a chapter from library into the editor for editing."""
