@@ -1,11 +1,11 @@
 {
-  "editor_main": "1300x800+14+55",
+  "editor_main": "1270x800+14+55",
   "editor_add_story_dialog": "700x223+152+142",
-  "builder_main": "1300x800+14+55",
+  "builder_main": "1270x800+14+55",
   "builder_add_name": "492x418+100+100",
   "editor_split_dialog": "700x612+152+142",
   "builder_review": "803x756+14+197",
-  "builder_scan_names": "1080x420+100+100",
+  "builder_scan_names": "803x420+152+142",
   "split_patterns": [
     [
       "Thứ X chương",
