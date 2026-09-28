@@ -1,6 +1,15 @@
-"""Lazy, batched Chinese NER shared by both builders (CUDA or CPU)."""
+"""Lazy, batched Chinese NER shared by both builders (CUDA or CPU).
+
+The model lives in a folder next to the app (``models/bert4ner-base-chinese``)
+so every launch loads it straight from disk, fully offline. It is fetched from
+Hugging Face only when that folder is missing or incomplete, and an existing
+Hugging Face cache copy is migrated into it without re-downloading.
+"""
+import json
 import os
 import re
+import shutil
+import sys
 import threading
 
 MODEL = 'shibing624/bert4ner-base-chinese'
@@ -11,13 +20,121 @@ TYPES = {'PER': 'PERSON', 'LOC': 'PLACE', 'ORG': 'ORG'}
 _LOCK = threading.Lock()
 _SESSION = None
 
+MANIFEST = 'stv_model.json'
+WEIGHTS = 'model.safetensors'
+REQUIRED = ('config.json', WEIGHTS, MANIFEST)
+ALLOW = ['config.json', 'vocab.txt', 'tokenizer.json', 'tokenizer_config.json',
+         'special_tokens_map.json', WEIGHTS]
+
+
+def _app_dir():
+    """Same root rule as the builders: exe folder (minus dist) or source folder."""
+    if getattr(sys, 'frozen', False):
+        base = os.path.dirname(sys.executable)
+        if os.path.basename(base).lower() == 'dist':
+            base = os.path.dirname(base)
+        return base
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+def model_dir():
+    """Local model folder; override with STV_NER_MODEL_DIR."""
+    custom = os.environ.get('STV_NER_MODEL_DIR', '').strip()
+    return os.path.abspath(custom) if custom else os.path.join(
+        _app_dir(), 'models', MODEL.split('/')[-1])
+
+
+def is_installed(path=None):
+    """True when the local folder holds the pinned revision and its files."""
+    path = path or model_dir()
+    if not all(os.path.isfile(os.path.join(path, name)) for name in REQUIRED):
+        return False
+    if not any(os.path.isfile(os.path.join(path, name)) for name in ('vocab.txt', 'tokenizer.json')):
+        return False
+    try:
+        with open(os.path.join(path, MANIFEST), encoding='utf-8') as fh:
+            info = json.load(fh)
+    except (OSError, ValueError):
+        return False
+    return info.get('model') == MODEL and info.get('revision') == REVISION
+
+
+def _write_manifest(path, source):
+    with open(os.path.join(path, MANIFEST), 'w', encoding='utf-8') as fh:
+        json.dump({'model': MODEL, 'revision': REVISION, 'source': source}, fh, indent=2)
+
+
+def _replace_dir(staging, target):
+    """Swap a finished staging folder into place so a crash never leaves half a model."""
+    old = target + '.old'
+    shutil.rmtree(old, ignore_errors=True)
+    if os.path.isdir(target):
+        os.replace(target, old)
+    os.replace(staging, target)
+    shutil.rmtree(old, ignore_errors=True)
+
+
+def _migrate_from_hf_cache(target, progress):
+    """Copy an already-downloaded HF cache snapshot into the app folder (no network)."""
+    try:
+        from huggingface_hub import snapshot_download
+        cached = snapshot_download(MODEL, revision=REVISION, allow_patterns=ALLOW,
+                                   local_files_only=True)
+    except Exception:
+        return False
+    if not os.path.isfile(os.path.join(cached, WEIGHTS)):
+        return False
+    progress('Đang chép mô hình NER từ bộ nhớ đệm Hugging Face vào thư mục models…')
+    staging = target + '.partial'
+    shutil.rmtree(staging, ignore_errors=True)
+    os.makedirs(staging)
+    for name in os.listdir(cached):
+        source = os.path.join(cached, name)
+        if os.path.isfile(source):
+            shutil.copyfile(source, os.path.join(staging, name))  # follows cache symlinks
+    _write_manifest(staging, 'huggingface-cache')
+    _replace_dir(staging, target)
+    return True
+
+
+def install_model(progress=None, force=False):
+    """Make sure the model is in model_dir(); download (~400 MB) only if needed."""
+    progress = progress or (lambda message: None)
+    target = model_dir()
+    if is_installed(target) and not force:
+        return target
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    if not force and _migrate_from_hf_cache(target, progress) and is_installed(target):
+        return target
+    try:
+        from huggingface_hub import snapshot_download
+    except ImportError as exc:
+        raise RuntimeError('Thiếu huggingface_hub (đi kèm transformers). Xem SCAN_NAMES.md.') from exc
+    progress(f'Đang tải mô hình NER (~400 MB, chỉ một lần) vào {target}…')
+    staging = target + '.partial'
+    # Keep an interrupted download so the next attempt resumes instead of restarting.
+    try:
+        snapshot_download(MODEL, revision=REVISION, allow_patterns=ALLOW, local_dir=staging)
+    except Exception as exc:
+        raise RuntimeError('Không tải được mô hình NER. Kiểm tra kết nối Hugging Face '
+                           f'hoặc chép sẵn thư mục mô hình vào {target}. Chi tiết: {exc}') from exc
+    shutil.rmtree(os.path.join(staging, '.cache'), ignore_errors=True)
+    _write_manifest(staging, 'download')
+    if not is_installed(staging):
+        raise RuntimeError(f'Tải mô hình NER chưa đủ file. Xoá {staging} rồi thử lại.')
+    _replace_dir(staging, target)
+    return target
+
 
 def _load(progress):
     global _SESSION
     if _SESSION is not None:
         return _SESSION
-    progress('Đang nạp mô hình NER (lần đầu cần tải khoảng 400 MB)…')
-    # This scanner uses PyTorch; avoid probing the unrelated TensorFlow backend.
+    path = install_model(progress)
+    progress('Đang nạp mô hình NER từ máy…')
+    # Model is on disk: forbid any Hugging Face network call. PyTorch backend only.
+    os.environ['HF_HUB_OFFLINE'] = '1'
+    os.environ['TRANSFORMERS_OFFLINE'] = '1'
     os.environ['USE_TF'] = '0'
     os.environ['USE_TORCH'] = '1'
     try:
@@ -31,20 +148,13 @@ def _load(progress):
     if requested == 'cuda' and not torch.cuda.is_available():
         raise RuntimeError('CUDA không khả dụng. Kiểm tra PyTorch CUDA và driver NVIDIA.')
     device = 'cuda' if requested != 'cpu' and torch.cuda.is_available() else 'cpu'
-    kwargs = dict(revision=REVISION, trust_remote_code=False)
     try:
-        # Cached scans also work offline; network is used only on first download.
-        try:
-            tokenizer = BertTokenizerFast.from_pretrained(MODEL, local_files_only=True, **kwargs)
-            model = BertForTokenClassification.from_pretrained(
-                MODEL, local_files_only=True, use_safetensors=True, **kwargs)
-        except (OSError, TypeError):
-            # An empty tokenizer cache may report vocab_file=None as TypeError.
-            tokenizer = BertTokenizerFast.from_pretrained(MODEL, **kwargs)
-            model = BertForTokenClassification.from_pretrained(MODEL, use_safetensors=True, **kwargs)
+        tokenizer = BertTokenizerFast.from_pretrained(path, local_files_only=True)
+        model = BertForTokenClassification.from_pretrained(
+            path, local_files_only=True, use_safetensors=True, trust_remote_code=False)
     except Exception as exc:
-        raise RuntimeError('Không nạp được mô hình NER. Kiểm tra kết nối Hugging Face; '
-                           f'xem SCAN_NAMES.md để tải trước. Chi tiết: {exc}') from exc
+        raise RuntimeError(f'Không nạp được mô hình NER từ {path}. Thư mục có thể hỏng: '
+                           f'xoá nó để tải lại (xem SCAN_NAMES.md). Chi tiết: {exc}') from exc
     if [model.config.id2label.get(i) for i in range(len(LABELS))] != LABELS:
         raise RuntimeError('Mô hình NER có bộ nhãn không đúng phiên bản.')
     model.eval()
@@ -57,6 +167,25 @@ def _load(progress):
             device = 'cpu'
     _SESSION = torch, tokenizer, model, device
     return _SESSION
+
+
+def preload(on_progress=None):
+    """Load the model into memory ahead of the first scan (safe to call twice)."""
+    with _LOCK:
+        _load(on_progress or (lambda message: None))
+
+
+def preload_in_background(on_progress=None, on_error=None):
+    """Warm the model on a daemon thread so the first Scan Names is instant."""
+    def run():
+        try:
+            preload(on_progress)
+        except Exception as exc:  # the next real scan reports it again
+            if on_error:
+                on_error(exc)
+    thread = threading.Thread(target=run, name='ner-preload', daemon=True)
+    thread.start()
+    return thread
 
 
 def _decode(offsets, ids, scores):
@@ -166,3 +295,13 @@ class NameScanner:
                 entry['contexts'].append(text[max(0, start-45):min(len(text), end+45)])
         progress(f'NER {device.upper()} hoàn tất — đang lấy gợi ý tên từ API…')
         return sorted(entities.values(), key=lambda v: (-v['count'], -v['confidence'], v['cn']))[:limit]
+
+
+if __name__ == '__main__':
+    # python gpu_name_scanner.py            -> download/verify the local model
+    # python gpu_name_scanner.py --force    -> re-download it
+    # python gpu_name_scanner.py --test     -> also run a small scan
+    target = install_model(print, force='--force' in sys.argv)
+    print('Mô hình NER sẵn sàng tại:', target)
+    if '--test' in sys.argv:
+        print(NameScanner().scan('王宏伟来自北京。', on_progress=print))

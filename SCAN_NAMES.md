@@ -22,10 +22,38 @@ CPU-only users can install `requirements-scanner.txt` instead.
 Model: https://huggingface.co/shibing624/bert4ner-base-chinese (Apache 2.0).
 Pinned revision: `5d660ed2aa9da482bf2d99c6bc8cf2ce66758f6a`.
 Only safetensors weights are loaded; remote Python code is disabled.
-The first scan downloads about 400 MB to the Hugging Face user cache,
-outside the repository. Later scans reuse the local files and the in-memory
-model. Source text is processed locally for recognition; discovered names
-are sent to the existing translation API for suggestions.
+
+### Local model folder (no re-download)
+
+The model is stored inside the app folder, not the Hugging Face user cache:
+
+```
+models/bert4ner-base-chinese/   config.json, vocab.txt, model.safetensors, stv_model.json
+```
+
+- Every scan loads straight from this folder with Hugging Face forced offline,
+  so no network check or download happens after the first setup.
+- First time only: if the model is already in the old Hugging Face cache
+  (`%USERPROFILE%\.cache\huggingface`), it is copied into `models/` without
+  downloading. Otherwise about 400 MB is downloaded once. An interrupted
+  download resumes from `models/bert4ner-base-chinese.partial`.
+- `stv_model.json` records the pinned revision; if `REVISION` changes, the
+  folder is refreshed automatically.
+- The frozen EXE looks for `models/` next to `StoryTranslatorPro.exe`
+  (or next to the `dist` folder), the same rule as `name.cfg`.
+- To keep the model elsewhere (another drive, shared folder):
+  `$env:STV_NER_MODEL_DIR = "D:\AI\bert4ner-base-chinese"`.
+- To move it to another PC, copy the whole `models` folder; no internet needed.
+- `models/` is in `.gitignore` — never commit it to GitHub Pages.
+- If a scan reports a broken model folder, delete it and run the download
+  command below again.
+
+When a builder starts and the model is already on disk, it is loaded into
+memory in the background, so the first Scan Names does not wait for loading.
+Disable with `$env:STV_NER_PRELOAD = "0"`.
+
+Source text is processed locally for recognition; discovered names are sent
+to the existing translation API for suggestions.
 
 The scanner recognizes PERSON, PLACE and ORG using Chinese context. It does
 not separately classify fantasy skills or items. This model was trained on
@@ -44,11 +72,13 @@ $env:STV_NER_DEVICE = "cpu" # auto (default), cpu, cuda
 python builder.py
 ```
 
-To download/cache the model without opening the GUI:
+To download (or verify) the local model without opening the GUI:
 
 ```powershell
 conda activate p310
-python -c "from gpu_name_scanner import NameScanner; print(len(NameScanner().scan('王宏伟来自北京。')))"
+python gpu_name_scanner.py          # download once / check
+python gpu_name_scanner.py --test   # also run a small scan
+python gpu_name_scanner.py --force  # re-download
 ```
 
 ## Suggestions and review

@@ -38,3 +38,11 @@ packages/react-devtools-shell/dist
 packages/react-devtools-timeline/dist
 /dist
 *.spec
+
+# Mô hình NER tải về cho Scan Names (~400 MB, không đưa lên GitHub)
+/models/
+
+# Nháp bản dịch, sao lưu khi thay thế hàng loạt, bản .bak của danh mục
+/.drafts/
+/.backups/
+*.json.bak

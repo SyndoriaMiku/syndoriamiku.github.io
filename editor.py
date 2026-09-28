@@ -8,11 +8,14 @@ import unicodedata
 import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext, simpledialog, ttk
 from editor_widgets import StorySearchCombo, StyledScrolledText, story_options, configure_theme
+import library_store as store
+from library_store import CatalogError, read_catalog, write_catalog
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LIBRARY_DIR = os.path.join(BASE_DIR, "library")
 CATALOG_PATH = os.path.join(LIBRARY_DIR, "list.json")
 CONFIG_PATH = os.path.join(BASE_DIR, "editor_config.json")
+BACKUP_DIR = os.path.join(BASE_DIR, ".backups")
 
 
 def delete_library_chapter(story_slug, chapter_id):
@@ -26,8 +29,7 @@ def delete_library_chapter(story_slug, chapter_id):
 	for path in (story_dir, chapter_dir):
 		if os.path.normcase(os.path.realpath(path)) != os.path.normcase(path):
 			raise ValueError("Không xóa chương qua đường dẫn liên kết.")
-	with open(CATALOG_PATH, "r", encoding="utf-8") as f:
-		catalog = json.load(f)
+	catalog = read_catalog(CATALOG_PATH)
 	story = next((item for item in catalog if item.get("slug") == story_slug), None)
 	if story is None or not any(ch.get("id") == chapter_id for ch in story.get("chapters", [])):
 		raise ValueError("Chương không còn trong danh mục. Hãy chọn lại chương.")
@@ -35,17 +37,12 @@ def delete_library_chapter(story_slug, chapter_id):
 		raise ValueError("Đường dẫn chương không phải thư mục.")
 
 	staging = None
-	catalog_tmp = None
 	try:
 		if os.path.isdir(chapter_dir):
 			staging = tempfile.mkdtemp(prefix=".delete-chapter-", dir=story_dir)
 			os.replace(chapter_dir, os.path.join(staging, "chapter"))
 		story["chapters"] = [ch for ch in story["chapters"] if ch.get("id") != chapter_id]
-		fd, catalog_tmp = tempfile.mkstemp(prefix=".list-", suffix=".json", dir=library_root)
-		with os.fdopen(fd, "w", encoding="utf-8") as f:
-			json.dump(catalog, f, ensure_ascii=False, indent=4)
-		os.replace(catalog_tmp, CATALOG_PATH)
-		catalog_tmp = None
+		write_catalog(CATALOG_PATH, catalog)
 	except Exception:
 		if staging:
 			staged_chapter = os.path.join(staging, "chapter")
@@ -53,9 +50,6 @@ def delete_library_chapter(story_slug, chapter_id):
 				os.replace(staged_chapter, chapter_dir)
 			os.rmdir(staging)
 		raise
-	finally:
-		if catalog_tmp and os.path.exists(catalog_tmp):
-			os.remove(catalog_tmp)
 
 	cleanup_warning = None
 	if staging:
@@ -74,25 +68,19 @@ def delete_library_story(story_slug):
 	story_dir = os.path.join(library_root, story_slug)
 	if os.path.normcase(os.path.realpath(story_dir)) != os.path.normcase(story_dir):
 		raise ValueError("Không xóa truyện qua đường dẫn liên kết.")
-	with open(CATALOG_PATH, "r", encoding="utf-8") as f:
-		catalog = json.load(f)
+	catalog = read_catalog(CATALOG_PATH)
 	if not any(item.get("slug") == story_slug for item in catalog):
 		raise ValueError("Truyện không còn trong danh mục. Hãy chọn lại truyện.")
 	if os.path.lexists(story_dir) and not os.path.isdir(story_dir):
 		raise ValueError("Đường dẫn truyện không phải thư mục.")
 
 	staging = None
-	catalog_tmp = None
 	try:
 		if os.path.isdir(story_dir):
 			staging = tempfile.mkdtemp(prefix=".delete-story-", dir=library_root)
 			os.replace(story_dir, os.path.join(staging, "story"))
 		catalog = [item for item in catalog if item.get("slug") != story_slug]
-		fd, catalog_tmp = tempfile.mkstemp(prefix=".list-", suffix=".json", dir=library_root)
-		with os.fdopen(fd, "w", encoding="utf-8") as f:
-			json.dump(catalog, f, ensure_ascii=False, indent=4)
-		os.replace(catalog_tmp, CATALOG_PATH)
-		catalog_tmp = None
+		write_catalog(CATALOG_PATH, catalog)
 	except Exception:
 		if staging:
 			staged_story = os.path.join(staging, "story")
@@ -100,9 +88,6 @@ def delete_library_story(story_slug):
 				os.replace(staged_story, story_dir)
 			os.rmdir(staging)
 		raise
-	finally:
-		if catalog_tmp and os.path.exists(catalog_tmp):
-			os.remove(catalog_tmp)
 
 	cleanup_warning = None
 	if staging:
@@ -248,6 +233,12 @@ class ChapterEditorApp:
 		self.loaded_json = None
 		self.story_options = []
 		self._resize_timer = None
+		self._flash_timer = None
+		self._count_timer = None
+		self._clean_snapshot = ("", "", "")
+		self._loaded_chapter = None  # (story_slug, chapter_id) opened with "Mở chương"
+		self.search_target = None
+		self.current_match_idx = -1
 
 		# Restore saved geometry or use default
 		cfg = load_config()
@@ -256,9 +247,103 @@ class ChapterEditorApp:
 
 		self.setup_ui()
 		self.load_story_list()
+		self.mark_clean()
 
 		# Save geometry on resize (debounced)
 		self.root.bind("<Configure>", self._on_root_configure)
+		self.root.protocol("WM_DELETE_WINDOW", self.on_app_close)
+		for sequence, handler in (("<Control-s>", self.save_chapter), ("<Control-S>", self.save_chapter),
+				("<Control-o>", self.pick_json), ("<Control-O>", self.pick_json),
+				("<Control-h>", self.show_replace_dialog), ("<Control-H>", self.show_replace_dialog)):
+			self.root.bind_all(sequence, lambda event, h=handler: self._main_shortcut(event, h))
+
+	def _main_shortcut(self, event, handler):
+		# Shortcuts belong to the main window, not to open dialogs.
+		try:
+			if event.widget.winfo_toplevel() is not self.root:
+				return None
+		except (AttributeError, tk.TclError):
+			return None
+		handler()
+		return "break"
+
+	# --- TRẠNG THÁI CHƯA LƯU / THÔNG BÁO NHANH ---
+
+	def _editor_snapshot(self):
+		return (self.chap_entry.get().strip(), self.chap_title_entry.get().strip(),
+			self.content_text.get("1.0", tk.END).strip())
+
+	def mark_clean(self):
+		self._clean_snapshot = self._editor_snapshot()
+		self.update_counter()
+
+	def is_dirty(self):
+		_chap_id, title, content = self._editor_snapshot()
+		clean_title, clean_content = self._clean_snapshot[1], self._clean_snapshot[2]
+		# Only unsaved title/content matter; the pre-filled next ID is not user work.
+		return (title, content) != (clean_title, clean_content) and bool(title or content)
+
+	def confirm_discard(self, action):
+		"""Ask before replacing unsaved editor content. Returns True to continue."""
+		if not self.is_dirty():
+			return True
+		answer = messagebox.askyesnocancel(
+			"Nội dung chưa lưu",
+			f"Chương đang soạn chưa được lưu.\n\nLưu trước khi {action}?\n"
+			"Có = Lưu rồi tiếp tục · Không = Bỏ thay đổi · Hủy = Quay lại",
+			parent=self.root, icon="warning")
+		if answer is None:
+			return False
+		if answer:
+			return self.save_chapter()
+		return True
+
+	def on_app_close(self):
+		if self.confirm_discard("thoát"):
+			self._save_root_geometry()
+			self.root.destroy()
+
+	def flash(self, text, kind="ok"):
+		"""Show a non-blocking status message in the footer instead of a popup."""
+		colors = {"ok": "#5eead4", "warn": "#fbbf24", "error": "#f87171", "info": "#94a3b8"}
+		self.library_status.config(text=text, fg=colors.get(kind, "#94a3b8"))
+		if self._flash_timer:
+			self.root.after_cancel(self._flash_timer)
+		self._flash_timer = self.root.after(8000, self._reset_status)
+
+	def _reset_status(self):
+		self._flash_timer = None
+		self.library_status.config(text=f"{len(self.story_options)} truyện  ·  Mới cập nhật trước", fg="#94a3b8")
+
+	def schedule_counter(self, event=None):
+		if self._count_timer:
+			self.root.after_cancel(self._count_timer)
+		self._count_timer = self.root.after(300, self.update_counter)
+
+	def update_counter(self):
+		self._count_timer = None
+		if not hasattr(self, "counter_label"):
+			return
+		text = self.content_text.get("1.0", tk.END).strip()
+		paragraphs = len([p for p in text.split("\n\n") if p.strip()]) if text else 0
+		words = len(text.split())
+		dirty = "  ·  ● chưa lưu" if self.is_dirty() else ""
+		self.counter_label.config(text=f"{words:,} chữ  ·  {paragraphs} đoạn  ·  {len(text):,} ký tự{dirty}".replace(",", "."),
+			fg="#fbbf24" if dirty else "#64748b")
+
+	def _on_content_modified(self, event=None):
+		if self.content_text.edit_modified():
+			self.content_text.edit_modified(False)
+			self.schedule_counter()
+
+	def _catalog_or_error(self, parent=None):
+		"""Strict read for anything that will write list.json. None on error."""
+		try:
+			return read_catalog(CATALOG_PATH)
+		except CatalogError as error:
+			messagebox.showerror("Không đọc được danh mục", f"{error}\n\nĐã dừng để không ghi đè mất danh sách truyện.",
+				parent=parent or self.root)
+			return None
 
 	def _on_root_configure(self, event=None):
 		if event and event.widget is not self.root:
@@ -292,17 +377,19 @@ class ChapterEditorApp:
 		panes = tk.PanedWindow(self.root, orient=tk.HORIZONTAL, bg="#0b1220", bd=0,
 			sashwidth=12, sashrelief="flat", showhandle=False)
 		panes.pack(fill="both", expand=True, padx=24, pady=(0, 16))
+		self.panes = panes
 		left = tk.Frame(panes, bg="#111c2e", highlightthickness=1, highlightbackground="#263449")
 		right = tk.Frame(panes, bg="#111c2e", highlightthickness=1, highlightbackground="#263449")
 		panes.add(left, minsize=460, stretch="always")
 		panes.add(right, minsize=460, stretch="always")
 		self.build_left(left)
 		self.build_right(right)
+		self.build_search_bar(self.root)
 		footer = tk.Frame(self.root, bg="#0b1220")
 		footer.pack(fill="x", padx=24, pady=(0, 12))
 		self.library_status = tk.Label(footer, text="Thư viện", bg="#0b1220", fg="#94a3b8", font=("Segoe UI", 9))
 		self.library_status.pack(side="left")
-		tk.Label(footer, text="Ctrl + F  Tìm trong nguồn    •    Kéo vạch giữa để đổi độ rộng", bg="#0b1220",
+		tk.Label(footer, text="Ctrl+S Lưu  •  Ctrl+O Mở JSON  •  Ctrl+F Tìm  •  Ctrl+H Thay thế", bg="#0b1220",
 			fg="#64748b", font=("Segoe UI", 9)).pack(side="right")
 
 	def build_left(self, parent):
@@ -330,6 +417,8 @@ class ChapterEditorApp:
 		delete_button.pack(side="right", padx=(8, 0))
 		self.chap_select_combo = ttk.Combobox(chapter_row, font=("Segoe UI", 10), state="readonly", width=20)
 		self.chap_select_combo.pack(side="left", fill="x", expand=True)
+		self.chap_select_combo.bind("<Return>", lambda e: self.load_chapter_for_edit())
+		self.chap_select_combo.bind("<Double-Button-1>", lambda e: self.load_chapter_for_edit())
 		meta = tk.Frame(form, bg="#111c2e")
 		meta.pack(fill="x", pady=(0, 12))
 		meta.columnconfigure(1, weight=1)
@@ -341,12 +430,18 @@ class ChapterEditorApp:
 		self.chap_title_entry.grid(row=1, column=1, sticky="ew", ipady=8)
 		setup_entry_shortcuts(self.chap_entry)
 		setup_entry_shortcuts(self.chap_title_entry)
-		tk.Label(form, text="NỘI DUNG CHƯƠNG", fg="#94a3b8", bg="#111c2e", font=("Segoe UI", 9, "bold")).pack(anchor="w")
+		content_head = tk.Frame(form, bg="#111c2e")
+		content_head.pack(fill="x")
+		tk.Label(content_head, text="NỘI DUNG CHƯƠNG", fg="#94a3b8", bg="#111c2e", font=("Segoe UI", 9, "bold")).pack(side="left")
+		self.counter_label = tk.Label(content_head, text="", fg="#64748b", bg="#111c2e", font=("Segoe UI", 9))
+		self.counter_label.pack(side="right")
 		self.content_text = StyledScrolledText(form, height=8, width=30, bg="#0b1220", fg="#e2e8f0",
 			insertbackground="white", font=("Segoe UI", 11), wrap=tk.WORD, undo=True,
 			bd=0, padx=12, pady=10, spacing1=3, spacing3=5, selectbackground="#115e59")
 		self.content_text.pack(fill="both", expand=True, pady=(6, 12))
 		setup_text_shortcuts(self.content_text)
+		self.content_text.bind("<<Modified>>", self._on_content_modified, add="+")
+		self.chap_title_entry.bind("<KeyRelease>", self.schedule_counter, add="+")
 		self._button(form, "Lưu chương vào thư viện", self.save_chapter, primary=True).pack(fill="x", pady=(0, 16))
 
 	def build_right(self, parent):
@@ -369,82 +464,6 @@ class ChapterEditorApp:
 		self.temp_status.pack(fill="x", padx=18, pady=(0, 10))
 		parent.bind("<Configure>", lambda e: self.temp_status.config(wraplength=max(200, e.width - 36)), add="+")
 
-		# Sleek search bar (hidden by default)
-		self.search_frame = tk.Frame(parent, bg="#25344b", bd=1, relief="solid")
-		
-		# Elements inside search bar
-		tk.Label(self.search_frame, text="🔍 Tìm:", fg="#ffffff", bg="#25344b", font=("Segoe UI", 9, "bold")).pack(side="left", padx=(8, 4))
-		
-		self.search_entry = tk.Entry(self.search_frame, bg="#0b1220", fg="#ffffff", insertbackground="white", font=("Segoe UI", 9))
-		self.search_entry.pack(side="left", fill="x", expand=True, pady=4, padx=4)
-		setup_entry_shortcuts(self.search_entry)
-		
-		self.regex_var = tk.BooleanVar(value=False)
-		self.regex_check = tk.Checkbutton(
-			self.search_frame,
-			text="Regex",
-			variable=self.regex_var,
-			bg="#25344b",
-			fg="#ffffff",
-			selectcolor="#0b1220",
-			activebackground="#25344b",
-			activeforeground="#ffffff",
-			font=("Segoe UI", 8),
-			command=self.perform_search
-		)
-		self.regex_check.pack(side="left", padx=4)
-		
-		self.search_status = tk.Label(self.search_frame, text="0/0", fg="#94a3b8", bg="#25344b", font=("Segoe UI", 8))
-		self.search_status.pack(side="left", padx=4)
-		
-		tk.Button(
-			self.search_frame,
-			text="←",
-			bg="#334155",
-			fg="#ffffff",
-			command=self.find_prev,
-			borderwidth=0,
-			padx=6,
-			font=("Segoe UI", 8),
-			cursor="hand2"
-		).pack(side="left", padx=2)
-		
-		tk.Button(
-			self.search_frame,
-			text="→",
-			bg="#334155",
-			fg="#ffffff",
-			command=self.find_next,
-			borderwidth=0,
-			padx=6,
-			font=("Segoe UI", 8),
-			cursor="hand2"
-		).pack(side="left", padx=2)
-		
-		tk.Button(
-			self.search_frame,
-			text="⬆️ Chọn Lên",
-			bg="#8b5cf6",
-			fg="#ffffff",
-			command=self.select_above_match,
-			borderwidth=0,
-			padx=8,
-			font=("Segoe UI", 8, "bold"),
-			cursor="hand2"
-		).pack(side="left", padx=(2, 4))
-		
-		tk.Button(
-			self.search_frame,
-			text="✕",
-			bg="#ef4444",
-			fg="#ffffff",
-			command=self.hide_search_dialog,
-			borderwidth=0,
-			padx=8,
-			font=("Segoe UI", 8, "bold"),
-			cursor="hand2"
-		).pack(side="left", padx=(4, 8))
-
 		# Temp text window
 		self.temp_text = StyledScrolledText(
 			parent,
@@ -461,96 +480,111 @@ class ChapterEditorApp:
 		self.temp_text.pack(fill="both", expand=True, padx=16, pady=(0, 16))
 		setup_text_shortcuts(self.temp_text)
 		
-		# Configure match tags
-		self.temp_text.tag_configure("match", background="#b45309", foreground="#ffffff")
-		self.temp_text.tag_configure("active_match", background="#0f766e", foreground="#ffffff")
-		
-		# Binds
-		self.temp_text.bind("<Control-f>", self.show_search_dialog)
-		self.temp_text.bind("<Control-F>", self.show_search_dialog)
-		
+		for widget in (self.temp_text, self.content_text):
+			widget.tag_configure("match", background="#b45309", foreground="#ffffff")
+			widget.tag_configure("active_match", background="#0f766e", foreground="#ffffff")
+			widget.tag_raise("sel")
+			widget.bind("<Control-f>", lambda e, w=widget: self.show_search_dialog(target=w))
+			widget.bind("<Control-F>", lambda e, w=widget: self.show_search_dialog(target=w))
+			widget.bind("<FocusIn>", lambda e, w=widget: self._set_last_text(w), add="+")
+			# Tk's Text class maps Ctrl+H to backspace; override it for Replace.
+			widget.bind("<Control-h>", lambda e, w=widget: self.show_search_dialog(target=w, replace=True))
+			widget.bind("<Control-H>", lambda e, w=widget: self.show_search_dialog(target=w, replace=True))
+			# Text's class binding for Ctrl+O inserts a newline; stop it before opening a file.
+			widget.bind("<Control-o>", lambda e: (self.pick_json(), "break")[1])
+			widget.bind("<Control-O>", lambda e: (self.pick_json(), "break")[1])
+
+	def _set_last_text(self, widget):
+		self._last_text = widget
+
+	def build_search_bar(self, parent):
+		"""Find/replace bar shared by both text areas (hidden by default)."""
+		bar = self.search_frame = tk.Frame(parent, bg="#172338", highlightthickness=1, highlightbackground="#334155")
+		label_opts = dict(bg="#172338", fg="#cbd5e1", font=("Segoe UI", 9, "bold"))
+		entry_opts = dict(bg="#0b1220", fg="#ffffff", insertbackground="white", font=("Segoe UI", 10), bd=0)
+		check_opts = dict(bg="#172338", fg="#e2e8f0", selectcolor="#0b1220", activebackground="#172338",
+			activeforeground="#ffffff", font=("Segoe UI", 8))
+		small = dict(borderwidth=0, font=("Segoe UI", 8, "bold"), cursor="hand2", fg="#ffffff", padx=8, pady=3)
+
+		row1 = tk.Frame(bar, bg="#172338")
+		row1.pack(fill="x", padx=8, pady=(6, 2))
+		self.search_where = tk.Label(row1, text="🔍 Tìm:", width=16, anchor="w", **label_opts)
+		self.search_where.pack(side="left")
+		self.search_entry = tk.Entry(row1, **entry_opts)
+		self.search_entry.pack(side="left", fill="x", expand=True, ipady=4, padx=4)
+		setup_entry_shortcuts(self.search_entry)
+		self.regex_var = tk.BooleanVar(value=False)
+		self.case_var = tk.BooleanVar(value=False)
+		tk.Checkbutton(row1, text="Regex", variable=self.regex_var, command=self.perform_search, **check_opts).pack(side="left")
+		tk.Checkbutton(row1, text="Aa", variable=self.case_var, command=self.perform_search, **check_opts).pack(side="left")
+		self.search_status = tk.Label(row1, text="0/0", width=9, fg="#94a3b8", bg="#172338", font=("Segoe UI", 8))
+		self.search_status.pack(side="left", padx=4)
+		tk.Button(row1, text="←", bg="#334155", command=self.find_prev, **small).pack(side="left", padx=2)
+		tk.Button(row1, text="→", bg="#334155", command=self.find_next, **small).pack(side="left", padx=2)
+		self.select_above_btn = tk.Button(row1, text="⬆️ Chọn Lên", bg="#8b5cf6", command=self.select_above_match, **small)
+		self.select_above_btn.pack(side="left", padx=2)
+		self._search_close_btn = tk.Button(row1, text="✕", bg="#ef4444", command=self.hide_search_dialog, **small)
+		self._search_close_btn.pack(side="left", padx=(4, 0))
+
+		row2 = self.replace_row = tk.Frame(bar, bg="#172338")
+		tk.Label(row2, text="↪ Thay bằng:", width=16, anchor="w", **label_opts).pack(side="left")
+		self.replace_entry = tk.Entry(row2, **entry_opts)
+		self.replace_entry.pack(side="left", fill="x", expand=True, ipady=4, padx=4)
+		setup_entry_shortcuts(self.replace_entry)
+		tk.Button(row2, text="Thay", bg="#334155", command=self.replace_current, **small).pack(side="left", padx=2)
+		tk.Button(row2, text="Thay tất cả", bg="#0f766e", command=self.replace_all, **small).pack(side="left", padx=2)
+		tk.Button(row2, text="Cả truyện…", bg="#b45309", command=self.replace_in_whole_story, **small).pack(side="left", padx=(2, 0))
+
 		self.search_entry.bind("<KeyRelease>", self.schedule_search)
 		self.search_entry.bind("<Return>", self.find_next)
 		self.search_entry.bind("<Shift-Return>", self.find_prev)
 		self.search_entry.bind("<Escape>", self.hide_search_dialog)
+		self.replace_entry.bind("<Return>", lambda e: (self.replace_current(), "break")[1])
+		self.replace_entry.bind("<Escape>", self.hide_search_dialog)
+		for entry in (self.search_entry, self.replace_entry):
+			entry.bind("<Control-h>", lambda e: self.show_search_dialog(target=self._target(), replace=True))
 
 	def load_story_list(self):
 		self.story_options = []
 		os.makedirs(LIBRARY_DIR, exist_ok=True)
-		
+
 		# Auto-migrate list.json from stories/ to library/ if not exists
 		if not os.path.exists(CATALOG_PATH):
 			old_catalog = os.path.join(BASE_DIR, "stories", "list.json")
 			if os.path.exists(old_catalog):
 				try:
-					import shutil
 					shutil.copy2(old_catalog, CATALOG_PATH)
 				except Exception:
 					pass
 
-		if os.path.exists(CATALOG_PATH):
-			try:
-				with open(CATALOG_PATH, "r", encoding="utf-8") as f:
-					data = json.load(f)
-				self.story_options = story_options(data)
-			except Exception:
-				pass
+		try:
+			self.story_options = story_options(read_catalog(CATALOG_PATH))
+		except CatalogError as error:
+			messagebox.showerror("Không đọc được danh mục",
+				f"{error}\n\nTrình biên tập sẽ không ghi vào list.json cho tới khi file được sửa.", parent=self.root)
 
 		self.story_combo["values"] = self.story_options
 		if hasattr(self, "library_status"):
 			self.library_status.config(text=f"{len(self.story_options)} truyện  ·  Mới cập nhật trước")
 
-	def get_next_story_id(self):
-		catalog = []
-		if os.path.exists(CATALOG_PATH):
-			try:
-				with open(CATALOG_PATH, "r", encoding="utf-8") as f:
-					catalog = json.load(f)
-			except Exception:
-				pass
-		
-		max_id = 0
-		for item in catalog:
-			slug = item.get("slug", "")
-			if slug.isdigit():
-				val = int(slug)
-				if val > max_id:
-					max_id = val
-		
-		next_id = max_id + 1
-		return f"{next_id:04d}"
+	def get_next_story_id(self, catalog=None):
+		if catalog is None:
+			catalog = self._read_chapter_catalog()
+		return store.next_story_id(catalog)
 
 	def get_next_chapter_id(self, story_slug, catalog=None):
 		if not story_slug:
 			return "000001"
-
 		if catalog is None:
 			catalog = self._read_chapter_catalog()
-
-		story = next((item for item in catalog if item.get('slug') == story_slug), None)
-		if not story or 'chapters' not in story or not story['chapters']:
-			return "000001"
-
-		max_id = 0
-		for chap in story['chapters']:
-			chap_id = chap.get("id", "")
-			if chap_id.isdigit():
-				val = int(chap_id)
-				if val > max_id:
-					max_id = val
-
-		next_id = max_id + 1
-		return f"{next_id:06d}"
+		return store.next_chapter_id(catalog, story_slug)
 
 	def _read_chapter_catalog(self):
-		if os.path.exists(CATALOG_PATH):
-			try:
-				with open(CATALOG_PATH, "r", encoding="utf-8") as f:
-					return json.load(f)
-			except Exception:
-				pass
-
-		return []
+		"""Lenient read for display only; writers use _catalog_or_error()."""
+		try:
+			return read_catalog(CATALOG_PATH)
+		except CatalogError:
+			return []
 
 	def on_story_selected(self, event=None):
 		story_value = self.story_combo.get().strip()
@@ -630,14 +664,16 @@ class ChapterEditorApp:
 		self.chap_select_combo.set("")
 		self.chap_entry.delete(0, tk.END)
 		self.chap_entry.insert(0, "000001")
-		self.chap_title_entry.delete(0, tk.END)
-		self.content_text.delete("1.0", tk.END)
-		if hasattr(self, "library_status"):
-			self.library_status.config(text=f"{len(self.story_options)} truyện  ·  Mới cập nhật trước")
+		# Only clear the editor if it holds a chapter of the deleted story.
+		if self._loaded_chapter and self._loaded_chapter[0] == story_slug:
+			self.chap_title_entry.delete(0, tk.END)
+			self.content_text.delete("1.0", tk.END)
+			self._loaded_chapter = None
+			self.mark_clean()
 		if cleanup_warning:
 			messagebox.showwarning("Đã xóa truyện", cleanup_warning, parent=self.root)
 		else:
-			messagebox.showinfo("Đã xóa truyện", f"Đã xóa truyện: {story_title}", parent=self.root)
+			self.flash(f"🗑 Đã xóa truyện: {story_title}")
 	def delete_chapter(self):
 		"""Delete the chapter selected in the saved-chapter list."""
 		story_value = self.story_combo.get().strip()
@@ -669,6 +705,8 @@ class ChapterEditorApp:
 			self.content_text.delete("1.0", tk.END)
 			self.chap_entry.delete(0, tk.END)
 			self.chap_entry.insert(0, self.get_next_chapter_id(story_slug, catalog))
+			self._loaded_chapter = None
+			self.mark_clean()
 		elif not self.chap_title_entry.get().strip() and not self.content_text.get("1.0", tk.END).strip():
 			self.chap_entry.delete(0, tk.END)
 			self.chap_entry.insert(0, self.get_next_chapter_id(story_slug, catalog))
@@ -676,10 +714,12 @@ class ChapterEditorApp:
 		if cleanup_warning:
 			messagebox.showwarning("Đã xóa chương", cleanup_warning, parent=self.root)
 		else:
-			messagebox.showinfo("Đã xóa chương", f"Đã xóa chương: {chap_value}", parent=self.root)
+			self.flash(f"🗑 Đã xóa chương: {chap_value}")
 
 	def load_chapter_for_edit(self):
 		"""Load a chapter from library into the editor for editing."""
+		if not self.confirm_discard("mở chương khác"):
+			return
 		story_value = self.story_combo.get().strip()
 		if not story_value:
 			messagebox.showwarning("Chú ý", "Vui lòng chọn Truyện trước!")
@@ -729,8 +769,10 @@ class ChapterEditorApp:
 			self.chap_title_entry.insert(0, chap_title)
 		self.content_text.delete("1.0", tk.END)
 		self.content_text.insert("1.0", "\n\n".join(vi_paragraphs))
-
-		messagebox.showinfo("Đã load", f"Đã load chương: {chap_value}\nChỉnh sửa xong bấm 'Lưu' để ghi đè.")
+		self.content_text.edit_reset()
+		self._loaded_chapter = (story_slug, chap_slug)
+		self.mark_clean()
+		self.flash(f"📖 Đang sửa chương {chap_value} — Ctrl+S để lưu đè.", "info")
 
 	def add_new_story(self):
 		default_title = ""
@@ -882,38 +924,16 @@ class ChapterEditorApp:
 		title = title.strip()
 
 
+		catalog = self._catalog_or_error()
+		if catalog is None:
+			return
 		# Auto generate 4-digit Story ID
-		slug = self.get_next_story_id()
-
-		# Read catalog
-		catalog = []
-		if os.path.exists(CATALOG_PATH):
-			try:
-				with open(CATALOG_PATH, "r", encoding="utf-8") as f:
-					catalog = json.load(f)
-			except Exception:
-				pass
-
-		existing = next((item for item in catalog if item.get('slug') == slug), None)
-		if existing:
+		slug = self.get_next_story_id(catalog)
+		if any(item.get('slug') == slug for item in catalog):
 			messagebox.showwarning("Chú ý", f"ID/Slug tự động '{slug}' đã tồn tại!")
 			return
 
-		# Create story folder
-		story_dir = os.path.join(LIBRARY_DIR, slug)
-		os.makedirs(story_dir, exist_ok=True)
-
-		# Copy story.html template to library/{slug}/index.html
-		story_template = os.path.join(LIBRARY_DIR, "story.html")
-		dest_story_html = os.path.join(story_dir, "index.html")
-		if os.path.exists(story_template):
-			try:
-				import shutil
-				shutil.copy2(story_template, dest_story_html)
-			except Exception as e:
-				print(f"Lỗi sao chép template story.html: {e}")
-
-		# Add new story to list
+		store.copy_templates(LIBRARY_DIR, BASE_DIR, slug)
 		import datetime
 		now = datetime.datetime.now()
 		catalog.append({
@@ -925,155 +945,82 @@ class ChapterEditorApp:
 		})
 
 		try:
-			with open(CATALOG_PATH, "w", encoding="utf-8") as f:
-				json.dump(catalog, f, ensure_ascii=False, indent=4)
+			write_catalog(CATALOG_PATH, catalog)
 		except Exception as e:
 			messagebox.showerror("Lỗi", f"Không thể lưu list.json:\n{e}")
 			return
 
-		messagebox.showinfo("Thành công", f"Đã thêm truyện mới thành công!\n\nTên: {title}\nID tự động (4 chữ số): {slug}\n\nThư mục: library/{slug}")
 		self.load_story_list()
-		
+		self.flash(f"➕ Đã tạo truyện {slug} | {title}  (thư mục library/{slug})")
+
 		# Auto select in combobox
 		new_item = f"{slug} | {title}"
 		if new_item in self.story_options:
 			self.story_combo.set(new_item)
 			self.on_story_selected()
 
+	def _chapter_exists(self, catalog, story_slug, chap_slug):
+		story = next((item for item in catalog if item.get("slug") == story_slug), None)
+		return bool(story) and any(c.get("id") == chap_slug for c in story.get("chapters", []))
+
 	def save_chapter(self):
+		"""Save the editor chapter. Returns True when written."""
 		story_value = self.story_combo.get().strip()
 		if story_value and story_value not in self.story_options:
 			messagebox.showwarning("Chọn truyện", "Hãy chọn một truyện trong danh sách gợi ý trước khi lưu.", parent=self.root)
-			return
+			return False
 		chap_slug = self.chap_entry.get().strip()
 		chap_title = self.chap_title_entry.get().strip()
 		content = self.content_text.get("1.0", tk.END).strip()
 
 		if not story_value:
 			messagebox.showwarning("Chú ý", "Vui lòng chọn Truyện!")
-			return
+			return False
 		if not chap_title:
 			chap_title = "Oneshot"
 		if not content:
 			messagebox.showwarning("Chú ý", "Nội dung chương không được để trống!")
-			return
+			return False
 
-		# Parse Story Slug
-		if "|" in story_value:
-			story_slug, story_title = story_value.split("|", 1)
-			story_slug = story_slug.strip()
-			story_title = story_title.strip()
-		else:
-			story_title = story_value
-			story_slug = slugify_vn(story_title)
+		story_slug, story_title = (part.strip() for part in story_value.split("|", 1))
+		catalog = self._catalog_or_error()
+		if catalog is None:
+			return False
 
 		# Auto assign 6-digit chapter ID if empty
 		if not chap_slug:
-			chap_slug = self.get_next_chapter_id(story_slug)
-			self.chap_entry.delete(0, tk.END)
-			self.chap_entry.insert(0, chap_slug)
+			chap_slug = self.get_next_chapter_id(story_slug, catalog)
 		else:
-			# Ensure safe ID format
 			chap_slug = slugify_vn(chap_slug)
 
-		# Directories path
-		story_dir = os.path.join(LIBRARY_DIR, story_slug)
-		output_dir = os.path.join(story_dir, chap_slug)
-		os.makedirs(output_dir, exist_ok=True)
+		# Ghi đè chương có sẵn chỉ khi chính chương đó đang được mở để sửa.
+		if (self._chapter_exists(catalog, story_slug, chap_slug)
+				and self._loaded_chapter != (story_slug, chap_slug)):
+			if not messagebox.askyesno("Ghi đè chương?",
+					f"Chương {chap_slug} đã có trong truyện này.\nGhi đè nội dung chương đó?",
+					parent=self.root, icon="warning", default="no"):
+				return False
 
-		# Build chapter content blocks (Vietnamese only, base64 CN is empty string)
 		paragraphs = [p.strip() for p in content.split("\n\n") if p.strip()]
-		story_data = {
-			"title": story_title,
-			"chapter_title": chap_title,
-			"content": []
-		}
-
-		for p in paragraphs:
-			p_nfc = unicodedata.normalize('NFC', p)
-			story_data["content"].append({
-				"cn": base64.b64encode("".encode('utf-8')).decode('utf-8'),
-				"vi": base64.b64encode(p_nfc.encode('utf-8')).decode('utf-8')
-			})
-
-		# Save data.json
-		data_json_path = os.path.join(output_dir, "data.json")
+		payload = store.chapter_payload(story_title, chap_title, (("", p) for p in paragraphs))
 		try:
-			with open(data_json_path, "w", encoding="utf-8") as f:
-				json.dump(story_data, f, ensure_ascii=False)
+			store.write_chapter(LIBRARY_DIR, BASE_DIR, story_slug, chap_slug, payload)
+			store.upsert_chapter(catalog, story_slug, story_title, chap_slug, chap_title)
+			write_catalog(CATALOG_PATH, catalog)
 		except Exception as e:
-			messagebox.showerror("Lỗi", f"Không thể ghi file data.json:\n{e}")
-			return
-
-		# Copy reader.html (from root) to library/{story-slug}/{chap-slug}/index.html
-		reader_template = os.path.join(BASE_DIR, "reader.html")
-		dest_reader_html = os.path.join(output_dir, "index.html")
-		if os.path.exists(reader_template):
-			try:
-				import shutil
-				shutil.copy2(reader_template, dest_reader_html)
-			except Exception as e:
-				print(f"Lỗi sao chép template reader.html: {e}")
-
-		# Copy story.html template to library/{story-slug}/index.html if not present
-		story_template = os.path.join(LIBRARY_DIR, "story.html")
-		dest_story_html = os.path.join(story_dir, "index.html")
-		if os.path.exists(story_template) and not os.path.exists(dest_story_html):
-			try:
-				import shutil
-				shutil.copy2(story_template, dest_story_html)
-			except Exception as e:
-				print(f"Lỗi sao chép template story.html: {e}")
-
-		# Update list.json catalog
-		import datetime
-		now = datetime.datetime.now()
-		catalog = []
-		if os.path.exists(CATALOG_PATH):
-			try:
-				with open(CATALOG_PATH, "r", encoding="utf-8") as f:
-					catalog = json.load(f)
-			except Exception:
-				pass
-
-		existing = next((item for item in catalog if item.get('slug') == story_slug), None)
-		chap_data = {"id": chap_slug, "name": chap_title, "date": now.strftime("%d/%m/%Y")}
-
-		if not existing:
-			catalog.append({
-				"title": story_title,
-				"slug": story_slug,
-				"date": now.strftime("%d/%m/%Y"),
-				"timestamp": now.timestamp(),
-				"chapters": [chap_data]
-			})
-		else:
-			existing['title'] = story_title
-			existing['date'] = now.strftime("%d/%m/%Y")
-			existing['timestamp'] = now.timestamp()
-			if 'chapters' not in existing:
-				existing['chapters'] = []
-
-			# Check if chapter already indexed, otherwise append
-			chap_exists = next((c for c in existing['chapters'] if c['id'] == chap_slug), None)
-			if chap_exists:
-				chap_exists['name'] = chap_title
-				chap_exists['date'] = chap_data['date']
-			else:
-				existing['chapters'].append(chap_data)
-
-		try:
-			with open(CATALOG_PATH, "w", encoding="utf-8") as f:
-				json.dump(catalog, f, ensure_ascii=False, indent=4)
-		except Exception as e:
-			messagebox.showerror("Lỗi", f"Không thể cập nhật list.json:\n{e}")
-			return
+			messagebox.showerror("Lỗi", f"Không thể lưu chương:\n{e}")
+			return False
 
 		self._sync_saved_chapters(story_slug, catalog, chap_slug)
 
 		# Dọn dẹp editor và điền sẵn ID chương tiếp theo
 		self.chap_title_entry.delete(0, tk.END)
 		self.content_text.delete("1.0", tk.END)
+		self.content_text.edit_reset()
+		self._loaded_chapter = None
+		self.mark_clean()
+		self.flash(f"✅ Đã lưu chương {chap_slug} · {chap_title} ({len(paragraphs)} đoạn)")
+		return True
 
 	def pick_json(self):
 		file_path = filedialog.askopenfilename(
@@ -1115,6 +1062,10 @@ class ChapterEditorApp:
 		if len(parts) >= 3 and parts[-1].lower() == "data.json":
 			detected_chap_slug = parts[-2]
 			detected_story_slug = parts[-3]
+
+		# Đang soạn dở thì không đụng vào truyện/ID/tên chương của editor.
+		if self.is_dirty():
+			detected_story_slug = ""
 
 		# Case A: Loaded from library/{story-id}/{chapter-id}/data.json
 		if detected_story_slug and detected_chap_slug and detected_story_slug.lower() != "stories" and detected_story_slug.lower() != "library":
@@ -1190,11 +1141,14 @@ class ChapterEditorApp:
 		existing = self.content_text.get("1.0", tk.END).strip()
 
 		if existing:
-			should_append = messagebox.askyesno(
-				"Xác nhận",
-				"Editor đang có sẵn dữ liệu. Bạn muốn viết tiếp xuống dưới?",
+			choice = messagebox.askyesnocancel(
+				"Editor đang có nội dung",
+				"Có = Viết tiếp xuống dưới\nKhông = Thay thế toàn bộ nội dung đang có\nHủy = Không làm gì",
+				parent=self.root,
 			)
-			if should_append:
+			if choice is None:
+				return
+			if choice:
 				self.content_text.insert(tk.END, "\n\n" + new_text)
 			else:
 				self.content_text.delete("1.0", tk.END)
@@ -1233,13 +1187,7 @@ class ChapterEditorApp:
 
 	# --- HỆ THỐNG PHÂN CHƯƠNG TỰ ĐỘNG ---
 
-	DEFAULT_SPLIT_PATTERNS = [
-		("Chương X (mặc định)", r"^chương\s+[\d]+"),
-		("Chương X: Tiêu đề", r"^chương\s+[\d]+[\s:：·]"),
-		("Thứ X chương", r"^thứ\s+\d+\s+chương"),
-		("Tiết X:", r"^tiết\s+[\d\w]+[\s:：]"),
-		("Chapter X (English)", r"^chapter\s+\d+"),
-	]
+	DEFAULT_SPLIT_PATTERNS = store.DEFAULT_SPLIT_PATTERNS
 
 	def get_split_patterns(self):
 		"""Return list of (name, regex) for the pattern selector, merging defaults + saved custom."""
@@ -1496,7 +1444,7 @@ class ChapterEditorApp:
 		list_outer = tk.Frame(dlg, bg="#0b1220")
 		list_outer.pack(fill=tk.BOTH, expand=True, padx=12, pady=(4, 0))
 
-		canvas = tk.Canvas(list_outer, bg="#0b1220", highlightthickness=0)
+		canvas = tk.Canvas(list_outer, bg="#0b1220", highlightthickness=0, height=120)
 		scrollbar = ttk.Scrollbar(list_outer, orient="vertical", style="Editor.Vertical.TScrollbar", command=canvas.yview)
 		canvas.configure(yscrollcommand=scrollbar.set)
 		scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
@@ -1520,7 +1468,92 @@ class ChapterEditorApp:
 				pass
 		dlg.bind("<MouseWheel>", on_mousewheel)
 
-		def build_chapter_list():
+		# ── Xem trước chương + thêm mốc ──
+		preview_index = None
+		preview_box = tk.Frame(dlg, bg="#111c2e", padx=12, pady=6)
+		preview_box.pack(fill=tk.X, padx=12, pady=(6, 0))
+		preview_head = tk.Frame(preview_box, bg="#111c2e")
+		preview_head.pack(fill=tk.X)
+		preview_label = tk.Label(preview_head, text="XEM TRƯỚC — bấm \"Xem\" ở một dòng",
+			fg="#94a3b8", bg="#111c2e", font=("Segoe UI", 9, "bold"))
+		preview_label.pack(side=tk.LEFT)
+		split_btn = tk.Button(preview_head, text="✂ Tách chương tại đoạn có con trỏ", bg="#0f766e", fg="#ffffff",
+			relief="flat", borderwidth=0, padx=10, pady=3, font=("Segoe UI", 8, "bold"), cursor="hand2",
+			state=tk.DISABLED, command=lambda: split_at_cursor())
+		split_btn.pack(side=tk.RIGHT)
+		preview_text = tk.Text(preview_box, height=6, wrap=tk.WORD, bg="#0b1220", fg="#cbd5e1",
+			insertbackground="white", font=("Segoe UI", 10), bd=0, padx=10, pady=6,
+			spacing3=4, cursor="xterm")
+		preview_text.pack(fill=tk.X, pady=(6, 0))
+		preview_text.tag_configure("para_no", foreground="#64748b", font=("Consolas", 8))
+		preview_text.tag_configure("current_para", background="#1e3a4a")
+		# Read-only but still clickable: block typing, keep cursor movement.
+		preview_text.bind("<Key>", lambda e: None if e.keysym in ("Up", "Down", "Left", "Right", "Prior", "Next", "Home", "End") else "break")
+
+		def paragraph_at_cursor():
+			for tag in preview_text.tag_names("insert"):
+				if tag.startswith("p_"):
+					return int(tag[2:])
+			return None
+
+		def highlight_cursor_paragraph(event=None):
+			preview_text.tag_remove("current_para", "1.0", tk.END)
+			index = paragraph_at_cursor()
+			if index is not None:
+				ranges = preview_text.tag_ranges(f"p_{index}")
+				if ranges:
+					preview_text.tag_add("current_para", ranges[0], ranges[1])
+		preview_text.bind("<ButtonRelease-1>", highlight_cursor_paragraph, add="+")
+		preview_text.bind("<KeyRelease>", highlight_cursor_paragraph, add="+")
+
+		def show_preview(index):
+			nonlocal preview_index
+			if index is None or index >= len(detected_chapters):
+				preview_index = None
+				preview_text.delete("1.0", tk.END)
+				preview_label.config(text="XEM TRƯỚC — bấm \"Xem\" ở một dòng")
+				split_btn.config(state=tk.DISABLED)
+				return
+			preview_index = index
+			chap = detected_chapters[index]
+			preview_label.config(text=f"XEM TRƯỚC #{index + 1} · {chap['id']} · {chap['title_var'].get()[:40]}")
+			preview_text.delete("1.0", tk.END)
+			for number, para in enumerate(chap["paragraphs"]):
+				preview_text.insert(tk.END, f"[{number + 1}] ", ("para_no", f"p_{number}"))
+				preview_text.insert(tk.END, para + "\n", (f"p_{number}",))
+			preview_text.mark_set("insert", "1.0")
+			preview_text.yview_moveto(0)
+			split_btn.config(state=tk.NORMAL if len(chap["paragraphs"]) > 1 else tk.DISABLED)
+			build_chapter_list(keep_scroll=True)
+
+		def renumber():
+			if detected_chapters:
+				start = int(detected_chapters[0]["id"])
+				for offset, chapter in enumerate(detected_chapters):
+					chapter["id"] = f"{start + offset:06d}"
+
+		def split_at_cursor():
+			if preview_index is None:
+				return
+			chap = detected_chapters[preview_index]
+			index = paragraph_at_cursor()
+			if index is None or index == 0:
+				messagebox.showinfo("Tách chương", "Đặt con trỏ vào một đoạn (không phải đoạn đầu tiên) để làm tên chương mới.", parent=dlg)
+				return
+			header = chap["paragraphs"][index]
+			new_chapter = {
+				"id": chap["id"],
+				"original_title": header,
+				"title_var": tk.StringVar(value=header[:120]),
+				"paragraphs": chap["paragraphs"][index + 1:],
+			}
+			chap["paragraphs"] = chap["paragraphs"][:index]
+			detected_chapters.insert(preview_index + 1, new_chapter)
+			renumber()
+			show_preview(preview_index + 1)
+
+		def build_chapter_list(keep_scroll=False):
+			position = canvas.yview()[0] if keep_scroll else None
 			n = len(detected_chapters)
 			count_label.config(text=f"BƯỚC 2 — Xem & chỉnh sửa ({n} chương phát hiện):",
 				fg="#0f766e" if n else "#ef4444")
@@ -1542,12 +1575,15 @@ class ChapterEditorApp:
 			tk.Label(hrow, text="Đoạn", fg="#64748b", bg="#25344b", font=("Segoe UI", 8, "bold"), width=6).pack(side=tk.RIGHT, padx=8)
 
 			for i, chap in enumerate(detected_chapters):
-				row_bg = "#111c2e" if i % 2 == 0 else "#1c1c1f"
+				row_bg = "#134e4a" if i == preview_index else ("#111c2e" if i % 2 == 0 else "#1c1c1f")
 				row = tk.Frame(inner_frame, bg=row_bg)
 				row.pack(fill=tk.X, padx=4, pady=1)
 
 				tk.Label(row, text=str(i+1), fg="#52525b", bg=row_bg, font=("Segoe UI", 8), width=4).pack(side=tk.LEFT, padx=(8,0), pady=4)
 				tk.Label(row, text=chap["id"], fg="#3b82f6", bg=row_bg, font=("Consolas", 9), width=8).pack(side=tk.LEFT, padx=4)
+				tk.Button(row, text="Xem", command=lambda index=i: show_preview(index),
+					bg="#25344b", fg="#e2e8f0", relief="flat", borderwidth=0,
+					font=("Segoe UI", 8), padx=8, cursor="hand2").pack(side=tk.RIGHT, padx=4)
 				tk.Button(row, text="Xóa mốc", command=lambda index=i: remove_boundary(index),
 					state=tk.NORMAL if i > 0 else tk.DISABLED,
 					bg="#3f2025", fg="#fca5a5", relief="flat", borderwidth=0,
@@ -1562,6 +1598,10 @@ class ChapterEditorApp:
 				tk.Label(row, text=str(len(chap["paragraphs"])), fg="#0f766e", bg=row_bg,
 						 font=("Segoe UI", 8), width=6).pack(side=tk.RIGHT, padx=8)
 
+			if position is not None:
+				canvas.update_idletasks()
+				canvas.yview_moveto(position)
+
 		def remove_boundary(index):
 			if index <= 0 or index >= len(detected_chapters):
 				return
@@ -1572,9 +1612,10 @@ class ChapterEditorApp:
 			if removed["original_title"]:
 				previous["paragraphs"].append(removed["original_title"])
 			previous["paragraphs"].extend(removed["paragraphs"])
-			start = int(detected_chapters[0]["id"])
-			for offset, chapter in enumerate(detected_chapters):
-				chapter["id"] = f"{start + offset:06d}"
+			renumber()
+			if preview_index is not None and preview_index >= index - 1:
+				# The merged chapter (index-1) or a chapter after it shifted up by one.
+				show_preview(index - 1 if preview_index <= index else preview_index - 1)
 			build_chapter_list()
 			canvas.update_idletasks()
 			canvas.yview_moveto(position)
@@ -1617,6 +1658,7 @@ class ChapterEditorApp:
 			except ValueError:
 				id_int = 1
 
+			show_preview(None)
 			detected_chapters = []
 			for i, ch in enumerate(chapters_raw):
 				chap_id = f"{id_int + i:06d}"
@@ -1669,7 +1711,6 @@ class ChapterEditorApp:
 	def save_all_split_chapters(self, dlg, story_combo, detected_chapters, close_callback):
 		"""Save all detected chapters to the library."""
 		import datetime
-		import shutil
 
 		story_value = story_combo.get().strip()
 		if story_value and story_value not in self.story_options:
@@ -1700,37 +1741,17 @@ class ChapterEditorApp:
 				parent=dlg):
 				return
 
+		catalog = self._catalog_or_error(parent=dlg)
+		if catalog is None:
+			return
+		clashes = [ch["id"] for ch in detected_chapters
+			if ch["paragraphs"] and self._chapter_exists(catalog, story_slug, ch["id"])]
+		if clashes and not messagebox.askyesno("Ghi đè chương?",
+				f"{len(clashes)} chương đã tồn tại ({', '.join(clashes[:5])}...).\nGhi đè các chương này?",
+				parent=dlg, icon="warning", default="no"):
+			return
+
 		now = datetime.datetime.now()
-		story_dir = os.path.join(LIBRARY_DIR, story_slug)
-		os.makedirs(story_dir, exist_ok=True)
-
-		# Copy story.html template if not present
-		story_template = os.path.join(LIBRARY_DIR, "story.html")
-		dest_story_html = os.path.join(story_dir, "index.html")
-		if os.path.exists(story_template) and not os.path.exists(dest_story_html):
-			try:
-				shutil.copy2(story_template, dest_story_html)
-			except Exception:
-				pass
-
-		# Load catalog
-		catalog = []
-		if os.path.exists(CATALOG_PATH):
-			try:
-				with open(CATALOG_PATH, "r", encoding="utf-8") as f:
-					catalog = json.load(f)
-			except Exception:
-				pass
-
-		existing_story = next((item for item in catalog if item.get("slug") == story_slug), None)
-		if not existing_story:
-			existing_story = {
-				"title": story_title, "slug": story_slug,
-				"date": now.strftime("%d/%m/%Y"), "timestamp": now.timestamp(),
-				"chapters": []
-			}
-			catalog.append(existing_story)
-
 		saved_count = 0
 		last_saved_id = None
 		errors = []
@@ -1738,63 +1759,20 @@ class ChapterEditorApp:
 		for ch in detected_chapters:
 			if not ch["paragraphs"]:
 				continue
-
 			chap_slug = ch["id"]
 			chap_title = ch["title_var"].get().strip() or f"Chương {chap_slug}"
-			output_dir = os.path.join(story_dir, chap_slug)
-			os.makedirs(output_dir, exist_ok=True)
-
-			# Build data.json content blocks
-			story_data = {
-				"title": story_title,
-				"chapter_title": chap_title,
-				"content": []
-			}
-			for para in ch["paragraphs"]:
-				p_nfc = unicodedata.normalize("NFC", para)
-				story_data["content"].append({
-					"cn": base64.b64encode("".encode("utf-8")).decode("utf-8"),
-					"vi": base64.b64encode(p_nfc.encode("utf-8")).decode("utf-8"),
-				})
-
-			# Write data.json
-			data_json_path = os.path.join(output_dir, "data.json")
+			payload = store.chapter_payload(story_title, chap_title, (("", p) for p in ch["paragraphs"]))
 			try:
-				with open(data_json_path, "w", encoding="utf-8") as f:
-					json.dump(story_data, f, ensure_ascii=False)
+				store.write_chapter(LIBRARY_DIR, BASE_DIR, story_slug, chap_slug, payload)
 			except Exception as e:
 				errors.append(f"{chap_slug}: {e}")
 				continue
-
-			# Copy reader.html template
-			reader_template = os.path.join(BASE_DIR, "reader.html")
-			dest_reader_html = os.path.join(output_dir, "index.html")
-			if os.path.exists(reader_template):
-				try:
-					shutil.copy2(reader_template, dest_reader_html)
-				except Exception:
-					pass
-
-			# Update catalog
-			chap_data = {"id": chap_slug, "name": chap_title, "date": now.strftime("%d/%m/%Y")}
-			chap_exists = next((c for c in existing_story["chapters"] if c["id"] == chap_slug), None)
-			if chap_exists:
-				chap_exists["name"] = chap_title
-				chap_exists["date"] = chap_data["date"]
-			else:
-				existing_story["chapters"].append(chap_data)
-
+			store.upsert_chapter(catalog, story_slug, story_title, chap_slug, chap_title, now)
 			saved_count += 1
 			last_saved_id = chap_slug
 
-		# Update story timestamp
-		existing_story["date"] = now.strftime("%d/%m/%Y")
-		existing_story["timestamp"] = now.timestamp()
-
-		# Save catalog
 		try:
-			with open(CATALOG_PATH, "w", encoding="utf-8") as f:
-				json.dump(catalog, f, ensure_ascii=False, indent=4)
+			write_catalog(CATALOG_PATH, catalog)
 		except Exception as e:
 			messagebox.showerror("Lỗi", f"Không thể cập nhật list.json:\n{e}", parent=dlg)
 			return
@@ -1806,168 +1784,293 @@ class ChapterEditorApp:
 			messagebox.showwarning("Hoàn thành (có lỗi)",
 				f"Đã lưu {saved_count}/{len(detected_chapters)} chương.\n\nLỗi:\n" + "\n".join(errors[:5]),
 				parent=dlg)
-		else:
-			messagebox.showinfo("Thành công",
-				f"✅ Đã lưu {saved_count} chương vào truyện '{story_title}'!", parent=dlg)
-
 		close_callback()
+		if not errors:
+			self.flash(f"✅ Đã lưu {saved_count} chương vào truyện '{story_title}'")
 
-	# --- HỆ THỐNG TÌM KIẾM CHO CỬA SỔ TEMP ---
+	# --- TÌM & THAY THẾ (DÙNG CHUNG CHO 2 Ô VĂN BẢN) ---
+
+	def _target(self):
+		return self.search_target or self.temp_text
+
+	def _compiled_query(self):
+		query = self.search_entry.get()
+		if not query:
+			return None
+		return store.compile_search(query, regex=self.regex_var.get(), match_case=self.case_var.get())
 
 	def get_match_coords(self):
-		ranges = self.temp_text.tag_ranges("match")
+		ranges = self._target().tag_ranges("match")
 		return [(str(ranges[i]), str(ranges[i+1])) for i in range(0, len(ranges), 2)]
 
 	def schedule_search(self, event=None):
-		if hasattr(self, '_search_timer') and self._search_timer:
+		if event is not None and event.keysym in ("Return", "Escape", "Shift_L", "Shift_R"):
+			return
+		if getattr(self, "_search_timer", None):
 			self.root.after_cancel(self._search_timer)
-		self._search_timer = self.root.after(500, self.perform_search)
+		self._search_timer = self.root.after(300, self.perform_search)
 
-	def perform_search(self, event=None):
-		self.temp_text.tag_remove("match", "1.0", tk.END)
-		self.temp_text.tag_remove("active_match", "1.0", tk.END)
+	def _clear_matches(self, widget):
+		widget.tag_remove("match", "1.0", tk.END)
+		widget.tag_remove("active_match", "1.0", tk.END)
+
+	def perform_search(self, event=None, from_index=None):
+		self._search_timer = None
+		widget = self._target()
+		self._clear_matches(widget)
 		self.current_match_idx = -1
-
-		query = self.search_entry.get()
-		if not query:
+		try:
+			pattern = self._compiled_query()
+		except (re.error, ValueError):
+			self.search_status.config(text="Regex lỗi", fg="#ef4444")
+			return
+		if pattern is None:
 			self.search_status.config(text="0/0", fg="#94a3b8")
 			return
 
-		is_regex = self.regex_var.get()
-		
-		try:
-			if not is_regex:
-				query = re.escape(query)
-			
-			pattern = re.compile(query, re.IGNORECASE)
-			text_content = self.temp_text.get("1.0", tk.END)
-			
-			# Collect all match ranges first, then apply in one batch
-			MAX_MATCHES = 2000
-			flat_ranges = []
-			for match in pattern.finditer(text_content):
-				if match.start() == match.end():
-					continue  # Bỏ qua các match rỗng
-				flat_ranges.append(f"1.0+{match.start()}c")
-				flat_ranges.append(f"1.0+{match.end()}c")
-				if len(flat_ranges) >= MAX_MATCHES * 2:
-					break
-
-			if flat_ranges:
-				self.temp_text.tag_add("match", *flat_ranges)
-				
-		except Exception:
-			self.search_status.config(text="Regex lỗi", fg="#ef4444")
-			return
+		text_content = widget.get("1.0", "end-1c")
+		MAX_MATCHES = 2000
+		flat_ranges = []
+		for match in pattern.finditer(text_content):
+			if match.start() == match.end():
+				continue  # Bỏ qua các match rỗng
+			flat_ranges.append(f"1.0+{match.start()}c")
+			flat_ranges.append(f"1.0+{match.end()}c")
+			if len(flat_ranges) >= MAX_MATCHES * 2:
+				break
+		if flat_ranges:
+			widget.tag_add("match", *flat_ranges)
 
 		coords = self.get_match_coords()
-		if coords:
-			self.current_match_idx = 0
-			self.highlight_active_match()
-		else:
+		if not coords:
 			self.search_status.config(text="0/0", fg="#ef4444")
-
+			return
+		self.current_match_idx = 0
+		if from_index is not None:
+			self.current_match_idx = next((i for i, (start, _end) in enumerate(coords)
+				if widget.compare(start, ">=", from_index)), 0)
+		self.highlight_active_match()
 
 	def highlight_active_match(self):
-		self.temp_text.tag_remove("active_match", "1.0", tk.END)
+		widget = self._target()
+		widget.tag_remove("active_match", "1.0", tk.END)
 		coords = self.get_match_coords()
-		
 		if not coords:
 			self.current_match_idx = -1
 			self.search_status.config(text="0/0", fg="#ef4444")
 			return
-
-		if self.current_match_idx >= len(coords):
-			self.current_match_idx = len(coords) - 1
-		elif self.current_match_idx < 0:
-			self.current_match_idx = 0
-
+		self.current_match_idx = max(0, min(self.current_match_idx, len(coords) - 1))
 		start, end = coords[self.current_match_idx]
-		self.temp_text.tag_add("active_match", start, end)
-		self.temp_text.see(start)
-		
-		total = len(coords)
-		self.search_status.config(text=f"{self.current_match_idx + 1}/{total}", fg="#0f766e")
+		widget.tag_add("active_match", start, end)
+		widget.see(start)
+		self.search_status.config(text=f"{self.current_match_idx + 1}/{len(coords)}", fg="#5eead4")
 
 	def find_next(self, event=None):
+		widget = self._target()
 		coords = self.get_match_coords()
 		if not coords:
 			return "break"
-			
-		active_ranges = self.temp_text.tag_ranges("active_match")
+		active_ranges = widget.tag_ranges("active_match")
 		if active_ranges:
-			current_pos = str(active_ranges[0])
-			op = ">"
+			current_pos, op = str(active_ranges[0]), ">"
 		else:
-			current_pos = self.temp_text.index(tk.INSERT)
-			op = ">="
-			
-		next_idx = 0
-		for i, (start, end) in enumerate(coords):
-			if self.temp_text.compare(start, op, current_pos):
-				next_idx = i
-				break
-				
-		self.current_match_idx = next_idx
+			current_pos, op = widget.index(tk.INSERT), ">="
+		self.current_match_idx = next((i for i, (start, _end) in enumerate(coords)
+			if widget.compare(start, op, current_pos)), 0)
 		self.highlight_active_match()
 		return "break"
 
 	def find_prev(self, event=None):
+		widget = self._target()
 		coords = self.get_match_coords()
 		if not coords:
 			return "break"
-			
-		active_ranges = self.temp_text.tag_ranges("active_match")
-		if active_ranges:
-			current_pos = str(active_ranges[0])
-		else:
-			current_pos = self.temp_text.index(tk.INSERT)
-			
-		prev_idx = len(coords) - 1
-		for i in range(len(coords)-1, -1, -1):
-			start, end = coords[i]
-			if self.temp_text.compare(start, "<", current_pos):
-				prev_idx = i
-				break
-				
-		self.current_match_idx = prev_idx
+		active_ranges = widget.tag_ranges("active_match")
+		current_pos = str(active_ranges[0]) if active_ranges else widget.index(tk.INSERT)
+		self.current_match_idx = next((i for i in range(len(coords) - 1, -1, -1)
+			if widget.compare(coords[i][0], "<", current_pos)), len(coords) - 1)
 		self.highlight_active_match()
 		return "break"
 
 	def select_above_match(self, event=None):
+		widget = self._target()
 		coords = self.get_match_coords()
 		if not coords or self.current_match_idx < 0 or self.current_match_idx >= len(coords):
 			return "break"
-		
-		start, end = coords[self.current_match_idx]
-		
-		self.temp_text.tag_remove("sel", "1.0", tk.END)
-		self.temp_text.tag_add("sel", "1.0", start)
-		
-		self.temp_text.mark_set("insert", "1.0")
-		self.temp_text.see("1.0")
-		self.temp_text.focus_set()
+		start, _end = coords[self.current_match_idx]
+		widget.tag_remove("sel", "1.0", tk.END)
+		widget.tag_add("sel", "1.0", start)
+		widget.mark_set("insert", "1.0")
+		widget.see("1.0")
+		widget.focus_set()
 		return "break"
 
-	def show_search_dialog(self, event=None):
+	def show_search_dialog(self, event=None, target=None, replace=False):
+		target = target or getattr(self, "_last_text", None) or self.temp_text
+		if self.search_target is not None and self.search_target is not target:
+			self._clear_matches(self.search_target)
+		self.search_target = target
+		is_source = target is self.temp_text
+		self.search_where.config(text="🔍 Tìm trong Nguồn:" if is_source else "🔍 Tìm trong Chương:")
+		if is_source:
+			self.select_above_btn.pack(side="left", padx=2, before=self._search_close_btn)
+		else:
+			self.select_above_btn.pack_forget()
 		if not self.search_frame.winfo_ismapped():
-			self.temp_text.pack_forget()
-			self.search_frame.pack(fill="x", padx=16, pady=(0, 6))
-			self.temp_text.pack(fill="both", expand=True, padx=16, pady=(0, 16))
-		
-		self.search_entry.focus_set()
-		self.search_entry.selection_range(0, tk.END)
+			self.search_frame.pack(fill="x", padx=24, pady=(0, 10), before=self.panes)
+		if replace and not self.replace_row.winfo_ismapped():
+			self.replace_row.pack(fill="x", padx=8, pady=(2, 6))
+		# Use the current selection as the query when it is a short phrase.
+		try:
+			selected = target.get("sel.first", "sel.last")
+		except tk.TclError:
+			selected = ""
+		if selected and "\n" not in selected and len(selected) <= 80:
+			self.search_entry.delete(0, tk.END)
+			self.search_entry.insert(0, selected)
+		focus = self.replace_entry if replace and self.search_entry.get() else self.search_entry
+		focus.focus_set()
+		focus.selection_range(0, tk.END)
 		self.perform_search()
 		return "break"
 
+	def show_replace_dialog(self, event=None):
+		return self.show_search_dialog(replace=True)
+
 	def hide_search_dialog(self, event=None):
+		widget = self._target()
 		if self.search_frame.winfo_ismapped():
 			self.search_frame.pack_forget()
-			self.temp_text.focus_set()
-		self.temp_text.tag_remove("match", "1.0", tk.END)
-		self.temp_text.tag_remove("active_match", "1.0", tk.END)
+			self.replace_row.pack_forget()
+			widget.focus_set()
+		self._clear_matches(widget)
 		self.current_match_idx = -1
 		return "break"
+
+	@staticmethod
+	def _edit_as_one_undo(widget, change):
+		"""Group delete+insert into a single Ctrl+Z step."""
+		auto = widget.cget("autoseparators")
+		widget.configure(autoseparators=False)
+		try:
+			widget.edit_separator()
+			change()
+			widget.edit_separator()
+		finally:
+			widget.configure(autoseparators=auto)
+
+	def _replacement_for(self, match):
+		replacement = self.replace_entry.get()
+		return match.expand(replacement) if self.regex_var.get() else replacement
+
+	def replace_current(self):
+		widget = self._target()
+		try:
+			pattern = self._compiled_query()
+		except (re.error, ValueError) as error:
+			self.flash(f"Regex lỗi: {error}", "error")
+			return
+		active = widget.tag_ranges("active_match")
+		if pattern is None or not active:
+			self.perform_search()
+			return
+		start, end = str(active[0]), str(active[1])
+		offset = len(widget.get("1.0", start))
+		match = pattern.match(widget.get("1.0", "end-1c"), offset)
+		if not match:
+			self.perform_search()
+			return
+		try:
+			new_text = self._replacement_for(match)
+		except (re.error, IndexError) as error:
+			self.flash(f"Chuỗi thay thế lỗi: {error}", "error")
+			return
+		self._edit_as_one_undo(widget, lambda: (widget.delete(start, end), widget.insert(start, new_text)))
+		self.perform_search(from_index=f"{start}+{len(new_text)}c")
+
+	def replace_all(self):
+		widget = self._target()
+		try:
+			pattern = self._compiled_query()
+			if pattern is None:
+				return
+			text = widget.get("1.0", "end-1c")
+			new_text, count = pattern.subn(self._replacement_for, text)
+		except (re.error, IndexError, ValueError) as error:
+			self.flash(f"Lỗi thay thế: {error}", "error")
+			return
+		if not count:
+			self.flash("Không có chỗ nào khớp để thay.", "warn")
+			return
+		self._edit_as_one_undo(widget, lambda: (widget.delete("1.0", "end-1c"), widget.insert("1.0", new_text)))
+		self.perform_search()
+		self.flash(f"↪ Đã thay {count} chỗ trong {'Nguồn' if widget is self.temp_text else 'Chương'} (Ctrl+Z để hoàn tác).")
+
+	def replace_in_whole_story(self):
+		"""Replace in every saved chapter of the selected story (with backup)."""
+		story_value = self.story_combo.get().strip()
+		if story_value not in self.story_options:
+			messagebox.showwarning("Chọn truyện", "Chọn truyện ở ô TRUYỆN bên trái trước.", parent=self.root)
+			return
+		story_slug, story_title = (part.strip() for part in story_value.split("|", 1))
+		try:
+			pattern = self._compiled_query()
+		except (re.error, ValueError) as error:
+			messagebox.showerror("Regex lỗi", str(error), parent=self.root)
+			return
+		if pattern is None:
+			messagebox.showwarning("Chú ý", "Nhập nội dung cần tìm trước.", parent=self.root)
+			return
+		if self._loaded_chapter and self._loaded_chapter[0] == story_slug and self.is_dirty():
+			messagebox.showwarning("Chương chưa lưu",
+				"Chương của truyện này đang mở và chưa lưu. Hãy lưu (Ctrl+S) hoặc bỏ thay đổi trước.", parent=self.root)
+			return
+		catalog = self._catalog_or_error()
+		if catalog is None:
+			return
+		replacement = self.replace_entry.get()
+		regex = self.regex_var.get()
+		try:
+			preview = store.replace_in_story(LIBRARY_DIR, catalog, story_slug, pattern, replacement, regex=regex)
+		except Exception as error:
+			messagebox.showerror("Lỗi", f"Không quét được truyện:\n{error}", parent=self.root)
+			return
+		if not preview["total"]:
+			self.flash(f"Không tìm thấy \"{self.search_entry.get()}\" trong truyện {story_title}.", "warn")
+			return
+		sample = ", ".join(f"{cid} ({n})" for cid, n in preview["chapters"][:8])
+		more = "…" if len(preview["chapters"]) > 8 else ""
+		if not messagebox.askyesno("Thay trong cả truyện",
+				f"Thay {preview['total']} chỗ trong {len(preview['chapters'])} chương của \"{story_title}\"?\n\n"
+				f"\"{self.search_entry.get()}\" → \"{replacement}\"\n\nChương: {sample}{more}\n\n"
+				"Bản data.json cũ được sao lưu vào thư mục .backups.",
+				parent=self.root, icon="warning", default="no"):
+			return
+		try:
+			result = store.replace_in_story(LIBRARY_DIR, catalog, story_slug, pattern, replacement,
+				regex=regex, apply=True, backup_root=BACKUP_DIR)
+			write_catalog(CATALOG_PATH, catalog)
+		except Exception as error:
+			messagebox.showerror("Lỗi", f"Thay thế bị dừng giữa chừng:\n{error}\n\nBản sao lưu nằm trong {BACKUP_DIR}.",
+				parent=self.root)
+			return
+
+		# The open chapter (clean) now differs from disk: apply the same change to it.
+		if self._loaded_chapter and self._loaded_chapter[0] == story_slug:
+			changed_ids = {cid for cid, _n in result["chapters"]}
+			if self._loaded_chapter[1] in changed_ids:
+				body = self.content_text.get("1.0", "end-1c")
+				new_body = pattern.sub(self._replacement_for, body)
+				self.content_text.delete("1.0", tk.END)
+				self.content_text.insert("1.0", new_body)
+				title = self.chap_title_entry.get()
+				self.chap_title_entry.delete(0, tk.END)
+				self.chap_title_entry.insert(0, pattern.sub(self._replacement_for, title))
+				self.mark_clean()
+		current = self.chap_select_combo.get().split("|", 1)[0].strip() or None
+		self._refresh_chap_select(story_slug, catalog, current)
+		self.perform_search()
+		self.flash(f"↪ Đã thay {result['total']} chỗ trong {len(result['chapters'])} chương · sao lưu: {result['backup']}")
 
 
 if __name__ == "__main__":

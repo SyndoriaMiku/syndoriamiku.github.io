@@ -19,6 +19,7 @@ except ImportError:
 
 try:
     from gpu_name_scanner import NameScanner as _NameScanner
+    from gpu_name_scanner import is_installed as _ner_installed, preload_in_background as _ner_preload
     _NAME_SCANNER_OK = True
 except ImportError:
     _NameScanner = None
@@ -483,6 +484,18 @@ class TranslatorGUI:
 
         # Save geometry on resize (debounced)
         self.root.bind("<Configure>", self._on_root_configure)
+
+        # Nạp sẵn mô hình NER đã có trên máy để lần Scan Names đầu tiên không phải chờ.
+        # Tắt bằng biến môi trường STV_NER_PRELOAD=0.
+        if _NAME_SCANNER_OK and os.environ.get('STV_NER_PRELOAD', '1') != '0':
+            self.root.after(1500, self._preload_name_model)
+
+    def _preload_name_model(self):
+        try:
+            if _ner_installed():  # chỉ nạp từ ổ đĩa, không tự tải khi khởi động
+                _ner_preload()
+        except Exception:
+            pass  # lỗi (nếu có) sẽ hiện khi bấm Scan Names
 
     def _on_root_configure(self, event=None):
         if event and event.widget is not self.root:
