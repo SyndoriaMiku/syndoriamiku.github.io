@@ -6304,7 +6304,7 @@
         "title": "Tổng hợp truyện ngắn",
         "slug": "0130",
         "date": "29/09/2026",
-        "timestamp": 1790617807.745977,
+        "timestamp": 1790618301.548355,
         "chapters": [
             {
                 "id": "000001",
@@ -6494,6 +6494,21 @@
             {
                 "id": "000038",
                 "name": "Heo mẹ tổng giám đốc lộ ra",
+                "date": "29/09/2026"
+            },
+            {
+                "id": "000039",
+                "name": "Bởi vì ta sai lầm, ta cao ngạo đẹp lạnh lùng thư ký thê tử bị thúc ép trở thành cặn bã heo mập tổng giám đốc khẩu giao bồn cầu",
+                "date": "29/09/2026"
+            },
+            {
+                "id": "000040",
+                "name": "Chủ nhiệm bị ngạo mạn bại tướng dưới tay cưỡng chế loại giao thụ thai",
+                "date": "29/09/2026"
+            },
+            {
+                "id": "000041",
+                "name": "Lẳng lơ mẫu nữ hoa",
                 "date": "29/09/2026"
             }
         ]
@@ -10758,6 +10773,39 @@
                 "id": "000459",
                 "name": "Thứ 459 chương Phượng cung hiện thân trọc dịch nhiễm giường phượng",
                 "date": "27/09/2026"
+            }
+        ]
+    },
+    {
+        "title": "Lãnh diễm tiên mẫu làm H võng hồng",
+        "slug": "0157",
+        "date": "29/09/2026",
+        "timestamp": 1790618218.820739,
+        "chapters": [
+            {
+                "id": "000001",
+                "name": "Chương 1: Tiên mẫu Nguyệt Thư Cơ",
+                "date": "29/09/2026"
+            },
+            {
+                "id": "000002",
+                "name": "Chương 02: Hợp đồng cạm bẫy",
+                "date": "29/09/2026"
+            },
+            {
+                "id": "000003",
+                "name": "Chương 03: Tiên mẫu lắc nãi xoay mông",
+                "date": "29/09/2026"
+            },
+            {
+                "id": "000004",
+                "name": "Chương 04: Hèn mọn Cẩu Thặng",
+                "date": "29/09/2026"
+            },
+            {
+                "id": "000005",
+                "name": "Chương 05: Heo mẹ trang",
+                "date": "29/09/2026"
             }
         ]
     }

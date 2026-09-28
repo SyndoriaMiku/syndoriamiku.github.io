@@ -81,7 +81,6 @@ _SENTENCE_PUNCT = ',.;:!?…'
 _OPENING = '([{“‘「『'
 _CLOSING = ')]}”’」』'
 _STRAIGHT_QUOTES = '"＂'
-_HSPACE = re.compile(r'[^\S\r\n]+')
 
 
 def compile_name_source_pattern(names):
@@ -153,7 +152,6 @@ def fix_name_spacing(text, pattern):
     removals = set()
     for start, end in _name_spans(text, pattern):
         # Bên trái tên.
-        space = _HSPACE.search(text, 0, start) if start and text[start - 1].isspace() else None
         if start and text[start - 1].isspace():
             left = start
             while left and text[left - 1] in ' \t ':
@@ -169,9 +167,7 @@ def fix_name_spacing(text, pattern):
                 while run and text[run - 1] in _SENTENCE_PUNCT:
                     run -= 1
                 # "...Tên" ở đầu lời thoại/đầu dòng giữ nguyên.
-                if run and not text[run - 1].isspace() and not _is_opening(text, run - 1):
-                    inserts.add(start)
-                elif run and text[run - 1].isspace():
+                if run and not _is_opening(text, run - 1):
                     inserts.add(start)
         # Bên phải tên.
         if end < len(text) and text[end] in ' \t ':

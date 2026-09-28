@@ -3,7 +3,8 @@ from tkinter import filedialog, messagebox, scrolledtext, ttk
 import requests, json, os, sys, base64, datetime, time, threading, queue
 import unicodedata, re, shutil
 from tkinterdnd2 import TkinterDnD, DND_FILES
-from name_glossary import update_name_cfg
+from name_glossary import (update_name_cfg, compile_name_source_pattern, compile_name_loose_pattern,
+                           substitute_names, fix_name_spacing)
 import library_store as store
 from library_store import CatalogError, read_catalog, write_catalog
 from editor_widgets import search_key
@@ -198,12 +199,14 @@ def prepare_name_updates(vi_lines, wrong, right, vi_names):
         return []
     wrong_pattern = re.compile(re.escape(wrong), re.IGNORECASE)
     name_pattern = compile_name_pattern(vi_names)
+    spacing_pattern = compile_name_loose_pattern([right])
     updates = []
     for index, original in enumerate(vi_lines):
         if not wrong_pattern.search(original):
             continue
         translated = wrong_pattern.sub(lambda match: right, original)
         translated = unicodedata.normalize('NFC', translated)
+        translated = fix_name_spacing(translated, spacing_pattern)
         translated = fix_capitalization_after_names(translated, vi_names, name_pattern)
         if translated != original:
             updates.append((index, translated))
@@ -1728,18 +1731,13 @@ class TranslatorGUI:
         try:
             lines = [l.strip() for l in content.split("\n") if l.strip()]
             name_dict = self.load_name_config()
-            sorted_names = sorted(name_dict.keys(), key=len, reverse=True)
-            processed_lines = []
-            for line in lines:
-                replaced_line = line
-                for cn in sorted_names:
-                    if cn in replaced_line:
-                        replaced_line = replaced_line.replace(cn, name_dict[cn])
-                processed_lines.append((line, replaced_line))
+            source_pattern = compile_name_source_pattern(name_dict)
+            processed_lines = [(line, substitute_names(line, name_dict, source_pattern)) for line in lines]
 
             chunks = split_translation(processed_lines)
             vi_names = list(name_dict.values())
             name_pattern = compile_name_pattern(vi_names)
+            spacing_pattern = compile_name_loose_pattern(vi_names)
             final_cn_lines, final_vi_lines = [], []
             started = time.time()
 
@@ -1751,6 +1749,7 @@ class TranslatorGUI:
                 for j, (orig_cn, _rep_cn) in enumerate(group):
                     vi = vi_lines[j] if j < len(vi_lines) else ""
                     vi = re.sub(r'  +', ' ', vi).strip()  # dấu cách kép do từ không dịch được
+                    vi = fix_name_spacing(vi, spacing_pattern)
                     vi = fix_capitalization_after_names(vi, vi_names, name_pattern)
                     final_cn_lines.append(orig_cn)
                     final_vi_lines.append(vi)
