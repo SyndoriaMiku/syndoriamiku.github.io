@@ -4,7 +4,7 @@
   "builder_main": "931x800+301+167",
   "builder_add_name": "700x420+122+143",
   "editor_split_dialog": "700x637+152+142",
-  "builder_review": "1071x756+62+226",
+  "builder_review": "1165x756+62+226",
   "builder_scan_names": "760x520+122+143",
   "split_patterns": [
     [
@@ -18,6 +18,6 @@
   ],
   "editor_split_dialog_state": "normal",
   "builder_library_dialog": "620x560+464+383",
-  "studio_tab": "translate",
-  "studio_main": "1300x780+312+312"
+  "studio_tab": "library",
+  "studio_main": "1300x877+257+202"
 }

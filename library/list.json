@@ -3759,13 +3759,18 @@
     {
         "title": "Thân là nhân vật chính ta đây tại biên cảnh chống cự ngoại địch, trong nhà kiều thê cùng nhạc mẫu lại bị người da đen thao vì dâm tiện heo mẹ",
         "slug": "0075",
-        "date": "02/08/2026",
-        "timestamp": 1785607576.267486,
+        "date": "29/09/2026",
+        "timestamp": 1790658664.379361,
         "chapters": [
             {
                 "id": "000001",
-                "name": "Oneshot",
-                "date": "02/08/2026"
+                "name": "Chương 1: Tiện nữ tiên tử: Thân là nhân vật chính ta đây tại biên cảnh chống cự ngoại địch, trong nhà kiều thê cùng nhạc mẫu lại bị Vu Tiêu thao vì dâm tiện heo mẹ?",
+                "date": "29/09/2026"
+            },
+            {
+                "id": "000002",
+                "name": "Chương 02: Tiện nữ tiên tử: Vương triều công chúa hoa tỷ muội song song tại Vu Tiêu đại điểu phía dưới sa đọa, Hồ tộc kiều thê cùng nhạc mẫu cũng song song ác đọa",
+                "date": "29/09/2026"
             }
         ]
     },
@@ -10780,7 +10785,7 @@
         "title": "Lãnh diễm tiên mẫu làm H võng hồng",
         "slug": "0157",
         "date": "29/09/2026",
-        "timestamp": 1790618218.820739,
+        "timestamp": 1790658481.769833,
         "chapters": [
             {
                 "id": "000001",
@@ -10805,6 +10810,59 @@
             {
                 "id": "000005",
                 "name": "Chương 05: Heo mẹ trang",
+                "date": "29/09/2026"
+            },
+            {
+                "id": "000006",
+                "name": "Chương 06: Thâm hầu giả kê ba",
+                "date": "29/09/2026"
+            },
+            {
+                "id": "000007",
+                "name": "Chương 07: Nên tới thật",
+                "date": "29/09/2026"
+            },
+            {
+                "id": "000008",
+                "name": "Chương 08: Tiên mẫu cho người khác nhũ giao",
+                "date": "29/09/2026"
+            },
+            {
+                "id": "000009",
+                "name": "Chương 09: Mông giao làm cỗ",
+                "date": "29/09/2026"
+            },
+            {
+                "id": "000010",
+                "name": "Chương 10: Tiên mẫu thất thân",
+                "date": "29/09/2026"
+            },
+            {
+                "id": "000011",
+                "name": "Chương 11: Quan Âm Tọa Liên",
+                "date": "29/09/2026"
+            }
+        ]
+    },
+    {
+        "title": "Ta cao lãnh nữ tổng giám đốc lão bà mới sẽ không bởi vì tiểu thuyết của ta triệt để biến thành cấp dưới nhục tiện khí chó cái",
+        "slug": "0158",
+        "date": "29/09/2026",
+        "timestamp": 1790658496.160375,
+        "chapters": [
+            {
+                "id": "000001",
+                "name": "Chương 1: Thượng thiên",
+                "date": "29/09/2026"
+            },
+            {
+                "id": "000002",
+                "name": "Chương 02: Bản trung",
+                "date": "29/09/2026"
+            },
+            {
+                "id": "000003",
+                "name": "Chương 03: Hạ thiên",
                 "date": "29/09/2026"
             }
         ]
