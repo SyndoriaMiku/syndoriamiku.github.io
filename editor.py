@@ -1214,6 +1214,9 @@ class ChapterEditorApp:
 				name, rx = item
 				# Skip if already in defaults (by regex)
 				if not any(rx == r for _, r in result):
+					# Tên trùng thì combobox chỉ chọn được mục đầu: đánh dấu mục đã lưu.
+					if any(name == n for n, _ in result):
+						name = f"{name} (đã lưu)"
 					result.append((name, rx))
 		return result
 
@@ -1415,29 +1418,59 @@ class ChapterEditorApp:
 							   highlightcolor="#8b5cf6", relief="flat")
 		regex_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=4, padx=(0, 8))
 
-		def on_pattern_select(event=None):
+		def selected_pattern():
 			sel = pattern_combo.get()
-			for name, rx in patterns:
-				if name == sel:
-					regex_var.set(rx)
-					break
+			return next((rx for name, rx in patterns if name == sel), None)
+
+		def on_pattern_select(event=None):
+			rx = selected_pattern()
+			if rx is not None:
+				regex_var.set(rx)
 
 		pattern_combo.bind("<<ComboboxSelected>>", on_pattern_select)
 
+		# Một truyện có thể trộn nhiều kiểu tiêu đề ("Chương 1: X" rồi "Thứ 2 chương: X"):
+		# gộp pattern đang chọn vào regex hiện tại, đoạn khớp bất kỳ pattern nào là header.
+		def combine_selected_pattern():
+			rx = selected_pattern()
+			if rx is not None:
+				regex_var.set(store.combine_patterns(regex_var.get().strip(), rx))
+				run_detect()
+
+		def pattern_label(part):
+			"""Preset name for one alternative of the regex, else the regex itself."""
+			return next((name for name, rx in patterns if rx == part), part if len(part) <= 28 else part[:27] + "…")
+
 		# Save custom pattern button
 		def save_custom_pattern():
-			name = pattern_var.get().strip()
 			rx = regex_var.get().strip()
 			if not rx:
 				return
-			if not any(name == n for n, _ in patterns):
+			existing = next((n for n, r in patterns if r == rx), None)
+			if existing:
+				messagebox.showinfo("Đã có", f"Pattern này đã có trong danh sách: '{existing}'.", parent=dlg)
+				return
+			parts = store.split_alternatives(rx)
+			if len(parts) > 1 and all(any(r == part for _n, r in patterns) for part in parts):
+				name = " + ".join(pattern_label(part) for part in parts)
+			else:
 				name = f"Tuỳ chỉnh: {rx[:20]}"
 			self.save_split_pattern(name, rx)
+			patterns.append((name, rx))
+			pattern_combo["values"] = [n for n, _ in patterns]
+			pattern_var.set(name)
 			messagebox.showinfo("Đã lưu", f"Pattern '{name}' đã được lưu vào config.", parent=dlg)
 
+		tk.Button(pattern_row, text="➕ Gộp", bg="#6d28d9", fg="#ffffff",
+				  relief="flat", borderwidth=0, padx=8, pady=4, font=("Segoe UI", 8),
+				  cursor="hand2", command=combine_selected_pattern).pack(side=tk.LEFT, padx=(0, 4))
 		tk.Button(pattern_row, text="💾 Lưu pattern", bg="#334155", fg="#ffffff",
 				  relief="flat", borderwidth=0, padx=8, pady=4, font=("Segoe UI", 8),
 				  cursor="hand2", command=save_custom_pattern).pack(side=tk.LEFT, padx=(0, 4))
+
+		match_label = tk.Label(step1, text="Chọn pattern rồi bấm ➕ Gộp để quét cùng lúc nhiều kiểu tiêu đề chương.",
+			fg="#64748b", bg="#111c2e", font=("Segoe UI", 8), anchor="w", justify="left")
+		match_label.pack(fill=tk.X, pady=(4, 0))
 
 		# ── Detected chapters state ──
 		detected_chapters = []  # list of {"title": str, "paragraphs": [str], "title_var": StringVar}
@@ -1683,6 +1716,27 @@ class ChapterEditorApp:
 					"title_var": tk.StringVar(value=title_val),
 					"paragraphs": ch["paragraphs"],
 				})
+
+			# Mỗi pattern thành phần bắt được bao nhiêu chương — thấy ngay kiểu nào bị sót.
+			parts = store.split_alternatives(rx)
+			if len(parts) > 1:
+				compiled_parts = []
+				for part in parts:
+					try:
+						compiled_parts.append((part, re.compile(part, re.IGNORECASE)))
+					except re.error:
+						compiled_parts.append((part, None))
+				counts = dict.fromkeys(parts, 0)
+				for ch in chapters_raw:
+					title = ch["title"]
+					hit = next((part for part, c in compiled_parts if title and c and c.match(title)), None)
+					if hit:
+						counts[hit] += 1
+				match_label.config(text="Khớp:  " + "  ·  ".join(f"{pattern_label(p)}: {n}" for p, n in counts.items()),
+					fg="#5eead4")
+			else:
+				match_label.config(text="Chọn pattern rồi bấm ➕ Gộp để quét cùng lúc nhiều kiểu tiêu đề chương.",
+					fg="#64748b")
 
 			build_chapter_list()
 

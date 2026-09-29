@@ -22,6 +22,7 @@ DEFAULT_SPLIT_PATTERNS = [
     ("Chương X (mặc định)", r"^chương\s+[\d]+"),
     ("Chương X: Tiêu đề", r"^chương\s+[\d]+[\s:：·]"),
     ("Thứ X chương", r"^thứ\s+\d+\s+chương"),
+    ("Chương X + Thứ X chương", r"^chương\s+[\d]+|^thứ\s+\d+\s+chương"),
     ("Tiết X:", r"^tiết\s+[\d\w]+[\s:：]"),
     ("Chapter X (English)", r"^chapter\s+\d+"),
 ]
@@ -203,6 +204,40 @@ def next_chapter_id(catalog, story_slug):
     story = next((item for item in catalog if item.get('slug') == story_slug), None)
     ids = [int(c['id']) for c in (story or {}).get('chapters', []) if str(c.get('id', '')).isdigit()]
     return f'{max(ids, default=0) + 1:06d}'
+
+
+def split_alternatives(pattern_regex):
+    """Split a regex at its top-level ``|`` (not inside groups or [...])."""
+    parts, depth, in_class, start, i = [], 0, False, 0, 0
+    while i < len(pattern_regex):
+        char = pattern_regex[i]
+        if char == '\\':
+            i += 2
+            continue
+        if in_class:
+            in_class = char != ']'
+        elif char == '[':
+            in_class = True
+        elif char == '(':
+            depth += 1
+        elif char == ')':
+            depth -= 1
+        elif char == '|' and depth == 0:
+            parts.append(pattern_regex[start:i])
+            start = i + 1
+        i += 1
+    parts.append(pattern_regex[start:])
+    return [part for part in parts if part.strip()]
+
+
+def combine_patterns(*regexes):
+    """Join several header patterns into one: a paragraph matching any is a header."""
+    parts = []
+    for regex in regexes:
+        for part in split_alternatives(regex or ''):
+            if part not in parts:
+                parts.append(part)
+    return '|'.join(parts)
 
 
 def split_into_chapters(items, pattern_regex, text_of=lambda item: item):
