@@ -17,5 +17,7 @@
     ]
   ],
   "editor_split_dialog_state": "normal",
-  "builder_library_dialog": "620x560+464+383"
+  "builder_library_dialog": "620x560+464+383",
+  "studio_tab": "translate",
+  "studio_main": "1300x780+312+312"
 }

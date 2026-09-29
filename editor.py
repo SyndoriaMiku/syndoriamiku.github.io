@@ -3,6 +3,7 @@ import json
 import os
 import re
 import shutil
+import sys
 import tempfile
 import unicodedata
 import tkinter as tk
@@ -11,7 +12,13 @@ from editor_widgets import StorySearchCombo, StyledScrolledText, story_options, 
 import library_store as store
 from library_store import CatalogError, read_catalog, write_catalog
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# Khi đóng gói bằng PyInstaller, thư viện nằm cạnh file exe chứ không phải thư mục tạm.
+if getattr(sys, 'frozen', False):
+	BASE_DIR = os.path.dirname(sys.executable)
+	if os.path.basename(BASE_DIR).lower() == 'dist':
+		BASE_DIR = os.path.dirname(BASE_DIR)
+else:
+	BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LIBRARY_DIR = os.path.join(BASE_DIR, "library")
 CATALOG_PATH = os.path.join(LIBRARY_DIR, "list.json")
 CONFIG_PATH = os.path.join(BASE_DIR, "editor_config.json")
@@ -225,10 +232,15 @@ def setup_entry_shortcuts(widget):
 
 
 class ChapterEditorApp:
-	def __init__(self, root):
+	def __init__(self, root, container=None):
+		"""``container``: khung chứa giao diện khi nhúng vào app khác (story_studio.py).
+		Khi đó cửa sổ (tiêu đề, kích thước, nút đóng) do app chứa quản lý."""
 		self.root = root
-		self.root.title("Trình Chỉnh Sửa Chapter & Quản Lý Thư Viện")
-		self.root.configure(bg="#0b1220")
+		self.frame = container if container is not None else root
+		embedded = container is not None
+		if not embedded:
+			self.root.title("Trình Chỉnh Sửa Chapter & Quản Lý Thư Viện")
+		self.frame.configure(bg="#0b1220")
 
 		self.loaded_json = None
 		self.story_options = []
@@ -240,27 +252,29 @@ class ChapterEditorApp:
 		self.search_target = None
 		self.current_match_idx = -1
 
-		# Restore saved geometry or use default
-		cfg = load_config()
-		geo = cfg.get("editor_main", "1300x750")
-		self.root.geometry(geo)
+		if not embedded:
+			# Restore saved geometry or use default
+			self.root.geometry(load_config().get("editor_main", "1300x750"))
+			self.root.minsize(1040, 680)
 
 		self.setup_ui()
 		self.load_story_list()
 		self.mark_clean()
 
-		# Save geometry on resize (debounced)
-		self.root.bind("<Configure>", self._on_root_configure)
-		self.root.protocol("WM_DELETE_WINDOW", self.on_app_close)
+		if not embedded:
+			# Save geometry on resize (debounced)
+			self.root.bind("<Configure>", self._on_root_configure)
+			self.root.protocol("WM_DELETE_WINDOW", self.on_app_close)
 		for sequence, handler in (("<Control-s>", self.save_chapter), ("<Control-S>", self.save_chapter),
 				("<Control-o>", self.pick_json), ("<Control-O>", self.pick_json),
 				("<Control-h>", self.show_replace_dialog), ("<Control-H>", self.show_replace_dialog)):
 			self.root.bind_all(sequence, lambda event, h=handler: self._main_shortcut(event, h))
 
 	def _main_shortcut(self, event, handler):
-		# Shortcuts belong to the main window, not to open dialogs.
+		# Shortcuts belong to the main window, not to open dialogs
+		# (nor to another tab when embedded in story_studio.py).
 		try:
-			if event.widget.winfo_toplevel() is not self.root:
+			if event.widget.winfo_toplevel() is not self.root or not self.frame.winfo_ismapped():
 				return None
 		except (AttributeError, tk.TclError):
 			return None
@@ -365,8 +379,7 @@ class ChapterEditorApp:
 
 	def setup_ui(self):
 		configure_theme(self.root)
-		self.root.minsize(1040, 680)
-		header = tk.Frame(self.root, bg="#0b1220")
+		header = tk.Frame(self.frame, bg="#0b1220")
 		header.pack(fill="x", padx=24, pady=(20, 14))
 		tk.Label(header, text="THƯ VIỆN  /  BIÊN TẬP", fg="#5eead4", bg="#0b1220",
 			font=("Segoe UI", 9, "bold")).pack(anchor="w")
@@ -374,7 +387,7 @@ class ChapterEditorApp:
 			font=("Segoe UI", 23, "bold")).pack(anchor="w", pady=(3, 2))
 		tk.Label(header, text="Chọn truyện · Chỉnh sửa nội dung · Phân chương và lưu vào thư viện",
 			fg="#94a3b8", bg="#0b1220", font=("Segoe UI", 10)).pack(anchor="w")
-		panes = tk.PanedWindow(self.root, orient=tk.HORIZONTAL, bg="#0b1220", bd=0,
+		panes = tk.PanedWindow(self.frame, orient=tk.HORIZONTAL, bg="#0b1220", bd=0,
 			sashwidth=12, sashrelief="flat", showhandle=False)
 		panes.pack(fill="both", expand=True, padx=24, pady=(0, 16))
 		self.panes = panes
@@ -384,9 +397,10 @@ class ChapterEditorApp:
 		panes.add(right, minsize=460, stretch="always")
 		self.build_left(left)
 		self.build_right(right)
-		self.build_search_bar(self.root)
-		footer = tk.Frame(self.root, bg="#0b1220")
-		footer.pack(fill="x", padx=24, pady=(0, 12))
+		self.build_search_bar(self.frame)
+		footer = tk.Frame(self.frame, bg="#0b1220")
+		# Pack trước khung chính để footer không bị đẩy khỏi cửa sổ khi thấp.
+		footer.pack(side="bottom", fill="x", padx=24, pady=(0, 12), before=panes)
 		self.library_status = tk.Label(footer, text="Thư viện", bg="#0b1220", fg="#94a3b8", font=("Segoe UI", 9))
 		self.library_status.pack(side="left")
 		tk.Label(footer, text="Ctrl+S Lưu  •  Ctrl+O Mở JSON  •  Ctrl+F Tìm  •  Ctrl+H Thay thế", bg="#0b1220",

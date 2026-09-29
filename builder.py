@@ -874,10 +874,15 @@ class ReviewWindow:
 
 # --- CLASS GIAO DIỆN CHÍNH ---
 class TranslatorGUI:
-    def __init__(self, root):
+    def __init__(self, root, container=None):
+        """``container``: khung chứa giao diện khi nhúng vào app khác (story_studio.py).
+        Khi đó cửa sổ (tiêu đề, kích thước) do app chứa quản lý."""
         self.root = root
-        self.root.title("Story Translator Pro - SangTacViet API")
-        self.root.configure(bg=BG)
+        self.frame = container if container is not None else root
+        embedded = container is not None
+        if not embedded:
+            self.root.title("Story Translator Pro - SangTacViet API")
+        self.frame.configure(bg=BG)
         self._resize_timer = None
         self._count_timer = None
         self._worker = None
@@ -885,17 +890,17 @@ class TranslatorGUI:
         # Luồng nền không được chạm vào Tk: mọi cập nhật giao diện đi qua hàng đợi này.
         self._ui_queue = queue.Queue()
 
-        # Restore saved geometry or use default
-        cfg = load_config()
-        geo = cfg.get("builder_main", "700x600")
-        self.root.geometry(geo)
+        if not embedded:
+            # Restore saved geometry or use default
+            self.root.geometry(load_config().get("builder_main", "700x600"))
 
         self._configure_styles()
         self.setup_ui()
         self._pump_ui_queue()
 
-        # Save geometry on resize (debounced)
-        self.root.bind("<Configure>", self._on_root_configure)
+        if not embedded:
+            # Save geometry on resize (debounced)
+            self.root.bind("<Configure>", self._on_root_configure)
 
         # Nạp sẵn mô hình NER đã có trên máy để lần Scan Names đầu tiên không phải chờ.
         # Tắt bằng biến môi trường STV_NER_PRELOAD=0.
@@ -968,22 +973,22 @@ class TranslatorGUI:
 
     def setup_ui(self):
         # Header
-        tk.Label(self.root, text="DỊCH TRUYỆN TRUNG - VIỆT", font=("Arial", 14, "bold"), fg="#ffffff", bg=BG).pack(pady=10)
+        tk.Label(self.frame, text="DỊCH TRUYỆN TRUNG - VIỆT", font=("Arial", 14, "bold"), fg="#ffffff", bg=BG).pack(pady=10)
 
         # Story Title Input
-        frame_title = tk.Frame(self.root, bg=BG)
+        frame_title = tk.Frame(self.frame, bg=BG)
         frame_title.pack(fill="x", padx=20, pady=5)
         tk.Label(frame_title, text="Story Title:", fg=MUTED, bg=BG).pack(side="left")
         self.ent_title = tk.Entry(frame_title, bg=PANEL, fg="#ffffff", insertbackground="white", borderwidth=0)
         self.ent_title.pack(side="left", fill="x", expand=True, padx=10, ipady=5)
 
         # Text Area for Copy-Paste
-        head = tk.Frame(self.root, bg=BG)
+        head = tk.Frame(self.frame, bg=BG)
         head.pack(fill="x", padx=20, pady=(10, 0))
         tk.Label(head, text="Nội dung tiếng Trung:", fg=MUTED, bg=BG).pack(side="left")
         self.lbl_counter = tk.Label(head, text="", fg="#71717a", bg=BG, font=("Arial", 9))
         self.lbl_counter.pack(side="right")
-        self.txt_area = scrolledtext.ScrolledText(self.root, height=15, bg=PANEL, fg=TEXT, borderwidth=0,
+        self.txt_area = scrolledtext.ScrolledText(self.frame, height=15, bg=PANEL, fg=TEXT, borderwidth=0,
                                                   font=("Consolas", 10), insertbackground="white", undo=True)
         self.txt_area.pack(fill="both", expand=True, padx=20, pady=5)
         self.txt_area.bind("<<Modified>>", self._on_text_modified)
@@ -991,7 +996,7 @@ class TranslatorGUI:
 
         # Drop Zone
         self.drop_zone = tk.Label(
-            self.root, text="📂  Kéo thả file .txt vào đây",
+            self.frame, text="📂  Kéo thả file .txt vào đây",
             bg=PANEL, fg="#71717a", font=("Arial", 10),
             relief="groove", borderwidth=2, pady=12
         )
@@ -1002,7 +1007,7 @@ class TranslatorGUI:
         self.drop_zone.dnd_bind("<<DragLeave>>", lambda e: self.drop_zone.config(bg=PANEL, fg="#71717a"))
 
         # Buttons Frame
-        btn_frame = tk.Frame(self.root, bg=BG)
+        btn_frame = tk.Frame(self.frame, bg=BG)
         btn_frame.pack(fill="x", padx=20, pady=10)
 
         self.btn_file = tk.Button(btn_frame, text="📁 Chọn File .txt", command=self.load_file, bg=FIELD, fg="white", borderwidth=0, padx=15)
@@ -1022,8 +1027,8 @@ class TranslatorGUI:
         self.btn_clear = tk.Button(btn_frame, text="🗑️ Xóa tất cả", command=self.clear_all, bg="#dc2626", fg="white", borderwidth=0, padx=15)
 
         # Progress
-        self.progress = ttk.Progressbar(self.root, style="Run.Horizontal.TProgressbar", mode="determinate")
-        self.lbl_status = tk.Label(self.root, text="Sẵn sàng  ·  Ctrl+Enter để dịch", fg="#71717a", bg=BG)
+        self.progress = ttk.Progressbar(self.frame, style="Run.Horizontal.TProgressbar", mode="determinate")
+        self.lbl_status = tk.Label(self.frame, text="Sẵn sàng  ·  Ctrl+Enter để dịch", fg="#71717a", bg=BG)
         self.lbl_status.pack(pady=5)
 
     # ── bộ đếm ──
