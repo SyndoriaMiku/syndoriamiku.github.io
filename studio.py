@@ -1,6 +1,6 @@
 """Story Studio: dịch truyện (builder.py) và biên tập thư viện (editor.py) trong một cửa sổ.
 
-Chạy: python story_studio.py
+Chạy: python studio.py
 builder.py và editor.py vẫn chạy riêng được như trước.
 """
 import os

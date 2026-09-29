@@ -875,7 +875,7 @@ class ReviewWindow:
 # --- CLASS GIAO DIỆN CHÍNH ---
 class TranslatorGUI:
     def __init__(self, root, container=None):
-        """``container``: khung chứa giao diện khi nhúng vào app khác (story_studio.py).
+        """``container``: khung chứa giao diện khi nhúng vào app khác (studio.py).
         Khi đó cửa sổ (tiêu đề, kích thước) do app chứa quản lý."""
         self.root = root
         self.frame = container if container is not None else root

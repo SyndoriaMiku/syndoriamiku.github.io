@@ -233,7 +233,7 @@ def setup_entry_shortcuts(widget):
 
 class ChapterEditorApp:
 	def __init__(self, root, container=None):
-		"""``container``: khung chứa giao diện khi nhúng vào app khác (story_studio.py).
+		"""``container``: khung chứa giao diện khi nhúng vào app khác (studio.py).
 		Khi đó cửa sổ (tiêu đề, kích thước, nút đóng) do app chứa quản lý."""
 		self.root = root
 		self.frame = container if container is not None else root
@@ -272,7 +272,7 @@ class ChapterEditorApp:
 
 	def _main_shortcut(self, event, handler):
 		# Shortcuts belong to the main window, not to open dialogs
-		# (nor to another tab when embedded in story_studio.py).
+		# (nor to another tab when embedded in studio.py).
 		try:
 			if event.widget.winfo_toplevel() is not self.root or not self.frame.winfo_ismapped():
 				return None
