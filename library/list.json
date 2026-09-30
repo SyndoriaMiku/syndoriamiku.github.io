@@ -2973,23 +2973,43 @@
     {
         "title": "Dùng lồn ấn con dấu văn kiện sa đọa quan lớn mụ mụ",
         "slug": "0063",
-        "date": "08/07/2026",
-        "timestamp": 1783500872.693885,
+        "date": "30/09/2026",
+        "timestamp": 1790755475.255157,
         "chapters": [
             {
                 "id": "000001",
-                "name": "Chương 01",
-                "date": "08/07/2026"
+                "name": "Chương 01:",
+                "date": "30/09/2026"
             },
             {
                 "id": "000002",
-                "name": "Chương 02",
-                "date": "08/07/2026"
+                "name": "Chương 02:",
+                "date": "30/09/2026"
             },
             {
                 "id": "000003",
-                "name": "Chương 03",
-                "date": "08/07/2026"
+                "name": "Chương 03:",
+                "date": "30/09/2026"
+            },
+            {
+                "id": "000004",
+                "name": "Chương 04:",
+                "date": "30/09/2026"
+            },
+            {
+                "id": "000005",
+                "name": "Chương 05:",
+                "date": "30/09/2026"
+            },
+            {
+                "id": "000006",
+                "name": "Chương 06:",
+                "date": "30/09/2026"
+            },
+            {
+                "id": "000007",
+                "name": "Chương 07:",
+                "date": "30/09/2026"
             }
         ]
     },
@@ -6308,8 +6328,8 @@
     {
         "title": "Tổng hợp truyện ngắn",
         "slug": "0130",
-        "date": "29/09/2026",
-        "timestamp": 1790618301.548355,
+        "date": "30/09/2026",
+        "timestamp": 1790755303.870131,
         "chapters": [
             {
                 "id": "000001",
@@ -6515,6 +6535,11 @@
                 "id": "000041",
                 "name": "Lẳng lơ mẫu nữ hoa",
                 "date": "29/09/2026"
+            },
+            {
+                "id": "000042",
+                "name": "Công công cùng con dâu cùng với nhạc mẫu loạn luân sinh hoạt",
+                "date": "30/09/2026"
             }
         ]
     },
@@ -11918,6 +11943,191 @@
             {
                 "id": "000002",
                 "name": "Chương 02:",
+                "date": "30/09/2026"
+            }
+        ]
+    },
+    {
+        "title": "Con dâu trở thành công công chó cái",
+        "slug": "0164",
+        "date": "30/09/2026",
+        "timestamp": 1790755339.607175,
+        "chapters": [
+            {
+                "id": "000001",
+                "name": "Chương 01",
+                "date": "30/09/2026"
+            },
+            {
+                "id": "000002",
+                "name": "Chương 02",
+                "date": "30/09/2026"
+            },
+            {
+                "id": "000003",
+                "name": "Chương 03",
+                "date": "30/09/2026"
+            },
+            {
+                "id": "000004",
+                "name": "Chương 04",
+                "date": "30/09/2026"
+            },
+            {
+                "id": "000005",
+                "name": "Chương 05",
+                "date": "30/09/2026"
+            },
+            {
+                "id": "000006",
+                "name": "Chương 06",
+                "date": "30/09/2026"
+            },
+            {
+                "id": "000007",
+                "name": "Chương 07",
+                "date": "30/09/2026"
+            }
+        ]
+    },
+    {
+        "title": "Không tự lượng sức lão đạo dù là dùng linh đang thôi miên ta vú lớn mông bự trời sinh mị điểu heo mẹ Nguyên Anh tông chủ tao mẹ",
+        "slug": "0165",
+        "date": "30/09/2026",
+        "timestamp": 1790755417.103405,
+        "chapters": [
+            {
+                "id": "000001",
+                "name": "Oneshot",
+                "date": "30/09/2026"
+            }
+        ]
+    },
+    {
+        "title": "Thái tử ngưỡng mộ nhất bạo nhũ đế quốc nữ nguyên soái cùng ôn nhu nhất vị hôn thê biến thành Man Vương đồ chơi",
+        "slug": "0166",
+        "date": "30/09/2026",
+        "timestamp": 1790755432.632222,
+        "chapters": [
+            {
+                "id": "000001",
+                "name": "Chương 01:",
+                "date": "30/09/2026"
+            },
+            {
+                "id": "000002",
+                "name": "Chương 02:",
+                "date": "30/09/2026"
+            },
+            {
+                "id": "000003",
+                "name": "Chương 03:",
+                "date": "30/09/2026"
+            },
+            {
+                "id": "000004",
+                "name": "Chương 04:",
+                "date": "30/09/2026"
+            },
+            {
+                "id": "000005",
+                "name": "Chương 05:",
+                "date": "30/09/2026"
+            },
+            {
+                "id": "000006",
+                "name": "Chương 06:",
+                "date": "30/09/2026"
+            },
+            {
+                "id": "000007",
+                "name": "Chương 07:",
+                "date": "30/09/2026"
+            }
+        ]
+    },
+    {
+        "title": "Ban ngày thì băng sơn nữ giáo sư, ban đêm là gợi cảm nữ võ thần",
+        "slug": "0167",
+        "date": "30/09/2026",
+        "timestamp": 1790755489.183227,
+        "chapters": [
+            {
+                "id": "000001",
+                "name": "Chương 01:",
+                "date": "30/09/2026"
+            },
+            {
+                "id": "000002",
+                "name": "Chương 02:",
+                "date": "30/09/2026"
+            },
+            {
+                "id": "000003",
+                "name": "Chương 03:",
+                "date": "30/09/2026"
+            },
+            {
+                "id": "000004",
+                "name": "Chương 04:",
+                "date": "30/09/2026"
+            },
+            {
+                "id": "000005",
+                "name": "Chương 05:",
+                "date": "30/09/2026"
+            },
+            {
+                "id": "000006",
+                "name": "Chương 06:",
+                "date": "30/09/2026"
+            },
+            {
+                "id": "000007",
+                "name": "Chương 07:",
+                "date": "30/09/2026"
+            }
+        ]
+    },
+    {
+        "title": "Cùng huynh đệ chơi đổi vợ, đổi được cuối cùng đem chính mình vú lớn đoan trang lão bà triệt để đưa ra ngoài",
+        "slug": "0168",
+        "date": "30/09/2026",
+        "timestamp": 1790755503.512738,
+        "chapters": [
+            {
+                "id": "000001",
+                "name": "Chương 01:",
+                "date": "30/09/2026"
+            },
+            {
+                "id": "000002",
+                "name": "Chương 02:",
+                "date": "30/09/2026"
+            },
+            {
+                "id": "000003",
+                "name": "Chương 03:",
+                "date": "30/09/2026"
+            },
+            {
+                "id": "000004",
+                "name": "Chương 04:",
+                "date": "30/09/2026"
+            },
+            {
+                "id": "000005",
+                "name": "Chương 05:",
+                "date": "30/09/2026"
+            },
+            {
+                "id": "000006",
+                "name": "Chương 06:",
+                "date": "30/09/2026"
+            },
+            {
+                "id": "000007",
+                "name": "Chương 07:",
                 "date": "30/09/2026"
             }
         ]
