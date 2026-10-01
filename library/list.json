@@ -6384,7 +6384,7 @@
         "title": "Tổng hợp truyện ngắn",
         "slug": "0130",
         "date": "01/10/2026",
-        "timestamp": 1790823406.76489,
+        "timestamp": 1790859594.791488,
         "chapters": [
             {
                 "id": "000001",
@@ -6634,6 +6634,11 @@
             {
                 "id": "000050",
                 "name": "Thần nhan bách hợp tình lữ cùng nước chè bày hói đầu đại thúc ba người đi",
+                "date": "01/10/2026"
+            },
+            {
+                "id": "000051",
+                "name": "Đem nhiệm vụ thất bại lãnh diễm nữ sát thủ dạy dỗ thành ta ngạo kiều cô bạn gái nhỏ",
                 "date": "01/10/2026"
             }
         ]
