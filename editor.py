@@ -1142,16 +1142,6 @@ class ChapterEditorApp:
 		if not self.loaded_json:
 			self.loaded_json = {}
 
-		# Set chapter title from JSON if available and editor is empty
-		loaded_chap_title = self.loaded_json.get("chapter_title", "")
-		if loaded_chap_title and not self.chap_title_entry.get().strip():
-			self.chap_title_entry.delete(0, tk.END)
-			self.chap_title_entry.insert(0, loaded_chap_title)
-
-		# Fallback to general title if chapter_title is not present
-		if not self.chap_entry.get().strip() and self.loaded_json.get("title"):
-			self.chap_entry.insert(0, slugify_vn(self.loaded_json.get("title")))
-
 		existing = self.content_text.get("1.0", tk.END).strip()
 
 		if existing:
@@ -1170,6 +1160,17 @@ class ChapterEditorApp:
 		else:
 			self.content_text.delete("1.0", tk.END)
 			self.content_text.insert("1.0", new_text)
+
+		# Tên chương còn trống: lấy chapter_title trong JSON, không có thì dùng tên truyện
+		# (của file JSON đã mở, hoặc của truyện đang chọn ở ô TRUYỆN).
+		if not self.chap_title_entry.get().strip():
+			story_value = self.story_combo.get().strip()
+			selected_title = story_value.split("|", 1)[1].strip() if "|" in story_value else story_value
+			title = (self.loaded_json.get("chapter_title", "").strip()
+				or self.loaded_json.get("title", "").strip()
+				or selected_title)
+			if title:
+				self.chap_title_entry.insert(0, title)
 
 	def move_selected_text(self):
 		try:
