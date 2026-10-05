@@ -6383,8 +6383,8 @@
     {
         "title": "Tổng hợp truyện ngắn",
         "slug": "0130",
-        "date": "02/10/2026",
-        "timestamp": 1790946188.617254,
+        "date": "05/10/2026",
+        "timestamp": 1791181581.147473,
         "chapters": [
             {
                 "id": "000001",
@@ -6650,6 +6650,11 @@
                 "id": "000053",
                 "name": "Tại QOS tẩy não phía dưới ta cống lên chính mình tịch mịch quả phụ mẹ người",
                 "date": "02/10/2026"
+            },
+            {
+                "id": "000054",
+                "name": "Cao quý Cantarella đại nhân bị xoa bóp cao trào",
+                "date": "05/10/2026"
             }
         ]
     },
@@ -13225,6 +13230,24 @@
             {
                 "id": "000005",
                 "name": "Chương 05: Tiếng chuông",
+                "date": "05/10/2026"
+            }
+        ]
+    },
+    {
+        "title": "Thân là tinh anh luật sư lãnh diễm mỹ mẫu, làm sao lại là câu dẫn nhi tử bối đức loạn luân lưới điều chó cái đâu",
+        "slug": "0183",
+        "date": "05/10/2026",
+        "timestamp": 1791181571.336583,
+        "chapters": [
+            {
+                "id": "000001",
+                "name": "Thượng thiên",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000002",
+                "name": "Hạ thiên:",
                 "date": "05/10/2026"
             }
         ]
