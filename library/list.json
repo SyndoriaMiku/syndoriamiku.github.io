@@ -6384,7 +6384,7 @@
         "title": "Tổng hợp truyện ngắn",
         "slug": "0130",
         "date": "05/10/2026",
-        "timestamp": 1791181581.147473,
+        "timestamp": 1791198632.076876,
         "chapters": [
             {
                 "id": "000001",
@@ -6654,6 +6654,11 @@
             {
                 "id": "000054",
                 "name": "Cao quý Cantarella đại nhân bị xoa bóp cao trào",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000055",
+                "name": "Đại chúa tể đồng người chi Thanh Diễn Tĩnh sa đọa",
                 "date": "05/10/2026"
             }
         ]
@@ -13248,6 +13253,326 @@
             {
                 "id": "000002",
                 "name": "Hạ thiên:",
+                "date": "05/10/2026"
+            }
+        ]
+    },
+    {
+        "title": "Đại chúa tể H văn",
+        "slug": "0184",
+        "date": "05/10/2026",
+        "timestamp": 1791198709.363825,
+        "chapters": [
+            {
+                "id": "000001",
+                "name": "Chương 01:: Dâm loạn đấu giá sư - Nhã Phi",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000002",
+                "name": "Chương 02:: Hấp tinh chi thể -- Tiểu Y Tiên ( Chúc mừng năm mới Các vị",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000003",
+                "name": "Chương 03:: Tâm linh ( Dâm lãng ) cảm ứng -- Vân Vận sư đồ",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000004",
+                "name": "Chương 04:: Dâm long lãng phượng chi thể -- Tử Nghiên",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000005",
+                "name": "Chương 05:: Mẫu tử cùng nhau gian -- Cổ Huân Nhi cùng cổ lâm",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000006",
+                "name": "Chương 06:: Thanh Diễn Tĩnh trầm luân",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000007",
+                "name": "Chương 07:: Mẫu nữ khuyển -- Lâm Tĩnh cùng Lăng Thanh Trúc",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000008",
+                "name": "Chương 08:: Thải Lân sa đọa",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000009",
+                "name": "Chương 09:: Mẫu nữ một chồng, Tiêu Tiêu trầm luân",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000010",
+                "name": "Chương 01:: Chiến hoàng 【 Vảy, huân thiên 】",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000011",
+                "name": "Chương 02:: Mục Trần 【 Vảy, tiêu mẫu nữ thiên 】",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000012",
+                "name": "Chương 03:: Di nương nhóm chân ngọc (Vân Vận, Tiểu Y Tiên, Nhã Phi)",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000013",
+                "name": "Chương 04:: Các tỷ tỷ miệng nhỏ (Tử Nghiên, Nạp Lan Yên Nhiên)",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000014",
+                "name": "Chương 05:: Viêm Đế giao phó",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000015",
+                "name": "Chương 06:: Mắt thấy NTR(Thải Lân)",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000016",
+                "name": "Chương 07:: Mắt thấy NTR(Tiêu Huân Nhi)",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000017",
+                "name": "Chương 08:: Di nương song tu dạy bảo (Nhã Phi x Tiểu Y Tiên )",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000018",
+                "name": "Chương 09:: Vân Vận dạy bảo",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000019",
+                "name": "Chương 10:: Tử Nghiên nghịch tập!",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000020",
+                "name": "Chương 11:: Nạp Lan Yên Nhiên nguyện vọng",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000021",
+                "name": "Chương 12:: Mẫu nô ---- Tiêu Huân Nhi cùng với Thải Lân mẫu nữ đan",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000022",
+                "name": "Chương 13:: Chinh phục Tiêu Yên, chúa tể",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000023",
+                "name": "Chương 01:: Cao ngạo nữ vương Thải Lân",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000024",
+                "name": "Chương 02:: Long cùng lang -- Tử Nghiên bị lang gian",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000025",
+                "name": "Chương 03:: Dâm loạn 3P, Thanh Diễn Tĩnh",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000026",
+                "name": "Chương 04:: Hổ Gia cùng Lăng Thanh Trúc",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000027",
+                "name": "Chương 05:: Cổ Nguyên x Tiêu Huân Nhi, cha con loạn luân",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000028",
+                "name": "Chương 06:: Xử nữ trầm luân chi dạ ( Một ) Tiêu Tiêu x Dược Trần x Tiêu Lâm!",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000029",
+                "name": "Chương 06:: Xử nữ trầm luân chi dạ ( Hai ) Cổ Nguyên x Lâm Tĩnh",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000030",
+                "name": "Chương 06:: Xử nữ trầm luân chi dạ ( Ba ) Mục Phong x Lạc Ly",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000031",
+                "name": "Chương 7:: Cấm kỵ có thai",
+                "date": "05/10/2026"
+            }
+        ]
+    },
+    {
+        "title": "Tông môn thiếu chủ côn thịt quá nhỏ, rơi vào đường cùng chỉ có thể bị lục",
+        "slug": "0185",
+        "date": "05/10/2026",
+        "timestamp": 1791198790.911564,
+        "chapters": [
+            {
+                "id": "000001",
+                "name": "Chương 01",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000002",
+                "name": "Chương 02",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000003",
+                "name": "Chương 03",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000004",
+                "name": "Chương 04",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000005",
+                "name": "Chương 05",
+                "date": "05/10/2026"
+            }
+        ]
+    },
+    {
+        "title": "Hào môn nón xanh hệ thống",
+        "slug": "0186",
+        "date": "05/10/2026",
+        "timestamp": 1791198838.384039,
+        "chapters": [
+            {
+                "id": "000001",
+                "name": "Thứ 1 chương Bị khi dễ nhỏ yếu con tư sinh thu được nón xanh hệ thống, dẫn dụ xinh đẹp thục nữ xóc lọ nhũ giao, để dáng người nở nang gợi cảm cực phẩm thục nữ cam tâm tình nguyện quỳ xuống phục dịch đại kê ba!",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000002",
+                "name": "Thứ 3 chương Cao quý xinh đẹp phu nhân Tần Diệp Văn đêm khuya chủ động hiến thân con tư sinh Hứa Siêu, cự nhũ mông bự bị thấp bé thiếu niên 30cm đại nhục bổng thao đến triều phun bên trong xạ, nón xanh trượng phu Hứa Chí Quốc nhìn trộm giám sát cương xuất tinh",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000003",
+                "name": "Thứ 4 chương Xinh đẹp phu nhân suối nước nóng huyệt dâm phụng dưỡng con tư sinh, khẩu giao Độc Long sau vào tam liên xạ, nón xanh lão công tinh dịch không sánh được con tư sinh đại kê ba rót đầy tử cung",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000004",
+                "name": "Thứ 5 chương Hồi cuối",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000005",
+                "name": "Chương 1: Con tư sinh vì trả thù đại ca đại tẩu, nón xanh hệ thống dẫn dụ cao quý đại tẩu chủ động chân giao, lãnh ngạo tẩu tử xinh đẹp chân ngọc đạp lớn mã điểu, còn bị tiểu thúc tử đè lên giường không bộ mãnh liệt thao, tinh dịch đều rót đầy tử cung",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000006",
+                "name": "Chương 02: Cao quý đại tẩu lần nữa tiếp nhận nón xanh nhiệm vụ, mang theo tiểu thúc tử cùng nhau đến bờ biển nghỉ phép, cõng trượng phu ăn tiểu thúc tử đại kê ba, còn vừa cùng trượng phu thông điện thoại, một bên bị tiểu thúc tử sau đi vào xạ",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000007",
+                "name": "Chương 03: Cao quý đại tẩu triệt để sa đọa, trượng phu trước mặt miệng lớn phun ra nuốt vào con tư sinh tiểu thúc côn thịt, còn bị điên cuồng thao bên trong xạ một bụng tinh dịch, sa đọa trở thành một đầu phát tình chó cái",
+                "date": "05/10/2026"
+            }
+        ]
+    },
+    {
+        "title": "Nón xanh chuyển phát nhanh",
+        "slug": "0187",
+        "date": "05/10/2026",
+        "timestamp": 1791198930.991443,
+        "chapters": [
+            {
+                "id": "000001",
+                "name": "Nón xanh chuyển phát nhanh 1",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000002",
+                "name": "Nón xanh chuyển phát nhanh 2",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000003",
+                "name": "Nón xanh chuyển phát nhanh 3",
+                "date": "05/10/2026"
+            }
+        ]
+    },
+    {
+        "title": "Hào môn ngàn ức con tư sinh",
+        "slug": "0188",
+        "date": "05/10/2026",
+        "timestamp": 1791198954.524994,
+        "chapters": [
+            {
+                "id": "000001",
+                "name": "Thứ 1 chương",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000002",
+                "name": "Thứ 2 chương",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000003",
+                "name": "Thứ 3 chương",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000004",
+                "name": "Thứ 4 chương",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000005",
+                "name": "Thứ 5 chương",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000006",
+                "name": "Thứ 6 chương",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000007",
+                "name": "Thứ 7 chương",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000008",
+                "name": "Thứ 8 chương",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000009",
+                "name": "Thứ 9 chương",
+                "date": "05/10/2026"
+            },
+            {
+                "id": "000010",
+                "name": "Thứ 10 chương",
                 "date": "05/10/2026"
             }
         ]

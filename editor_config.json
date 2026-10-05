@@ -1,10 +1,10 @@
 {
   "editor_main": "1202x800+-28+101",
-  "editor_add_story_dialog": "760x223+122+143",
+  "editor_add_story_dialog": "700x223+1001+322",
   "builder_main": "931x800+301+167",
-  "builder_add_name": "760x666+242+284",
+  "builder_add_name": "760x666+1001+322",
   "editor_split_dialog": "700x666+1001+322",
-  "builder_review": "1071x756+62+226",
+  "builder_review": "1105x801+18+220",
   "builder_scan_names": "760x666+1001+322",
   "split_patterns": [
     [
@@ -19,6 +19,6 @@
   "editor_split_dialog_state": "normal",
   "builder_library_dialog": "760x666+441+344",
   "studio_tab": "library",
-  "studio_main": "1071x878+62+226",
+  "studio_main": "1096x937+53+339",
   "builder_edit_line": "760x666+447+662"
 }

@@ -993,6 +993,7 @@ class TranslatorGUI:
         self.txt_area.pack(fill="both", expand=True, padx=20, pady=5)
         self.txt_area.bind("<<Modified>>", self._on_text_modified)
         self.txt_area.bind("<Control-Return>", lambda e: (self.start_thread(), "break")[1])
+        self._build_find_bar()
 
         # Drop Zone
         self.drop_zone = tk.Label(
@@ -1031,6 +1032,134 @@ class TranslatorGUI:
         self.lbl_status = tk.Label(self.frame, text="Sẵn sàng  ·  Ctrl+Enter để dịch", fg="#71717a", bg=BG)
         self.lbl_status.pack(pady=5)
 
+    # ── tìm kiếm (Ctrl+F) ──
+
+    FIND_LIMIT = 5000  # tô sáng tối đa; văn bản dài vẫn đếm/nhảy trong giới hạn này
+
+    def _build_find_bar(self):
+        """Thanh tìm kiếm cho ô nội dung, ẩn cho tới khi bấm Ctrl+F."""
+        self._find_matches = []   # [(start, end)] chỉ số Tk
+        self._find_index = -1
+        self._find_timer = None
+        bar = self.find_bar = tk.Frame(self.frame, bg=FIELD)
+        tk.Label(bar, text="🔍", bg=FIELD, fg=MUTED).pack(side="left", padx=(8, 2))
+        self.find_var = tk.StringVar()
+        self.find_entry = tk.Entry(bar, textvariable=self.find_var, bg=PANEL, fg="#ffffff",
+                                   insertbackground="white", borderwidth=0, font=("Consolas", 10))
+        self.find_entry.pack(side="left", fill="x", expand=True, ipady=4, pady=4)
+        self.find_status = tk.Label(bar, text="", width=12, bg=FIELD, fg=MUTED, font=("Arial", 9))
+        self.find_status.pack(side="left", padx=6)
+        small = dict(bg="#3f3f46", fg="white", activebackground="#52525b", activeforeground="white",
+                     borderwidth=0, padx=8, cursor="hand2")
+        tk.Button(bar, text="▲", command=lambda: self.find_step(-1), **small).pack(side="left", padx=(0, 2), pady=4)
+        tk.Button(bar, text="▼", command=lambda: self.find_step(1), **small).pack(side="left", padx=(0, 6), pady=4)
+        tk.Button(bar, text="✕", command=self.hide_find_bar, **small).pack(side="left", padx=(0, 6), pady=4)
+
+        self.find_var.trace_add("write", lambda *_: self._schedule_find())
+        self.find_entry.bind("<Return>", lambda e: (self.find_step(1), "break")[1])
+        self.find_entry.bind("<Shift-Return>", lambda e: (self.find_step(-1), "break")[1])
+        self.find_entry.bind("<Escape>", lambda e: (self.hide_find_bar(), "break")[1])
+        for widget in (self.txt_area, self.find_entry, self.ent_title):
+            widget.bind("<Control-f>", lambda e: (self.show_find_bar(), "break")[1])
+            widget.bind("<Control-F>", lambda e: (self.show_find_bar(), "break")[1])
+            widget.bind("<F3>", lambda e: (self.find_step(1), "break")[1])
+            widget.bind("<Shift-F3>", lambda e: (self.find_step(-1), "break")[1])
+        self.txt_area.bind("<Escape>", lambda e: self.hide_find_bar() if self.find_bar.winfo_ismapped() else None)
+
+        self.txt_area.tag_configure("find_match", background="#854d0e", foreground="#ffffff")
+        self.txt_area.tag_configure("find_current", background="#f59e0b", foreground="#09090b")
+        self.txt_area.tag_raise("find_current", "find_match")
+        self.txt_area.tag_raise("sel")
+
+    def show_find_bar(self):
+        if not self.find_bar.winfo_ismapped():
+            self.find_bar.pack(fill="x", padx=20, pady=(5, 0), before=self.txt_area)
+        try:
+            selected = self.txt_area.get("sel.first", "sel.last")
+        except tk.TclError:
+            selected = ""
+        if selected and "\n" not in selected:
+            self.txt_area.mark_set("insert", "sel.first")  # bắt đầu từ chính chỗ đang bôi đen
+            self.find_var.set(selected)  # trace sẽ tìm lại
+        self.find_entry.focus_set()
+        self.find_entry.select_range(0, tk.END)
+        self.refresh_find()
+
+    def hide_find_bar(self):
+        current = self._find_matches[self._find_index] if 0 <= self._find_index < len(self._find_matches) else None
+        self.find_bar.pack_forget()
+        self.txt_area.tag_remove("find_match", "1.0", tk.END)
+        self.txt_area.tag_remove("find_current", "1.0", tk.END)
+        self._find_matches, self._find_index = [], -1
+        self.txt_area.focus_set()
+        if current:  # giữ vị trí vừa tìm được: bôi đen để sửa/xoá ngay
+            self.txt_area.tag_remove("sel", "1.0", tk.END)
+            self.txt_area.tag_add("sel", *current)
+            self.txt_area.mark_set("insert", current[1])
+            self.txt_area.see(current[0])
+
+    def _schedule_find(self):
+        if self._find_timer:
+            self.root.after_cancel(self._find_timer)
+        self._find_timer = self.root.after(150, self.refresh_find)
+
+    def refresh_find(self, keep_position=False):
+        """Tô sáng mọi kết quả; không phân biệt hoa/thường."""
+        if self._find_timer:
+            self.root.after_cancel(self._find_timer)
+        self._find_timer = None
+        text = self.txt_area
+        text.tag_remove("find_match", "1.0", tk.END)
+        text.tag_remove("find_current", "1.0", tk.END)
+        query = self.find_var.get()
+        previous = self._find_matches[self._find_index][0] if keep_position and self._find_matches else None
+        self._find_matches, self._find_index = [], -1
+        if not query:
+            self.find_status.config(text="", fg=MUTED)
+            return
+        count = tk.IntVar()
+        index = "1.0"
+        while len(self._find_matches) < self.FIND_LIMIT:
+            index = text.search(query, index, stopindex=tk.END, nocase=True, count=count)
+            if not index or not count.get():
+                break
+            end = f"{index}+{count.get()}c"
+            self._find_matches.append((index, end))
+            text.tag_add("find_match", index, end)
+            index = end
+        if not self._find_matches:
+            self.find_status.config(text="Không thấy", fg="#f87171")
+            return
+        # Bắt đầu từ kết quả gần con trỏ (hoặc vị trí cũ khi nội dung vừa đổi).
+        anchor = previous or text.index("insert")
+        self._find_index = next((i for i, (start, _end) in enumerate(self._find_matches)
+                                 if text.compare(start, ">=", anchor)), 0)
+        # Đang gõ trong ô nội dung thì không kéo con trỏ đi chỗ khác.
+        self._show_find_current(move_cursor=not keep_position)
+
+    def find_step(self, direction):
+        if not self.find_bar.winfo_ismapped():
+            self.show_find_bar()
+            return
+        if not self._find_matches:
+            self.refresh_find()
+            if not self._find_matches:
+                return
+        else:
+            self._find_index = (self._find_index + direction) % len(self._find_matches)
+        self._show_find_current()
+
+    def _show_find_current(self, move_cursor=True):
+        text = self.txt_area
+        text.tag_remove("find_current", "1.0", tk.END)
+        start, end = self._find_matches[self._find_index]
+        text.tag_add("find_current", start, end)
+        if move_cursor:
+            text.mark_set("insert", start)
+            text.see(start)
+        more = "+" if len(self._find_matches) >= self.FIND_LIMIT else ""
+        self.find_status.config(text=f"{self._find_index + 1}/{len(self._find_matches)}{more}", fg=TEXT)
+
     # ── bộ đếm ──
 
     def _on_text_modified(self, event=None):
@@ -1039,6 +1168,11 @@ class TranslatorGUI:
             if self._count_timer:
                 self.root.after_cancel(self._count_timer)
             self._count_timer = self.root.after(400, self.update_counter)
+            if self.find_bar.winfo_ismapped() and self.find_var.get():
+                # Nội dung đổi: tìm lại, giữ gần kết quả đang xem.
+                if self._find_timer:
+                    self.root.after_cancel(self._find_timer)
+                self._find_timer = self.root.after(300, lambda: self.refresh_find(keep_position=True))
 
     def update_counter(self):
         self._count_timer = None
