@@ -1,9 +1,19 @@
 """Story Studio: dịch truyện (builder.py) và biên tập thư viện (editor.py) trong một cửa sổ.
 
-Chạy: python studio.py
+Chạy: python studio.py   (hoặc pythonw studio.py để không hiện cửa sổ console)
 builder.py và editor.py vẫn chạy riêng được như trước.
 """
 import os
+import sys
+
+# pythonw không có console: sys.stdout/stderr là None, thư viện nào in ra (thanh tải
+# model, print lỗi) sẽ hỏng. Ghi tất cả vào studio.log cạnh file này để còn xem lỗi.
+if sys.stdout is None or sys.stderr is None:
+    _here = os.path.dirname(sys.executable if getattr(sys, "frozen", False) else os.path.abspath(__file__))
+    _log = open(os.path.join(_here, "studio.log"), "w", encoding="utf-8", buffering=1)
+    sys.stdout = sys.stdout or _log
+    sys.stderr = sys.stderr or _log
+
 import tkinter as tk
 from tkinter import messagebox
 from tkinterdnd2 import TkinterDnD

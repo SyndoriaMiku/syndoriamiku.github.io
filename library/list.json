@@ -6198,13 +6198,18 @@
     {
         "title": "Loạn thế sách",
         "slug": "0125",
-        "date": "09/09/2026",
-        "timestamp": 1788963791.766289,
+        "date": "06/10/2026",
+        "timestamp": 1791296750.157513,
         "chapters": [
             {
                 "id": "000001",
                 "name": "Đường Vãn Trang (Thượng)",
                 "date": "09/09/2026"
+            },
+            {
+                "id": "000002",
+                "name": "Đường Vãn Trang (Hạ)",
+                "date": "06/10/2026"
             }
         ]
     },
@@ -6383,8 +6388,8 @@
     {
         "title": "Tổng hợp truyện ngắn",
         "slug": "0130",
-        "date": "05/10/2026",
-        "timestamp": 1791198632.076876,
+        "date": "06/10/2026",
+        "timestamp": 1791297345.467992,
         "chapters": [
             {
                 "id": "000001",
@@ -6660,6 +6665,16 @@
                 "id": "000055",
                 "name": "Đại chúa tể đồng người chi Thanh Diễn Tĩnh sa đọa",
                 "date": "05/10/2026"
+            },
+            {
+                "id": "000056",
+                "name": "Bị tuyết đế thu làm đệ tử sau trở tay trở thành hướng sư nghịch đồ",
+                "date": "06/10/2026"
+            },
+            {
+                "id": "000057",
+                "name": "Tại VR thế giới bên trong cảm giác đều sẽ chiếu rọi đến thế giới hiện thực",
+                "date": "06/10/2026"
             }
         ]
     },
