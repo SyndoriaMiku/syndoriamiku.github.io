@@ -6389,7 +6389,7 @@
         "title": "Tổng hợp truyện ngắn",
         "slug": "0130",
         "date": "06/10/2026",
-        "timestamp": 1791297345.467992,
+        "timestamp": 1791303978.935116,
         "chapters": [
             {
                 "id": "000001",
@@ -6674,6 +6674,11 @@
             {
                 "id": "000057",
                 "name": "Tại VR thế giới bên trong cảm giác đều sẽ chiếu rọi đến thế giới hiện thực",
+                "date": "06/10/2026"
+            },
+            {
+                "id": "000058",
+                "name": "Vì cái gì đạo quán sư muội cùng sư nương bại trận tức đọa, vô địch âm dương sư cũng rơi vào tay địch",
                 "date": "06/10/2026"
             }
         ]
@@ -12901,8 +12906,8 @@
     {
         "title": "Đô thị nữ tổng giám đốc ác đọa sinh hoạt",
         "slug": "0176",
-        "date": "03/10/2026",
-        "timestamp": 1791004529.052606,
+        "date": "06/10/2026",
+        "timestamp": 1791302851.0133,
         "chapters": [
             {
                 "id": "000001",
@@ -12953,6 +12958,21 @@
                 "id": "000010",
                 "name": "Chương 10:: Bịt tai mà đi trộm chuông",
                 "date": "03/10/2026"
+            },
+            {
+                "id": "000011",
+                "name": "Chương 11:: Nhất huyết ( Bên trên )",
+                "date": "06/10/2026"
+            },
+            {
+                "id": "000012",
+                "name": "Chương 12:: Nhất huyết ( Phía dưới )",
+                "date": "06/10/2026"
+            },
+            {
+                "id": "000013",
+                "name": "Chương 13:: Không thói quen sáng sớm",
+                "date": "06/10/2026"
             }
         ]
     },
@@ -13589,6 +13609,19 @@
                 "id": "000010",
                 "name": "Thứ 10 chương",
                 "date": "05/10/2026"
+            }
+        ]
+    },
+    {
+        "title": "Phụ thân yoga mỹ thê",
+        "slug": "0189",
+        "date": "06/10/2026",
+        "timestamp": 1791303967.410516,
+        "chapters": [
+            {
+                "id": "000001",
+                "name": "Oneshot",
+                "date": "06/10/2026"
             }
         ]
     }
