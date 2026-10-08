@@ -3,7 +3,7 @@ from tkinter import filedialog, messagebox, scrolledtext, ttk
 import requests, json, os, sys, base64, datetime, time, threading, queue
 import unicodedata, re, shutil
 from tkinterdnd2 import TkinterDnD, DND_FILES
-from name_glossary import (update_name_cfg, compile_name_source_pattern, compile_name_loose_pattern,
+from name_glossary import (update_name_cfg, normalize_entries, compile_name_source_pattern, compile_name_loose_pattern,
                            substitute_names, fix_name_spacing)
 import library_store as store
 from library_store import CatalogError, read_catalog, write_catalog
@@ -492,7 +492,7 @@ class ReviewWindow:
         dialog.resizable(True, True)
 
         entry_opts = dict(bg=FIELD, fg="white", borderwidth=0, insertbackground="white")
-        tk.Label(dialog, text="1. Tiếng Trung gốc (để lưu Name dùng vĩnh viễn):", fg=MUTED, bg=PANEL).pack(pady=(10,0), anchor="w", padx=20)
+        tk.Label(dialog, text="1. Tiếng Trung gốc (để lưu Name cho các lần dịch):", fg=MUTED, bg=PANEL).pack(pady=(10,0), anchor="w", padx=20)
         ent_cn = tk.Entry(dialog, **entry_opts)
         ent_cn.pack(fill="x", padx=20, pady=5, ipady=5)
         if is_cn and selected_text:
@@ -508,6 +508,11 @@ class ReviewWindow:
         ent_right = tk.Entry(dialog, **entry_opts)
         ent_right.pack(fill="x", padx=20, pady=5, ipady=5)
         ent_right.focus_set()
+
+        temp_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(dialog, text="🏷 Name tạm — chỉ dùng cho lượt dịch này, không lưu name.cfg",
+                       variable=temp_var, bg=PANEL, fg="#fbbf24", selectcolor=BG, activebackground=PANEL,
+                       activeforeground="#fbbf24").pack(anchor="w", padx=16, pady=(6, 0))
 
         if is_cn and selected_text:
             # Gợi ý Name bằng API dịch; cập nhật ô qua hàng đợi luồng chính.
@@ -541,7 +546,7 @@ class ReviewWindow:
                 if not cn_val:
                     messagebox.showwarning("Chú ý", "Để dịch lại từ đầu, bắt buộc phải có 'Tiếng Trung gốc'!", parent=dialog)
                     return
-                if not self.app._add_name_to_cfg(cn_val, right_val, parent=dialog):
+                if not self.app.add_names([(cn_val, right_val)], temp_var.get(), parent=dialog):
                     return
                 self.app.btn_run.config(state="normal")
                 close_dialog()
@@ -559,7 +564,8 @@ class ReviewWindow:
                 dialog.title("Đang cập nhật Name..." if busy else "Sửa lỗi & Thêm Name Mới")
 
             set_busy(True)
-            vi_names = list(self.app.load_name_config().values()) + [right_val]
+            vi_names = list(self.app.effective_names().values()) + [right_val]
+            temporary = temp_var.get()
             snapshot = tuple(self.vi_lines)
             results = queue.Queue()
 
@@ -580,12 +586,13 @@ class ReviewWindow:
 
             def finish(count):
                 if cn_val:
-                    self.app._add_name_to_cfg(cn_val, right_val, parent=self.top)
+                    self.app.add_names([(cn_val, right_val)], temporary, parent=self.top)
                 close_dialog()
                 if count:
                     self.mark_changed()
+                where = " · name tạm" if temporary else " · đã lưu vào name.cfg"
                 self.set_status(f"✅ {cn_val or wrong_val} → {right_val}: đã sửa {count} đoạn"
-                                + (" · đã lưu vào name.cfg" if cn_val else ""))
+                                + (where if cn_val else ""))
 
             def poll():
                 try:
@@ -598,7 +605,7 @@ class ReviewWindow:
                     messagebox.showerror("Lỗi cập nhật Name", error, parent=dialog)
                     return
                 if not wrong:
-                    if not messagebox.askyesno("Xác nhận", "Không tìm được cụm từ VN cần thay. Chỉ lưu Name để áp dụng cho những lần dịch sau?", parent=dialog):
+                    if not messagebox.askyesno("Xác nhận", "Không tìm được cụm từ VN cần thay. Chỉ lưu Name để áp dụng khi dịch lại?", parent=dialog):
                         set_busy(False)
                         return
                 # Prevent closing midway through a multi-batch UI update.
@@ -675,7 +682,9 @@ class ReviewWindow:
 
         self._saved_data_once = True
         self.saved = True
-        self.app.set_status("✅ Đã lưu data.json thành công!", "#10b981")
+        cleared = self.app.clear_temp_names()
+        self.app.set_status("✅ Đã lưu data.json thành công!"
+                            + (f" · đã xoá {cleared} name tạm" if cleared else ""), "#10b981")
         self.app.btn_run.config(state="normal")
         self.app.btn_clear.pack(side="right", padx=5)
         messagebox.showinfo("Thành công", f"Đã xuất dữ liệu truyện: {self.slug}", parent=self.top)
@@ -857,7 +866,9 @@ class ReviewWindow:
             first, last = plan["chapters"][0][0], plan["chapters"][-1][0]
             span = first if first == last else f"{first}–{last}"
             self.set_status(f"📚 Đã lưu {len(plan['chapters'])} chương vào library/{slug} ({span}) · {title}")
-            self.app.set_status(f"📚 Đã lưu vào thư viện: {slug} | {title}", "#10b981")
+            cleared = self.app.clear_temp_names()
+            self.app.set_status(f"📚 Đã lưu vào thư viện: {slug} | {title}"
+                                + (f" · đã xoá {cleared} name tạm" if cleared else ""), "#10b981")
             close()
 
         bottom = tk.Frame(dlg, bg=PANEL)
@@ -887,6 +898,9 @@ class TranslatorGUI:
         self._count_timer = None
         self._worker = None
         self._cancel_event = None
+        # Name tạm: chỉ dùng cho lượt dịch hiện tại, không ghi name.cfg,
+        # tự xoá sau khi lưu data.json / lưu vào thư viện.
+        self.temp_names = {}
         # Luồng nền không được chạm vào Tk: mọi cập nhật giao diện đi qua hàng đợi này.
         self._ui_queue = queue.Queue()
 
@@ -1019,6 +1033,10 @@ class TranslatorGUI:
 
         self.btn_draft = tk.Button(btn_frame, text="📝 Mở nháp", command=self.open_draft, bg=FIELD, fg="white", borderwidth=0, padx=15)
         self.btn_draft.pack(side="left", padx=5)
+
+        self.btn_temp_names = tk.Button(btn_frame, text="🏷 Name tạm", command=self.open_temp_names_dialog,
+                                        bg=FIELD, fg="white", borderwidth=0, padx=15)
+        self.btn_temp_names.pack(side="left", padx=5)
 
         self.btn_run = tk.Button(btn_frame, text="🚀 Bắt đầu dịch", command=self.start_thread, bg="#1d4ed8", fg="white", borderwidth=0, padx=25)
         self.btn_run.pack(side="right", padx=5)
@@ -1191,6 +1209,7 @@ class TranslatorGUI:
     def clear_all(self):
         self.ent_title.delete(0, tk.END)
         self.txt_area.delete(1.0, tk.END)
+        self.clear_temp_names()  # truyện mới: name tạm của truyện cũ không còn dùng
         self.set_status("Sẵn sàng", "#71717a")
         self.btn_clear.pack_forget()
 
@@ -1350,12 +1369,12 @@ class TranslatorGUI:
         # Minimal inline fallback (empty if no table)
         return cn
 
-    def scan_name_candidates(self, text: str, max_results: int = 250, on_progress=None) -> list:
+    def scan_name_candidates(self, text: str, max_results: int = 250, on_progress=None, temp_names=()) -> list:
         """Recognize Chinese entities locally with CUDA/CPU NER."""
         if not _NAME_SCANNER_OK:
             raise RuntimeError("Không tải được gpu_name_scanner.py. Xem SCAN_NAMES.md để cài đặt.")
         results = _NameScanner().scan(
-            text, existing_glossary=set(self.load_name_config()), max_results=max_results, on_progress=on_progress,
+            text, existing_glossary=set(self.load_name_config()) | set(temp_names), max_results=max_results, on_progress=on_progress,
         )
         # The legacy API provides a normal Vietnamese translation, filled below
         # after all candidates have been collected into one request.
@@ -1389,10 +1408,11 @@ class TranslatorGUI:
         self.root.update_idletasks()
 
         results = queue.Queue()
+        known_temp = set(self.temp_names)  # chụp trên luồng chính
         def worker():
             try:
                 candidates = self.scan_name_candidates(
-                    raw_text, on_progress=lambda msg: results.put((None, msg, "progress")))
+                    raw_text, on_progress=lambda msg: results.put((None, msg, "progress")), temp_names=known_temp)
                 api_warning = None
                 try:
                     candidates = self._fill_name_suggestions_from_api(candidates)
@@ -1436,6 +1456,7 @@ class TranslatorGUI:
         dlg.configure(bg=BG)
         dlg.transient(self.root)
         dlg.resizable(True, True)
+        scan_temp_var = tk.BooleanVar(master=dlg, value=False)  # thêm vào name tạm thay vì name.cfg
 
         cfg = load_config()
         dlg.geometry(cfg.get("builder_scan_names", "900x640"))
@@ -1731,9 +1752,9 @@ class TranslatorGUI:
             if not vi_text:
                 messagebox.showwarning("Chú ý", "Vui lòng nhập tên tiếng Việt!", parent=dlg)
                 return "break"
-            if self._add_name_to_cfg(cn, vi_text, parent=dlg):
+            if self.add_names([(cn, vi_text)], scan_temp_var.get(), parent=dlg):
                 remove_rows([cn])
-                status_var.set(f"✅ Đã thêm: {cn} = {vi_text}")
+                status_var.set(f"✅ Đã thêm{' name tạm' if scan_temp_var.get() else ''}: {cn} = {vi_text}")
                 tree.focus_set()
             return "break"
 
@@ -1778,11 +1799,12 @@ class TranslatorGUI:
             if not entries:
                 messagebox.showwarning("Chú ý", "Chưa chọn tên nào có bản dịch tiếng Việt.", parent=dlg)
                 return
-            if not self._add_names_to_cfg(entries, parent=dlg):
+            if not self.add_names(entries, scan_temp_var.get(), parent=dlg):
                 return
             remove_rows([cn for cn, _vi in entries])
             suffix = f"; bỏ qua {missing} mục trống" if missing else ""
-            status_var.set(f"✅ Đã lưu {len(entries)} tên vào name.cfg{suffix}")
+            where = "name tạm" if scan_temp_var.get() else "name.cfg"
+            status_var.set(f"✅ Đã lưu {len(entries)} tên vào {where}{suffix}")
 
         bar_btn = dict(relief="flat", borderwidth=0, padx=10, pady=6, font=("Arial", 8), cursor="hand2")
         tk.Button(bot, text="Chọn mục đang hiện (có bản dịch)", bg=FIELD, fg="#d4d4d8",
@@ -1794,12 +1816,157 @@ class TranslatorGUI:
         tk.Button(bot, text="✅ Thêm các mục đã chọn", bg="#7c3aed", fg="white", activebackground="#6d28d9",
                   relief="flat", borderwidth=0, padx=16, pady=6, font=("Arial", 9, "bold"), cursor="hand2",
                   command=add_selected).pack(side=tk.RIGHT)
+        tk.Checkbutton(bot, text="🏷 Thêm làm name tạm", variable=scan_temp_var, bg=BG, fg="#fbbf24",
+                       selectcolor=FIELD, activebackground=BG, activeforeground="#fbbf24",
+                       font=("Arial", 8)).pack(side=tk.RIGHT, padx=8)
 
         rebuild()
         tree.focus_set()
 
     def _name_cfg_path(self):
         return name_cfg_path()
+
+    # ── name tạm ──
+
+    def effective_names(self, temp_names=None):
+        """name.cfg + name tạm (name tạm thắng khi trùng chữ Hán)."""
+        names = self.load_name_config()
+        names.update(self.temp_names if temp_names is None else temp_names)
+        return names
+
+    def add_temp_names(self, entries, parent=None):
+        try:
+            pending = normalize_entries(entries)
+        except ValueError as error:
+            messagebox.showerror("Name tạm không hợp lệ", str(error), parent=parent or self.root)
+            return False
+        self.temp_names.update(pending)
+        self._refresh_temp_names_button()
+        return True
+
+    def clear_temp_names(self):
+        count = len(self.temp_names)
+        self.temp_names.clear()
+        self._refresh_temp_names_button()
+        return count
+
+    def _refresh_temp_names_button(self):
+        count = len(self.temp_names)
+        self.btn_temp_names.config(text=f"🏷 Name tạm ({count})" if count else "🏷 Name tạm",
+                                   bg="#b45309" if count else FIELD)
+
+    def add_names(self, entries, temporary, parent=None):
+        """Thêm vào name tạm hoặc name.cfg tuỳ lựa chọn của người dùng."""
+        if temporary:
+            return self.add_temp_names(entries, parent=parent)
+        if not self._add_names_to_cfg(entries, parent=parent):
+            return False
+        # Đã lưu vĩnh viễn thì name tạm cùng chữ Hán không còn cần nữa.
+        for cn, _vi in entries:
+            self.temp_names.pop(unicodedata.normalize('NFC', cn.strip()), None)
+        self._refresh_temp_names_button()
+        return True
+
+    def open_temp_names_dialog(self):
+        dlg = tk.Toplevel(self.root)
+        dlg.title("🏷 Name tạm — chỉ dùng cho lượt dịch này")
+        dlg.configure(bg=PANEL)
+        dlg.transient(self.root)
+        dlg.grab_set()
+        try:
+            dlg.geometry(load_config().get("builder_temp_names", "520x460"))
+        except tk.TclError:
+            dlg.geometry("520x460")
+        dlg.minsize(420, 360)
+
+        tk.Label(dlg, text="Áp dụng cho lần dịch / dịch lại tiếp theo, không ghi vào name.cfg.\n"
+                           "Tự xoá sau khi Lưu data.json hoặc Lưu vào thư viện.",
+                 fg=MUTED, bg=PANEL, justify="left").pack(anchor="w", padx=16, pady=(12, 8))
+
+        entry = dict(bg=FIELD, fg="white", insertbackground="white", borderwidth=0, font=("Segoe UI", 10))
+        row = tk.Frame(dlg, bg=PANEL)
+        row.pack(fill="x", padx=16)
+        ent_cn = tk.Entry(row, width=14, **entry)
+        ent_cn.pack(side="left", ipady=4)
+        tk.Label(row, text="=", fg=MUTED, bg=PANEL).pack(side="left", padx=6)
+        ent_vi = tk.Entry(row, **entry)
+        ent_vi.pack(side="left", fill="x", expand=True, ipady=4)
+        btn = dict(fg="white", borderwidth=0, padx=12, pady=4, cursor="hand2")
+        tk.Button(row, text="➕ Thêm", bg="#b45309", command=lambda: add(), **btn).pack(side="left", padx=(8, 0))
+
+        listbox = tk.Listbox(dlg, bg=BG, fg=TEXT, selectbackground="#b45309", borderwidth=0, highlightthickness=0,
+                             font=("Segoe UI", 10), activestyle="none", selectmode="extended")
+        listbox.pack(fill="both", expand=True, padx=16, pady=(10, 0))
+        status = tk.Label(dlg, text="", fg=MUTED, bg=PANEL, anchor="w")
+        status.pack(fill="x", padx=16, pady=(4, 0))
+        keys = []
+
+        def refresh():
+            keys[:] = sorted(self.temp_names)
+            listbox.delete(0, tk.END)
+            for cn in keys:
+                listbox.insert(tk.END, f"{cn}  =  {self.temp_names[cn]}")
+            status.config(text=f"{len(keys)} name tạm" if keys else "Chưa có name tạm nào.")
+
+        def add(event=None):
+            cn, vi = ent_cn.get().strip(), ent_vi.get().strip()
+            if not cn or not vi:
+                messagebox.showwarning("Chú ý", "Nhập cả chữ Hán và tên tiếng Việt.", parent=dlg)
+                return "break"
+            if self.add_temp_names([(cn, vi)], parent=dlg):
+                ent_cn.delete(0, tk.END)
+                ent_vi.delete(0, tk.END)
+                ent_cn.focus_set()
+                refresh()
+            return "break"
+
+        def on_select(event=None):
+            picked = [keys[i] for i in listbox.curselection()]
+            if len(picked) == 1:  # chọn một dòng để sửa: nạp lên ô nhập
+                ent_cn.delete(0, tk.END)
+                ent_cn.insert(0, picked[0])
+                ent_vi.delete(0, tk.END)
+                ent_vi.insert(0, self.temp_names[picked[0]])
+
+        def remove_selected(event=None):
+            for i in listbox.curselection():
+                self.temp_names.pop(keys[i], None)
+            self._refresh_temp_names_button()
+            refresh()
+
+        def make_permanent():
+            picked = [keys[i] for i in listbox.curselection()] or list(keys)
+            if not picked:
+                return
+            if self.add_names([(cn, self.temp_names[cn]) for cn in picked], temporary=False, parent=dlg):
+                refresh()
+                status.config(text=f"✅ Đã lưu {len(picked)} name vào name.cfg")
+
+        def clear_all():
+            if self.temp_names and messagebox.askyesno("Xoá name tạm", "Xoá hết name tạm?", parent=dlg):
+                self.clear_temp_names()
+                refresh()
+
+        def close(event=None):
+            save_config({"builder_temp_names": dlg.geometry()})
+            dlg.destroy()
+
+        bottom = tk.Frame(dlg, bg=PANEL)
+        bottom.pack(fill="x", padx=16, pady=12)
+        tk.Button(bottom, text="Xoá mục chọn", bg=FIELD, command=remove_selected, **btn).pack(side="left")
+        tk.Button(bottom, text="Xoá hết", bg="#7f1d1d", command=clear_all, **btn).pack(side="left", padx=6)
+        tk.Button(bottom, text="Đóng", bg=FIELD, command=close, **btn).pack(side="right")
+        tk.Button(bottom, text="💾 Lưu vĩnh viễn vào name.cfg", bg="#0f766e", command=make_permanent,
+                  **btn).pack(side="right", padx=6)
+
+        ent_cn.bind("<Return>", lambda e: (ent_vi.focus_set(), "break")[1])
+        ent_vi.bind("<Return>", add)
+        listbox.bind("<<ListboxSelect>>", on_select)
+        listbox.bind("<Delete>", remove_selected)
+        dlg.bind("<Escape>", close)
+        dlg.protocol("WM_DELETE_WINDOW", close)
+        refresh()
+        ent_cn.focus_set()
 
     def _add_names_to_cfg(self, entries, parent=None):
         """Validate and persist several names using one atomic file replacement."""
@@ -1854,7 +2021,10 @@ class TranslatorGUI:
         self._cancel_event = threading.Event()
         self._set_busy(True)
         self.set_status(f"Slug: {slug} — Đang xử lý dữ liệu...", "#3b82f6")
-        self._worker = threading.Thread(target=self.run_process, args=(title, slug, content, self._cancel_event), daemon=True)
+        # Chụp name tạm trên luồng chính; luồng nền không đọc trạng thái giao diện.
+        self._worker = threading.Thread(target=self.run_process,
+                                        args=(title, slug, content, self._cancel_event, dict(self.temp_names)),
+                                        daemon=True)
         self._worker.start()
 
     def _update_progress(self, done, total, started):
@@ -1865,11 +2035,11 @@ class TranslatorGUI:
             text += f" · còn ~{remaining / 60:.0f} phút" if remaining >= 90 else f" · còn ~{remaining:.0f} giây"
         self.set_status(text + "...", "#3b82f6")
 
-    def run_process(self, title, slug, content, cancel):
+    def run_process(self, title, slug, content, cancel, temp_names=None):
         """Worker thread. Never touch Tk widgets here."""
         try:
             lines = [l.strip() for l in content.split("\n") if l.strip()]
-            name_dict = self.load_name_config()
+            name_dict = self.effective_names(temp_names or {})
             source_pattern = compile_name_source_pattern(name_dict)
             processed_lines = [(line, substitute_names(line, name_dict, source_pattern)) for line in lines]
 

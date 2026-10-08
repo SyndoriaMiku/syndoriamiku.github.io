@@ -3,7 +3,7 @@ from PyInstaller.utils.hooks import collect_data_files
 
 
 a = Analysis(
-    ['builder.py'],
+    ['studio.py'],
     pathex=[],
     binaries=[],
     datas=collect_data_files('tkinterdnd2'),
@@ -29,7 +29,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='StoryTranslatorPro',
+    name='StoryStudio',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
