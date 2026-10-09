@@ -5,7 +5,7 @@
   "builder_add_name": "760x666+1001+322",
   "editor_split_dialog": "700x666+1001+322",
   "builder_review": "1105x801+18+220",
-  "builder_scan_names": "760x666+1001+322",
+  "builder_scan_names": "779x602+1001+322",
   "split_patterns": [
     [
       "Thứ X chương",
@@ -17,9 +17,9 @@
     ]
   ],
   "editor_split_dialog_state": "normal",
-  "builder_library_dialog": "760x666+1001+322",
-  "studio_tab": "library",
+  "builder_library_dialog": "760x666+1190+338",
+  "studio_tab": "translate",
   "studio_main": "1096x937+1+238",
   "builder_edit_line": "760x666+447+662",
-  "builder_temp_names": "779x520+221+393"
+  "builder_temp_names": "779x602+1001+322"
 }

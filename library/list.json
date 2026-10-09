@@ -6515,7 +6515,7 @@
         "title": "Tổng hợp truyện ngắn",
         "slug": "0130",
         "date": "09/10/2026",
-        "timestamp": 1791529182.860136,
+        "timestamp": 1791552536.856173,
         "chapters": [
             {
                 "id": "000001",
@@ -6830,6 +6830,11 @@
             {
                 "id": "000063",
                 "name": "Cùng thanh lãnh Kiếm Tiên sư tôn song tu",
+                "date": "09/10/2026"
+            },
+            {
+                "id": "000064",
+                "name": "Đem thủ vệ Địa Cầu Mahou Shoujo nhóm bắt được trở thành ta tính nô lệ",
                 "date": "09/10/2026"
             }
         ]
@@ -14234,6 +14239,19 @@
             {
                 "id": "000037",
                 "name": "Thứ 37 chương Nhậm chức",
+                "date": "09/10/2026"
+            }
+        ]
+    },
+    {
+        "title": "Lãnh diễm tuyệt mỹ tổng giám đốc mỹ mẫu làm sao lại chỉ đạo đại kê ba nhi tử chiến lược chính mình đâu",
+        "slug": "0194",
+        "date": "09/10/2026",
+        "timestamp": 1791552178.873556,
+        "chapters": [
+            {
+                "id": "000001",
+                "name": "Thứ 1 chương Không ổn bắt đầu",
                 "date": "09/10/2026"
             }
         ]
