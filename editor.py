@@ -377,6 +377,16 @@ class ChapterEditorApp:
 			activeforeground="white", font=("Segoe UI", 10, "bold"), bd=0,
 			relief="flat", padx=14, pady=8, cursor="hand2")
 
+	def _search_buttons(self, parent, target):
+		"""Nút Tìm / Thay hiện sẵn cho một ô văn bản (cùng chức năng Ctrl+F / Ctrl+H)."""
+		row = tk.Frame(parent, bg="#111c2e")
+		for text, replace in (("🔍 Tìm", False), ("↪ Thay", True)):
+			tk.Button(row, text=text, bg="#25344b", fg="#e2e8f0", activebackground="#334155",
+				activeforeground="#ffffff", relief="flat", bd=0, padx=8, pady=1, cursor="hand2",
+				font=("Segoe UI", 8, "bold"),
+				command=lambda r=replace: self.show_search_dialog(target=target(), replace=r)).pack(side="left", padx=(0, 4))
+		return row
+
 	def setup_ui(self):
 		configure_theme(self.root)
 		header = tk.Frame(self.frame, bg="#0b1220")
@@ -446,9 +456,11 @@ class ChapterEditorApp:
 		setup_entry_shortcuts(self.chap_title_entry)
 		content_head = tk.Frame(form, bg="#111c2e")
 		content_head.pack(fill="x")
-		tk.Label(content_head, text="NỘI DUNG CHƯƠNG", fg="#94a3b8", bg="#111c2e", font=("Segoe UI", 9, "bold")).pack(side="left")
+		# Bộ đếm pack trước để luôn đủ chỗ khi khung hẹp.
 		self.counter_label = tk.Label(content_head, text="", fg="#64748b", bg="#111c2e", font=("Segoe UI", 9))
 		self.counter_label.pack(side="right")
+		tk.Label(content_head, text="NỘI DUNG", fg="#94a3b8", bg="#111c2e", font=("Segoe UI", 9, "bold")).pack(side="left")
+		self._search_buttons(content_head, lambda: self.content_text).pack(side="left", padx=(10, 0))
 		self.content_text = StyledScrolledText(form, height=8, width=30, bg="#0b1220", fg="#e2e8f0",
 			insertbackground="white", font=("Segoe UI", 11), wrap=tk.WORD, undo=True,
 			bd=0, padx=12, pady=10, spacing1=3, spacing3=5, selectbackground="#115e59")
@@ -477,6 +489,10 @@ class ChapterEditorApp:
 			bg="#111c2e", anchor="w", justify="left", wraplength=440, font=("Segoe UI", 9))
 		self.temp_status.pack(fill="x", padx=18, pady=(0, 10))
 		parent.bind("<Configure>", lambda e: self.temp_status.config(wraplength=max(200, e.width - 36)), add="+")
+		source_head = tk.Frame(parent, bg="#111c2e")
+		source_head.pack(fill="x", padx=18, pady=(0, 6))
+		tk.Label(source_head, text="NGUỒN", fg="#94a3b8", bg="#111c2e", font=("Segoe UI", 9, "bold")).pack(side="left")
+		self._search_buttons(source_head, lambda: self.temp_text).pack(side="left", padx=(10, 0))
 
 		# Temp text window
 		self.temp_text = StyledScrolledText(
