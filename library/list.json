@@ -14940,5 +14940,33 @@
                 "date": "10/10/2026"
             }
         ]
+    },
+    {
+        "title": "Đô thị mỹ nhân - Sau này trị liệu",
+        "slug": "0205",
+        "date": "10/10/2026",
+        "timestamp": 1791641990.388185,
+        "chapters": [
+            {
+                "id": "000001",
+                "name": "Chương 1: Đợt trị liệu khởi động",
+                "date": "10/10/2026"
+            },
+            {
+                "id": "000002",
+                "name": "Chương 02: Gia đình trị liệu",
+                "date": "10/10/2026"
+            },
+            {
+                "id": "000003",
+                "name": "Chương 03: Trong phòng thể hình giảng bài",
+                "date": "10/10/2026"
+            },
+            {
+                "id": "000004",
+                "name": "Chương 04: Yến hội sau cảm xúc mạnh mẽ trị liệu",
+                "date": "10/10/2026"
+            }
+        ]
     }
 ]
