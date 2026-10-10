@@ -40,6 +40,12 @@
         body.mode-cn .vi-text {
             display: none;
         }
+        /* Dòng dài không có khoảng trắng (------, ======, link) tự xuống dòng,
+           không kéo trang rộng hơn màn hình điện thoại. */
+        .vi-text, .cn-text {
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
     </style>
 </head>
 

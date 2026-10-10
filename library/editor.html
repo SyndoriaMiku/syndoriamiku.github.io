@@ -3,188 +3,840 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chapter Editor</title>
-    <link rel="stylesheet" href="../css/styles.css">
+    <title>Biên tập truyện</title>
     <style>
-        body { font-family: Arial, sans-serif; background-color: #09090b; color: #e4e4e7; margin: 0; padding: 20px; }
-        .container { display: flex; gap: 20px; max-width: 1400px; margin: 0 auto; height: calc(100vh - 80px); }
-        .pane { flex: 1; background: #18181b; padding: 20px; border-radius: 8px; border: 1px solid #27272a; display: flex; flex-direction: column; }
-        h2 { margin-top: 0; padding-bottom: 10px; border-bottom: 1px solid #27272a; color: #fff; }
-        
-        .form-group { margin-bottom: 15px; display: flex; flex-direction: column; }
-        label { margin-bottom: 5px; color: #a1a1aa; font-size: 0.9em; }
-        input[type="text"], textarea { width: 100%; box-sizing: border-box; padding: 10px; border-radius: 6px; border: 1px solid #27272a; background-color: #09090b; color: #fff; outline: none; font-family: inherit; }
-        textarea { flex: 1; min-height: 200px; resize: none; font-size: 1.05rem; line-height: 1.6; }
-        
-        button { background: #3b82f6; color: #fff; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.2s; display: inline-flex; align-items: center; justify-content: center; gap: 5px;}
-        button:hover { background: #2563eb; }
-        
-        input[type="file"] { margin-bottom: 15px; color: #a1a1aa; }
-        input[type="file"]::file-selector-button { background: #3b82f6; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; margin-right: 10px; }
-        
-        .file-info { margin-top: 15px; font-size: 0.9em; color: #71717a; white-space: pre-wrap; word-wrap: break-word; overflow-y: auto; flex: 1; background: #09090b; padding: 10px; border-radius: 6px; border: 1px solid #27272a; }
-        
-        .header-controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; max-width: 1400px; margin: 0 auto 20px auto;}
-        .back-link { color: #3b82f6; text-decoration: none; font-weight: bold; }
-        .back-link:hover { text-decoration: underline; }
+        :root {
+            --bg: #09090b; --panel: #18181b; --field: #27272a; --line: #3f3f46;
+            --text: #e4e4e7; --muted: #a1a1aa; --dim: #71717a;
+            --accent: #3b82f6; --ok: #10b981; --warn: #f59e0b; --bad: #ef4444; --mark: #854d0e;
+        }
+        * { box-sizing: border-box; }
+        body { margin: 0; background: var(--bg); color: var(--text); font-family: "Segoe UI", Arial, sans-serif; font-size: 15px; }
+        a { color: var(--accent); }
+        .wrap { max-width: 1100px; margin: 0 auto; padding: 16px; }
+        header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+        header h1 { font-size: 1.35em; margin: 0; flex: 1; min-width: 180px; }
+        .badge { font-size: .8em; padding: 4px 10px; border-radius: 999px; background: var(--field); color: var(--muted); }
+        .badge.on { background: #064e3b; color: #6ee7b7; }
+        .panel { background: var(--panel); border: 1px solid var(--field); border-radius: 10px; padding: 16px; margin-bottom: 14px; }
+        .panel h2 { font-size: 1em; margin: 0 0 10px; }
+        label { display: block; font-size: .78em; font-weight: 700; letter-spacing: .04em; color: var(--muted); margin: 10px 0 5px; text-transform: uppercase; }
+        input[type=text], input[type=password], select, textarea {
+            width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--field);
+            border-radius: 8px; padding: 9px 11px; font: inherit; outline: none;
+        }
+        input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+        textarea { resize: vertical; line-height: 1.6; }
+        #content { min-height: 55vh; font-family: inherit; }
+        button { background: var(--field); color: #fff; border: 0; border-radius: 8px; padding: 9px 14px; font: inherit; font-weight: 600; cursor: pointer; white-space: nowrap; }
+        button:hover:not(:disabled) { filter: brightness(1.2); }
+        button:disabled { opacity: .45; cursor: default; }
+        button.primary { background: var(--accent); }
+        button.ok { background: #0f766e; }
+        button.danger { background: #7f1d1d; }
+        button.small { padding: 6px 10px; font-size: .85em; }
+        .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        .row > .grow { flex: 1; min-width: 160px; }
+        .tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+        .tabs button { background: var(--panel); color: var(--muted); border: 1px solid var(--field); }
+        .tabs button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+        .hint { color: var(--dim); font-size: .85em; line-height: 1.5; }
+        .status { min-height: 1.4em; font-size: .9em; color: var(--muted); margin-top: 10px; white-space: pre-line; }
+        .status.ok { color: #6ee7b7; } .status.warn { color: #fbbf24; } .status.bad { color: #fca5a5; }
+        .meta { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: .82em; color: var(--dim); margin: 6px 0; }
+        .meta .dirty { color: #fbbf24; }
+        .findbar { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; margin-bottom: 8px; }
+        .findbar .opts { display: flex; gap: 10px; align-items: center; font-size: .85em; color: var(--muted); }
+        .findbar .btns { grid-column: 1 / -1; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+        .findbar .count { color: var(--muted); font-size: .85em; margin-left: auto; }
+        .opts label { display: inline; text-transform: none; letter-spacing: 0; font-weight: 400; margin: 0; }
+        table { width: 100%; border-collapse: collapse; font-size: .9em; }
+        th, td { text-align: left; padding: 7px 6px; border-bottom: 1px solid var(--field); vertical-align: top; }
+        th { color: var(--muted); font-size: .8em; text-transform: uppercase; }
+        td.num { text-align: right; white-space: nowrap; }
+        .snip { color: var(--muted); }
+        mark { background: var(--mark); color: #fff; border-radius: 2px; }
+        ins { background: #065f46; color: #fff; text-decoration: none; border-radius: 2px; }
+        del { color: #fca5a5; }
+        .hidden { display: none !important; }
+        .steps { margin: 6px 0 0; padding-left: 20px; line-height: 1.7; color: var(--muted); font-size: .9em; }
+        code { background: var(--field); padding: 1px 5px; border-radius: 4px; font-size: .9em; }
+        @media (max-width: 640px) {
+            .findbar { grid-template-columns: 1fr; }
+            #content { min-height: 50vh; }
+        }
     </style>
 </head>
 <body>
-    <div class="header-controls">
-        <a href="index.html" class="back-link">← Về Thư Viện</a>
-        <h3 style="margin:0; color:#fff;">Trình Chỉnh Sửa Chapter</h3>
-    </div>
-    
-    <div class="container">
-        <!-- Window 1: Editor -->
-        <div class="pane">
-            <h2>📝 Text Editor (Chỉnh sửa nội dung)</h2>
-            <div class="form-group">
-                <label for="storySelect">Cập nhật cho truyện nào? (Tìm kiếm)</label>
-                <input type="text" id="storySelect" list="storyList" placeholder="Nhập để tìm tên truyện...">
-                <datalist id="storyList"></datalist>
+<div class="wrap">
+    <header>
+        <h1>✏️ Biên tập truyện</h1>
+        <span class="badge" id="connBadge">Chưa kết nối GitHub</span>
+        <button class="small" id="btnSettings">⚙️ Kết nối</button>
+        <a href="./" class="small">← Thư viện</a>
+    </header>
+
+    <!-- Kết nối GitHub -->
+    <section class="panel hidden" id="connPanel">
+        <h2>🔑 Kết nối GitHub để lưu</h2>
+        <p class="hint">Trang này lưu bằng cách commit thẳng vào repo qua GitHub API. Token chỉ được lưu trong trình duyệt của máy này, không gửi đi đâu ngoài api.github.com.</p>
+        <ol class="steps">
+            <li>Mở <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">tạo fine-grained token</a>.</li>
+            <li><b>Repository access</b>: Only select repositories → chọn repo của trang này.</li>
+            <li><b>Permissions → Repository → Contents</b>: Read and write. Không cần quyền nào khác.</li>
+            <li>Tạo token rồi dán vào ô dưới.</li>
+        </ol>
+        <label for="tokenInput">Token</label>
+        <input type="password" id="tokenInput" placeholder="github_pat_…" autocomplete="off">
+        <div class="row" style="margin-top:8px">
+            <div class="grow"><label for="repoInput">Repo (chủ/tên)</label><input type="text" id="repoInput"></div>
+            <div style="width:140px"><label for="branchInput">Nhánh</label><input type="text" id="branchInput"></div>
+        </div>
+        <div class="row" style="margin-top:12px">
+            <button class="primary" id="btnConnect">Kết nối</button>
+            <button class="danger hidden" id="btnDisconnect">Ngắt kết nối & xoá token</button>
+        </div>
+        <div class="status" id="connStatus"></div>
+    </section>
+
+    <div id="app" class="hidden">
+        <section class="panel">
+            <label for="storyInput">Truyện · gõ tên hoặc mã để tìm</label>
+            <div class="row">
+                <input type="text" class="grow" id="storyInput" list="storyList" placeholder="0130 | Tổng hợp truyện ngắn" autocomplete="off">
+                <button class="small" id="btnReloadList" title="Tải lại danh mục từ GitHub">↻</button>
             </div>
-            <div class="form-group">
-                <label for="chapTitle">Chapter Title / Slug (Tiêu đề hoặc URL, VD: chapter-001)</label>
-                <input type="text" id="chapTitle" placeholder="VD: chapter-001">
-            </div>
-            <div class="form-group" style="flex: 1;">
-                <label for="chapContent">Nội dung Tiếng Việt</label>
-                <textarea id="chapContent" placeholder="Nội dung sẽ hiện ở đây, bạn có thể chỉnh sửa tự do..."></textarea>
-            </div>
-            <div>
-                <button onclick="downloadChapter()">💾 Xuất ra file TXT</button>
-                <button onclick="clearEditor()" style="background: #dc2626; margin-left: 10px;">🗑 Làm mới</button>
-            </div>
+            <datalist id="storyList"></datalist>
+        </section>
+
+        <div class="tabs">
+            <button class="active" data-tab="edit">📝 Sửa chương</button>
+            <button data-tab="replace">🔁 Tìm & thay toàn truyện</button>
         </div>
 
-        <!-- Window 2: Importer -->
-        <div class="pane">
-            <h2>📂 Giải mã JSON (Từ stories/)</h2>
-            <p style="color: #a1a1aa; font-size: 0.9em; margin-bottom: 15px;">Chọn định dạng file .json từ bộ dịch (Data.json) để giải mã lấy phần chữ tiếng Việt đã dịch.</p>
-            
-            <input type="file" id="jsonFile" accept=".json">
-            <button onclick="processJSON()" style="background: #10b981; width: 100%;">Thêm toàn bộ Tiếng Việt sang Editor ←</button>
-            
-            <div class="file-info" id="filePreview">Trạng thái: Chưa chọn file...</div>
-        </div>
-    </div>
+        <!-- Sửa chương -->
+        <section class="panel" id="tabEdit">
+            <div class="row">
+                <div class="grow"><label for="chapSelect">Chương</label><select id="chapSelect"></select></div>
+                <div style="align-self:flex-end" class="row">
+                    <button class="small" id="btnPrevChap" title="Chương trước">◀</button>
+                    <button class="small" id="btnNextChap" title="Chương sau">▶</button>
+                </div>
+            </div>
+            <div id="editor" class="hidden">
+                <label for="chapTitle">Tên chương</label>
+                <input type="text" id="chapTitle">
 
-    <script>
-        // Hàm decode chuỗi utf-8 Base64 an toàn
-        const decodeToBase64 = (str) => {
-            try {
-                return decodeURIComponent(escape(atob(str)));
-            } catch (e) {
-                return "[Lỗi giải mã]";
+                <label>Tìm / thay trong chương (Ctrl+F)</label>
+                <div class="findbar">
+                    <input type="text" id="findInput" placeholder="Tìm…">
+                    <input type="text" id="replaceInput" placeholder="Thay bằng… (regex: $1)">
+                    <div class="opts">
+                        <label><input type="checkbox" id="findCase"> Aa</label>
+                        <label><input type="checkbox" id="findRegex"> Regex</label>
+                    </div>
+                    <div class="btns">
+                        <button class="small" id="btnFindPrev">▲</button>
+                        <button class="small" id="btnFindNext">▼ Tìm tiếp</button>
+                        <button class="small" id="btnReplaceOne">Thay</button>
+                        <button class="small" id="btnReplaceAll">Thay tất cả</button>
+                        <span class="count" id="findCount"></span>
+                    </div>
+                </div>
+
+                <div class="meta"><span>NỘI DUNG · các đoạn cách nhau bằng 1 dòng trống</span><span id="counter"></span></div>
+                <textarea id="content" spellcheck="false"></textarea>
+                <div class="row" style="margin-top:12px">
+                    <button class="primary" id="btnSave">💾 Lưu (Ctrl+S)</button>
+                    <button class="small" id="btnRevert">↺ Bỏ thay đổi</button>
+                    <a id="viewLink" target="_blank" rel="noopener" class="small">Xem chương ↗</a>
+                </div>
+            </div>
+            <div class="status" id="editStatus"></div>
+        </section>
+
+        <!-- Tìm & thay toàn truyện -->
+        <section class="panel hidden" id="tabReplace">
+            <p class="hint">Thay trong phần tiếng Việt và tên chương của mọi chương thuộc truyện đang chọn (giống editor.py). Xem trước rồi lưu tất cả bằng một commit.</p>
+            <div class="row">
+                <div class="grow"><label for="rFind">Tìm</label><input type="text" id="rFind"></div>
+                <div class="grow"><label for="rReplace">Thay bằng</label><input type="text" id="rReplace" placeholder="regex: $1"></div>
+            </div>
+            <div class="row opts" style="margin-top:10px">
+                <label><input type="checkbox" id="rCase"> Phân biệt hoa/thường</label>
+                <label><input type="checkbox" id="rRegex"> Regex (cú pháp JavaScript)</label>
+                <span class="grow"></span>
+                <button class="small" id="btnScan">🔍 Xem trước</button>
+            </div>
+            <div class="status" id="replaceStatus"></div>
+            <div id="replaceResult" class="hidden">
+                <table>
+                    <thead><tr><th><input type="checkbox" id="rAll" checked></th><th>Chương</th><th>Ví dụ</th><th class="num">Số chỗ</th></tr></thead>
+                    <tbody id="rRows"></tbody>
+                </table>
+                <div class="row" style="margin-top:12px">
+                    <button class="ok" id="btnApply">✅ Thay & lưu</button>
+                </div>
+            </div>
+        </section>
+    </div>
+</div>
+
+<script>
+'use strict';
+// ───────────────────────── cấu hình ─────────────────────────
+const LS = { token: 'web_editor_token', repo: 'web_editor_repo', branch: 'web_editor_branch' };
+const DEFAULT_REPO = 'SyndoriaMiku/syndoriamiku.github.io';
+const DEFAULT_BRANCH = 'main';
+const LIST_PATH = 'library/list.json';
+const API = 'https://api.github.com';
+
+const $ = (id) => document.getElementById(id);
+const store = {
+    get(key, fallback = '') { try { return localStorage.getItem(key) || fallback; } catch (e) { return fallback; } },
+    set(key, value) { try { value ? localStorage.setItem(key, value) : localStorage.removeItem(key); } catch (e) { /* bỏ qua */ } },
+};
+let cfg = { token: store.get(LS.token), repo: store.get(LS.repo, DEFAULT_REPO), branch: store.get(LS.branch, DEFAULT_BRANCH) };
+
+function setStatus(el, text, kind = '') { el.textContent = text; el.className = 'status' + (kind ? ' ' + kind : ''); }
+
+// ───────────────────────── mã hoá ─────────────────────────
+const utf8 = new TextDecoder('utf-8');
+function bytesToB64(bytes) {
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(bin);
+}
+function b64ToBytes(b64) {
+    const bin = atob(b64.replace(/\s/g, ''));
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+}
+const encodeText = (text) => bytesToB64(new TextEncoder().encode(text.normalize('NFC')));
+function decodeText(b64) {
+    if (!b64) return '';
+    try { return utf8.decode(b64ToBytes(b64)).normalize('NFC'); } catch (e) { return null; }
+}
+
+// JSON giống Python json.dumps(ensure_ascii=False): giữ diff git gọn như khi lưu từ app.
+function pyJson(value, indent = null, level = 0) {
+    if (value === null || typeof value !== 'object') return JSON.stringify(value);
+    const pad = indent ? '\n' + ' '.repeat(indent * (level + 1)) : '';
+    const end = indent ? '\n' + ' '.repeat(indent * level) : '';
+    const sep = indent ? ',' + pad : ', ';
+    if (Array.isArray(value)) {
+        if (!value.length) return '[]';
+        return '[' + pad + value.map((v) => pyJson(v, indent, level + 1)).join(sep) + end + ']';
+    }
+    const keys = Object.keys(value);
+    if (!keys.length) return '{}';
+    return '{' + pad + keys.map((k) => JSON.stringify(k) + ': ' + pyJson(value[k], indent, level + 1)).join(sep) + end + '}';
+}
+
+// ───────────────────────── GitHub API ─────────────────────────
+class ConflictError extends Error {}
+
+async function gh(path, options = {}) {
+    const res = await fetch(API + '/repos/' + cfg.repo + path, {
+        ...options,
+        headers: {
+            Accept: 'application/vnd.github+json',
+            Authorization: 'Bearer ' + cfg.token,
+            'X-GitHub-Api-Version': '2022-11-28',
+            ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+        },
+    });
+    if (!res.ok) {
+        let detail = '';
+        try { detail = (await res.json()).message || ''; } catch (e) { /* không có JSON */ }
+        const error = new Error(`GitHub ${res.status}: ${detail || res.statusText}`);
+        error.status = res.status;
+        throw error;
+    }
+    return res.status === 204 ? null : res.json();
+}
+
+async function headCommit() {
+    const ref = await gh('/git/ref/heads/' + encodeURIComponent(cfg.branch));
+    const commit = await gh('/git/commits/' + ref.object.sha);
+    return { sha: ref.object.sha, tree: commit.tree.sha };
+}
+
+const blobCache = new Map();  // sha -> text (blob bất biến nên cache an toàn)
+async function readBlob(sha) {
+    if (!blobCache.has(sha)) {
+        const blob = await gh('/git/blobs/' + sha);
+        blobCache.set(sha, utf8.decode(b64ToBytes(blob.content)));
+    }
+    return blobCache.get(sha);
+}
+
+async function readFile(path, ref) {
+    const info = await gh('/contents/' + path.split('/').map(encodeURIComponent).join('/') + '?ref=' + ref);
+    return { sha: info.sha, text: await readBlob(info.sha) };
+}
+
+// id chương -> sha của library/<slug>/<id>/data.json tại commit `ref`.
+async function storyFiles(slug, ref) {
+    const entries = await gh('/contents/library?ref=' + ref);
+    const dir = entries.find((e) => e.name === slug && e.type === 'dir');
+    if (!dir) return {};
+    const tree = await gh('/git/trees/' + dir.sha + '?recursive=1');
+    const files = {};
+    for (const item of tree.tree) {
+        const m = /^([^/]+)\/data\.json$/.exec(item.path);
+        if (m && item.type === 'blob') files[m[1]] = item.sha;
+    }
+    return files;
+}
+
+// Một commit cho nhiều file. `prepare(head)` dựng nội dung từ commit mới nhất và
+// được gọi lại nếu có người push chen giữa (ví dụ app trên máy vừa lưu).
+async function commitFiles(message, prepare) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+        const head = await headCommit();
+        const files = await prepare(head);
+        if (!files.length) return null;
+        const tree = [];
+        const shas = {};
+        for (const file of files) {
+            const blob = await gh('/git/blobs', { method: 'POST', body: JSON.stringify({ content: file.text, encoding: 'utf-8' }) });
+            shas[file.path] = blob.sha;
+            blobCache.set(blob.sha, file.text);
+            tree.push({ path: file.path, mode: '100644', type: 'blob', sha: blob.sha });
+        }
+        const newTree = await gh('/git/trees', { method: 'POST', body: JSON.stringify({ base_tree: head.tree, tree }) });
+        const commit = await gh('/git/commits', { method: 'POST', body: JSON.stringify({ message, tree: newTree.sha, parents: [head.sha] }) });
+        try {
+            await gh('/git/refs/heads/' + encodeURIComponent(cfg.branch), { method: 'PATCH', body: JSON.stringify({ sha: commit.sha, force: false }) });
+            return { commit: commit.sha, shas };
+        } catch (error) {
+            if (error.status !== 422) throw error;  // 422: nhánh vừa có commit khác → làm lại trên commit mới
+        }
+    }
+    throw new Error('Nhánh liên tục thay đổi, chưa lưu được. Thử lại sau ít giây.');
+}
+
+// Đổi tên chương trong list.json mới nhất, không đụng phần khác.
+async function renameInCatalog(head, slug, names) {
+    const file = await readFile(LIST_PATH, head.sha);
+    const catalog = JSON.parse(file.text);
+    const story = catalog.find((s) => s.slug === slug);
+    let changed = false;
+    for (const chap of (story && story.chapters) || []) {
+        if (chap.id in names && chap.name !== names[chap.id]) { chap.name = names[chap.id]; changed = true; }
+    }
+    return changed ? { path: LIST_PATH, text: pyJson(catalog, 4) } : null;
+}
+
+// ───────────────────────── kết nối ─────────────────────────
+function showConnected(login) {
+    $('connBadge').textContent = login ? '● ' + login + ' · ' + cfg.repo : 'Chưa kết nối GitHub';
+    $('connBadge').classList.toggle('on', !!login);
+    $('btnDisconnect').classList.toggle('hidden', !cfg.token);
+    $('app').classList.toggle('hidden', !login);
+    $('connPanel').classList.toggle('hidden', !!login);
+}
+
+async function connect(token) {
+    cfg.token = token;
+    setStatus($('connStatus'), 'Đang kiểm tra token…');
+    try {
+        const repo = await gh('');
+        if (!repo.permissions || !repo.permissions.push) throw new Error('Token không có quyền ghi (Contents: Read and write) vào ' + cfg.repo + '.');
+        let login = repo.owner.login;
+        try { login = (await (await fetch(API + '/user', { headers: { Authorization: 'Bearer ' + cfg.token } })).json()).login || login; } catch (e) { /* tên hiển thị không bắt buộc */ }
+        store.set(LS.token, token); store.set(LS.repo, cfg.repo); store.set(LS.branch, cfg.branch);
+        setStatus($('connStatus'), '');
+        showConnected(login);
+        await loadCatalog();
+        openFromQuery();
+    } catch (error) {
+        showConnected(null);
+        setStatus($('connStatus'), (error.status === 401 ? 'Token sai hoặc đã hết hạn.' : error.status === 404 ? 'Không thấy repo ' + cfg.repo + ' (hoặc token không được cấp quyền cho repo này).' : error.message), 'bad');
+    }
+}
+
+$('btnSettings').onclick = () => $('connPanel').classList.toggle('hidden');
+$('btnConnect').onclick = () => {
+    cfg.repo = $('repoInput').value.trim() || DEFAULT_REPO;
+    cfg.branch = $('branchInput').value.trim() || DEFAULT_BRANCH;
+    const token = $('tokenInput').value.trim() || cfg.token;
+    if (!token) return setStatus($('connStatus'), 'Dán token trước đã.', 'warn');
+    connect(token);
+};
+$('btnDisconnect').onclick = () => {
+    if (!confirm('Xoá token khỏi trình duyệt này?')) return;
+    store.set(LS.token, ''); cfg.token = '';
+    $('tokenInput').value = '';
+    showConnected(null);
+    setStatus($('connStatus'), 'Đã xoá token.', 'ok');
+};
+
+// ───────────────────────── danh mục truyện ─────────────────────────
+let catalog = [];
+let story = null;   // truyện đang chọn
+
+async function loadCatalog() {
+    const head = await headCommit();
+    catalog = JSON.parse((await readFile(LIST_PATH, head.sha)).text);
+    const list = $('storyList');
+    list.innerHTML = '';
+    [...catalog].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)).forEach((s) => {
+        const opt = document.createElement('option');
+        opt.value = s.slug + ' | ' + (s.title || '');
+        list.appendChild(opt);
+    });
+    if (story) selectStory(story.slug, true);
+}
+
+function selectStory(slug, keepChapter = false) {
+    const found = catalog.find((s) => s.slug === slug);
+    if (!found) return false;
+    const current = $('chapSelect').value;
+    story = found;
+    $('storyInput').value = found.slug + ' | ' + (found.title || '');
+    const select = $('chapSelect');
+    select.innerHTML = '<option value="">— Chọn chương —</option>';
+    for (const chap of found.chapters || []) {
+        const opt = document.createElement('option');
+        opt.value = chap.id;
+        opt.textContent = chap.id + ' · ' + (chap.name || '');
+        select.appendChild(opt);
+    }
+    if (keepChapter && current) select.value = current;
+    $('replaceResult').classList.add('hidden');
+    return true;
+}
+
+$('storyInput').addEventListener('change', async () => {
+    const slug = $('storyInput').value.split('|')[0].trim();
+    if (story && slug === story.slug) return;
+    if (!(await confirmDiscard())) { $('storyInput').value = story.slug + ' | ' + (story.title || ''); return; }
+    if (selectStory(slug)) closeChapter();
+});
+$('btnReloadList').onclick = async () => {
+    try { await loadCatalog(); setStatus($('editStatus'), 'Đã tải lại danh mục.', 'ok'); }
+    catch (error) { setStatus($('editStatus'), error.message, 'bad'); }
+};
+
+document.querySelectorAll('.tabs button').forEach((btn) => btn.onclick = () => {
+    document.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('active', b === btn));
+    $('tabEdit').classList.toggle('hidden', btn.dataset.tab !== 'edit');
+    $('tabReplace').classList.toggle('hidden', btn.dataset.tab !== 'replace');
+});
+
+// ───────────────────────── sửa chương ─────────────────────────
+let chapter = null;  // { id, path, sha, data, viParas, cnParas, clean: {title, text} }
+
+const splitParas = (text) => text.replace(/\r\n?/g, '\n').split(/\n[ \t]*\n/).map((p) => p.trim()).filter(Boolean);
+
+function isDirty() {
+    return !!chapter && ($('chapTitle').value !== chapter.clean.title || $('content').value !== chapter.clean.text);
+}
+async function confirmDiscard() {
+    return !isDirty() || confirm('Chương đang sửa chưa lưu. Bỏ thay đổi?');
+}
+function closeChapter() {
+    chapter = null;
+    $('editor').classList.add('hidden');
+    $('chapSelect').value = '';
+    setStatus($('editStatus'), '');
+}
+
+async function openChapter(id) {
+    if (!story || !id) return closeChapter();
+    setStatus($('editStatus'), 'Đang tải chương ' + id + '…');
+    try {
+        const head = await headCommit();
+        const path = `library/${story.slug}/${id}/data.json`;
+        const file = await readFile(path, head.sha);
+        const data = JSON.parse(file.text);
+        const items = Array.isArray(data.content) ? data.content : [];
+        const vi = items.map((it) => decodeText(it.vi));
+        if (vi.some((v) => v === null)) throw new Error('Có đoạn không giải mã được; mở bằng app trên máy để kiểm tra.');
+        const text = vi.join('\n\n');
+        chapter = { id, path, sha: file.sha, data, viParas: vi, cnParas: items.map((it) => it.cn || ''), clean: { title: data.chapter_title || '', text } };
+        $('chapSelect').value = id;
+        $('chapTitle').value = chapter.clean.title;
+        $('content').value = text;
+        $('content').scrollTop = 0;
+        $('viewLink').href = `./${story.slug}/${id}/`;
+        $('editor').classList.remove('hidden');
+        history.replaceState(null, '', `?s=${encodeURIComponent(story.slug)}&c=${encodeURIComponent(id)}`);
+        updateCounter();
+        refreshFindCount();
+        setStatus($('editStatus'), '');
+    } catch (error) {
+        closeChapter();
+        setStatus($('editStatus'), error.status === 404 ? 'Không thấy file của chương này trên GitHub.' : error.message, 'bad');
+    }
+}
+
+$('chapSelect').addEventListener('change', async () => {
+    const id = $('chapSelect').value;
+    if (!(await confirmDiscard())) { $('chapSelect').value = chapter ? chapter.id : ''; return; }
+    openChapter(id);
+});
+async function stepChapter(delta) {
+    const select = $('chapSelect');
+    const next = select.selectedIndex + delta;
+    if (next < 1 || next >= select.options.length) return;
+    if (!(await confirmDiscard())) return;
+    openChapter(select.options[next].value);
+}
+$('btnPrevChap').onclick = () => stepChapter(-1);
+$('btnNextChap').onclick = () => stepChapter(1);
+
+function updateCounter() {
+    const text = $('content').value.trim();
+    const words = text ? text.split(/\s+/).length : 0;
+    const paras = splitParas(text).length;
+    const dirty = isDirty() ? '<span class="dirty"> · ● chưa lưu</span>' : '';
+    $('counter').innerHTML = `${words.toLocaleString('vi')} chữ · ${paras} đoạn${dirty}`;
+}
+$('content').addEventListener('input', () => { updateCounter(); scheduleFindCount(); });
+$('chapTitle').addEventListener('input', updateCounter);
+
+// Giữ chữ Trung cho đoạn không đổi / sửa tại chỗ (đọc song ngữ vẫn khớp).
+function alignCn(oldParas, oldCn, newParas) {
+    const n = oldParas.length, m = newParas.length;
+    const result = new Array(m).fill('');
+    let start = 0;
+    while (start < n && start < m && oldParas[start] === newParas[start]) { result[start] = oldCn[start]; start++; }
+    let endOld = n, endNew = m;
+    while (endOld > start && endNew > start && oldParas[endOld - 1] === newParas[endNew - 1]) {
+        result[--endNew] = oldCn[--endOld];
+    }
+    const a = oldParas.slice(start, endOld), b = newParas.slice(start, endNew);
+    // LCS trên phần giữa (thường rất ngắn), rồi ghép theo vị trí trong các khoảng bị sửa.
+    const rows = a.length + 1, cols = b.length + 1;
+    const dp = new Uint32Array(rows * cols);
+    for (let i = a.length - 1; i >= 0; i--)
+        for (let j = b.length - 1; j >= 0; j--)
+            dp[i * cols + j] = a[i] === b[j] ? dp[(i + 1) * cols + j + 1] + 1 : Math.max(dp[(i + 1) * cols + j], dp[i * cols + j + 1]);
+    let i = 0, j = 0, gapI = 0, gapJ = 0;
+    const flushGap = () => {
+        const pairs = Math.min(i - gapI, j - gapJ);
+        for (let k = 0; k < pairs; k++) result[start + gapJ + k] = oldCn[start + gapI + k];
+    };
+    while (i < a.length && j < b.length) {
+        if (a[i] === b[j]) { flushGap(); result[start + j] = oldCn[start + i]; i++; j++; gapI = i; gapJ = j; }
+        else if (dp[(i + 1) * cols + j] >= dp[i * cols + j + 1]) i++;
+        else j++;
+    }
+    i = a.length; j = b.length; flushGap();
+    return result;
+}
+
+async function saveChapter() {
+    if (!chapter || !story) return;
+    const title = $('chapTitle').value.trim();
+    const paras = splitParas($('content').value).map((p) => p.normalize('NFC'));
+    if (!title) return setStatus($('editStatus'), 'Tên chương không được để trống.', 'warn');
+    if (!paras.length) return setStatus($('editStatus'), 'Nội dung đang trống — không lưu để tránh mất chương.', 'warn');
+    if (!isDirty()) return setStatus($('editStatus'), 'Không có gì thay đổi.');
+    const cn = alignCn(chapter.viParas, chapter.cnParas, paras);
+    const data = { ...chapter.data, chapter_title: title, content: paras.map((p, k) => ({ cn: cn[k], vi: encodeText(p) })) };
+    const dataText = pyJson(data);
+    const nameChanged = title !== chapter.clean.title;
+    const snapshot = { id: chapter.id, path: chapter.path, sha: chapter.sha };
+    $('btnSave').disabled = true;
+    setStatus($('editStatus'), 'Đang lưu lên GitHub…');
+    try {
+        const result = await commitFiles(`\`edit\` ${story.slug}/${snapshot.id} ${title} (web)`, async (head) => {
+            const latest = (await storyFiles(story.slug, head.sha))[snapshot.id];
+            if (latest !== snapshot.sha) throw new ConflictError('Chương này vừa được sửa ở nơi khác (app trên máy hoặc tab khác). Chép phần bạn sửa ra ngoài, tải lại chương rồi sửa lại.');
+            const files = [{ path: snapshot.path, text: dataText }];
+            if (nameChanged) {
+                const list = await renameInCatalog(head, story.slug, { [snapshot.id]: title });
+                if (list) files.push(list);
             }
-        };
-
-        let loadedJsonData = null;
-
-        // Fetch story list for combo box
-        fetch('./list.json').then(r => r.json()).then(data => {
-            const datalist = document.getElementById('storyList');
-            data.forEach(s => {
-                const option = document.createElement('option');
-                option.value = s.title;
-                datalist.appendChild(option);
-            });
-        }).catch(err => console.error("Không tải được list truyện:", err));
-
-        // Bắt sự kiện chọn file
-        document.getElementById('jsonFile').addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            const reader = new FileReader();
-            reader.onload = function(evt) {
-                try {
-                    loadedJsonData = JSON.parse(evt.target.result);
-                    let info = `Tên File: ${file.name}\n`;
-                    info += `Tiêu đề phát hiện: ${loadedJsonData.title || 'Không có'}\n`;
-                    info += `Số lượng đoạn văn: ${loadedJsonData.content ? loadedJsonData.content.length : 0} đoạn\n\n`;
-                    info += `Trạng thái: ✅ Đọc JSON thành công. Trích xuất ngay ->`;
-                    document.getElementById('filePreview').innerText = info;
-                } catch (err) {
-                    alert("Lỗi: File JSON không hợp lệ!");
-                    document.getElementById('filePreview').innerText = "Trạng thái: ❌ Lỗi đọc file.";
-                    console.error(err);
-                }
-            };
-            reader.readAsText(file);
+            return files;
         });
+        chapter.sha = result.shas[snapshot.path];
+        chapter.data = data;
+        chapter.viParas = paras;
+        chapter.cnParas = cn;
+        chapter.clean = { title: $('chapTitle').value, text: $('content').value };
+        const entry = (story.chapters || []).find((c) => c.id === snapshot.id);
+        if (entry && nameChanged) {
+            entry.name = title;
+            const opt = [...$('chapSelect').options].find((o) => o.value === snapshot.id);
+            if (opt) opt.textContent = snapshot.id + ' · ' + title;
+        }
+        updateCounter();
+        setStatus($('editStatus'), `✅ Đã lưu (${paras.length} đoạn) · commit ${result.commit.slice(0, 7)}. Trang web cập nhật sau khoảng 1 phút.`, 'ok');
+    } catch (error) {
+        setStatus($('editStatus'), (error instanceof ConflictError ? '⚠️ ' : '❌ ') + error.message, error instanceof ConflictError ? 'warn' : 'bad');
+    } finally {
+        $('btnSave').disabled = false;
+    }
+}
+$('btnSave').onclick = saveChapter;
+$('btnRevert').onclick = () => {
+    if (!chapter || !isDirty() || !confirm('Bỏ mọi thay đổi chưa lưu của chương này?')) return;
+    $('chapTitle').value = chapter.clean.title;
+    $('content').value = chapter.clean.text;
+    updateCounter(); refreshFindCount();
+};
 
-        // Bắn text tiếng Việt sang editor
-        function processJSON() {
-            if (!loadedJsonData) {
-                alert("Bạn chưa chọn và load file JSON hợp lệ!");
-                return;
-            }
-            
-            // Gán title nếu editor trống
-            const currentTitle = document.getElementById('chapTitle').value;
-            if(!currentTitle && loadedJsonData.title) {
-                document.getElementById('chapTitle').value = loadedJsonData.title;
-            }
+// ───────────────────────── tìm / thay trong chương ─────────────────────────
+function buildRegex(query, matchCase, isRegex, global = true) {
+    if (!query) return null;
+    const flags = (global ? 'g' : '') + (matchCase ? '' : 'i');
+    return new RegExp(isRegex ? query : query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), flags);
+}
+function findRegex(statusEl) {
+    try {
+        $('findInput').style.borderColor = '';
+        return buildRegex($('findInput').value, $('findCase').checked, $('findRegex').checked);
+    } catch (error) {
+        $('findInput').style.borderColor = 'var(--bad)';
+        if (statusEl) $('findCount').textContent = 'Regex lỗi';
+        return null;
+    }
+}
+function matchesIn(text, re) {
+    const out = [];
+    if (!re) return out;
+    for (const m of text.matchAll(re)) {
+        if (m[0] === '') continue;  // regex khớp rỗng: bỏ qua để không lặp vô hạn
+        out.push({ start: m.index, end: m.index + m[0].length });
+    }
+    return out;
+}
+let findTimer = null;
+function scheduleFindCount() { clearTimeout(findTimer); findTimer = setTimeout(refreshFindCount, 200); }
+function refreshFindCount() {
+    const re = findRegex(true);
+    if (!$('findInput').value) { $('findCount').textContent = ''; return; }
+    if (!re) return;
+    const total = matchesIn($('content').value, re).length;
+    const area = $('content');
+    const before = matchesIn(area.value.slice(0, area.selectionEnd), re).length;
+    $('findCount').textContent = total ? `${Math.min(Math.max(before, 1), total)}/${total}` : 'Không thấy';
+}
 
-            // Gắn content
-            if(loadedJsonData.content && Array.isArray(loadedJsonData.content)) {
-                let viTextArr = [];
-                for(let item of loadedJsonData.content) {
-                    if (item.vi) {
-                        viTextArr.push(decodeToBase64(item.vi));
-                    }
+// Cuộn textarea tới vị trí ký tự: đo bằng một bản sao ẩn cùng kiểu chữ.
+function scrollToOffset(area, offset) {
+    const mirror = document.createElement('div');
+    const style = getComputedStyle(area);
+    for (const prop of ['fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing', 'paddingTop', 'paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth', 'boxSizing'])
+        mirror.style[prop] = style[prop];
+    Object.assign(mirror.style, { position: 'absolute', visibility: 'hidden', whiteSpace: 'pre-wrap', wordWrap: 'break-word', width: area.clientWidth + 'px', top: '0', left: '-9999px' });
+    mirror.textContent = area.value.slice(0, offset);
+    const marker = document.createElement('span');
+    marker.textContent = '​';
+    mirror.appendChild(marker);
+    document.body.appendChild(mirror);
+    area.scrollTop = Math.max(0, marker.offsetTop - area.clientHeight / 3);
+    mirror.remove();
+}
+function selectRange(start, end) {
+    const area = $('content');
+    area.focus({ preventScroll: true });
+    area.setSelectionRange(start, end);
+    scrollToOffset(area, start);
+    refreshFindCount();
+}
+function findStep(direction) {
+    const re = findRegex(true);
+    const area = $('content');
+    const found = matchesIn(area.value, re);
+    if (!found.length) { refreshFindCount(); return null; }
+    let target;
+    if (direction > 0) target = found.find((m) => m.start >= area.selectionEnd) || found[0];
+    else target = [...found].reverse().find((m) => m.end <= area.selectionStart) || found[found.length - 1];
+    selectRange(target.start, target.end);
+    return target;
+}
+function replaceOne() {
+    const area = $('content');
+    const re = findRegex(true);
+    if (!re) return;
+    const selected = area.value.slice(area.selectionStart, area.selectionEnd);
+    const single = buildRegex($('findInput').value, $('findCase').checked, $('findRegex').checked, false);
+    const exact = selected && single && (() => { const m = selected.match(single); return m && m.index === 0 && m[0] === selected; })();
+    if (!exact) { findStep(1); return; }
+    const replacement = selected.replace(single, $('findRegex').checked ? $('replaceInput').value : () => $('replaceInput').value);
+    const start = area.selectionStart;
+    area.setRangeText(replacement, start, area.selectionEnd, 'end');
+    area.dispatchEvent(new Event('input'));
+    findStep(1);
+}
+function replaceAll() {
+    const area = $('content');
+    const re = findRegex(true);
+    const count = matchesIn(area.value, re).length;
+    if (!count) { refreshFindCount(); return; }
+    const value = $('replaceInput').value;
+    area.value = area.value.replace(re, $('findRegex').checked ? value : () => value);
+    area.dispatchEvent(new Event('input'));
+    $('findCount').textContent = `Đã thay ${count} chỗ`;
+}
+$('findInput').addEventListener('input', scheduleFindCount);
+$('findCase').onchange = $('findRegex').onchange = refreshFindCount;
+$('findInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); findStep(e.shiftKey ? -1 : 1); } });
+$('replaceInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); replaceOne(); } });
+$('btnFindNext').onclick = () => findStep(1);
+$('btnFindPrev').onclick = () => findStep(-1);
+$('btnReplaceOne').onclick = replaceOne;
+$('btnReplaceAll').onclick = replaceAll;
+
+document.addEventListener('keydown', (e) => {
+    if (!(e.ctrlKey || e.metaKey) || $('app').classList.contains('hidden')) return;
+    const key = e.key.toLowerCase();
+    if (key === 's' && chapter && !$('tabEdit').classList.contains('hidden')) { e.preventDefault(); saveChapter(); }
+    if (key === 'f' && chapter && !$('tabEdit').classList.contains('hidden')) {
+        e.preventDefault();
+        const area = $('content');
+        const selected = area.value.slice(area.selectionStart, area.selectionEnd);
+        if (document.activeElement === area && selected && !selected.includes('\n')) $('findInput').value = selected;
+        $('findInput').focus(); $('findInput').select();
+        refreshFindCount();
+    }
+});
+window.addEventListener('beforeunload', (e) => { if (isDirty()) { e.preventDefault(); e.returnValue = ''; } });
+
+// ───────────────────────── tìm & thay toàn truyện ─────────────────────────
+let scan = null;  // { slug, files: {id: sha}, results: [{id, name, count, data, newData, newTitle, snippet}] }
+
+function escapeHtml(text) {
+    return text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function snippetHtml(text, start, end, replacement) {
+    const a = Math.max(0, start - 40), b = Math.min(text.length, end + 40);
+    return (a ? '…' : '') + escapeHtml(text.slice(a, start)) + '<del>' + escapeHtml(text.slice(start, end)) + '</del><ins>'
+        + escapeHtml(replacement) + '</ins>' + escapeHtml(text.slice(end, b)) + (b < text.length ? '…' : '');
+}
+
+async function mapLimit(items, limit, fn) {
+    const out = new Array(items.length);
+    let next = 0;
+    await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+        while (next < items.length) { const k = next++; out[k] = await fn(items[k], k); }
+    }));
+    return out;
+}
+
+async function runScan() {
+    const status = $('replaceStatus');
+    $('replaceResult').classList.add('hidden');
+    scan = null;
+    if (!story) return setStatus(status, 'Chọn truyện trước.', 'warn');
+    let re;
+    try { re = buildRegex($('rFind').value, $('rCase').checked, $('rRegex').checked); }
+    catch (error) { return setStatus(status, 'Regex lỗi: ' + error.message, 'bad'); }
+    if (!re) return setStatus(status, 'Nhập nội dung cần tìm.', 'warn');
+    if (chapter && isDirty()) return setStatus(status, 'Chương đang mở chưa lưu. Lưu hoặc bỏ thay đổi trước.', 'warn');
+    const value = $('rReplace').value;
+    const replacer = $('rRegex').checked ? value : () => value;
+    $('btnScan').disabled = true;
+    try {
+        const head = await headCommit();
+        const files = await storyFiles(story.slug, head.sha);
+        const chapters = (story.chapters || []).filter((c) => files[c.id]);
+        let done = 0;
+        const results = await mapLimit(chapters, 6, async (chap) => {
+            const data = JSON.parse(await readBlob(files[chap.id]));
+            setStatus(status, `Đang quét ${++done}/${chapters.length} chương…`);
+            let count = 0, snippet = '';
+            const content = (data.content || []).map((item) => {
+                const vi = decodeText(item.vi);
+                if (vi === null) return item;
+                const found = matchesIn(vi, re);
+                if (!found.length) return item;
+                if (!snippet) {
+                    const one = vi.slice(found[0].start, found[0].end).replace(new RegExp(re.source, re.flags.replace('g', '')), replacer);
+                    snippet = snippetHtml(vi, found[0].start, found[0].end, one);
                 }
-                // Nối các đoạn văn
-                let resultText = viTextArr.join('\n\n'); 
-                
-                const textArea = document.getElementById('chapContent');
-                if (textArea.value.trim() !== '') {
-                    // Nếu đã có text, hỏi người dùng xem muốn ghi đè hay viết tiếp
-                    if (confirm("Editor đang có sẵn dữ liệu. Bạn muốn viết tiếp xuống dưới không? (Nhấn Hủy để Ghi Đè hoàn toàn)")) {
-                        textArea.value = textArea.value + '\n\n' + resultText;
-                    } else {
-                        textArea.value = resultText;
-                    }
-                } else {
-                    textArea.value = resultText;
-                }
-                
-            } else {
-                alert("Lỗi: Không tìm thấy đối tượng 'content' trong file JSON của bạn.");
-            }
+                count += found.length;
+                return { ...item, vi: encodeText(vi.replace(re, replacer)) };
+            });
+            const title = data.chapter_title || '';
+            const titleHits = matchesIn(title, re).length;
+            const newTitle = titleHits ? title.replace(re, replacer) : title;
+            if (titleHits && !snippet) snippet = snippetHtml(title, 0, title.length, newTitle);
+            count += titleHits;
+            return count ? { id: chap.id, name: chap.name || '', count, newData: { ...data, chapter_title: newTitle, content }, titleChanged: !!titleHits, newTitle, snippet } : null;
+        });
+        scan = { slug: story.slug, files, results: results.filter(Boolean) };
+        const total = scan.results.reduce((s, r) => s + r.count, 0);
+        if (!scan.results.length) return setStatus(status, `Không thấy “${$('rFind').value}” trong ${chapters.length} chương.`, 'warn');
+        const rows = $('rRows');
+        rows.innerHTML = '';
+        for (const r of scan.results) {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td><input type="checkbox" checked data-id="${escapeHtml(r.id)}"></td><td>${escapeHtml(r.id)}<br><span class="snip">${escapeHtml(r.name)}</span></td><td class="snip">${r.snippet}</td><td class="num">${r.count}</td>`;
+            rows.appendChild(tr);
         }
+        $('rAll').checked = true;
+        $('replaceResult').classList.remove('hidden');
+        setStatus(status, `Tìm thấy ${total} chỗ trong ${scan.results.length}/${chapters.length} chương. Bỏ tick chương không muốn thay rồi bấm “Thay & lưu”.`, 'ok');
+    } catch (error) {
+        setStatus(status, '❌ ' + error.message, 'bad');
+    } finally {
+        $('btnScan').disabled = false;
+    }
+}
+$('btnScan').onclick = runScan;
+$('rAll').onchange = () => document.querySelectorAll('#rRows input[type=checkbox]').forEach((c) => c.checked = $('rAll').checked);
 
-        // Tải xuống file Text
-        function downloadChapter() {
-            const storyName = document.getElementById('storySelect').value.trim();
-            const chapTitle = document.getElementById('chapTitle').value.trim() || 'chapter-new';
-            const content = document.getElementById('chapContent').value;
-            
-            if(!content.trim()) {
-                alert("Chưa có nội dung để tải!");
-                return;
+async function applyReplace() {
+    const status = $('replaceStatus');
+    if (!scan || !story || scan.slug !== story.slug) return;
+    const picked = new Set([...document.querySelectorAll('#rRows input[type=checkbox]:checked')].map((c) => c.dataset.id));
+    const chosen = scan.results.filter((r) => picked.has(r.id));
+    if (!chosen.length) return setStatus(status, 'Chưa chọn chương nào.', 'warn');
+    const total = chosen.reduce((s, r) => s + r.count, 0);
+    if (!confirm(`Thay ${total} chỗ trong ${chosen.length} chương của “${story.title}” và lưu lên GitHub?`)) return;
+    $('btnApply').disabled = true;
+    setStatus(status, 'Đang lưu lên GitHub…');
+    try {
+        const message = `\`edit\` ${story.slug}: thay “${$('rFind').value}” → “${$('rReplace').value}” trong ${chosen.length} chương (web)`;
+        const result = await commitFiles(message, async (head) => {
+            const latest = await storyFiles(scan.slug, head.sha);
+            const changed = chosen.filter((r) => latest[r.id] !== scan.files[r.id]).map((r) => r.id);
+            if (changed.length) throw new ConflictError(`Chương ${changed.join(', ')} vừa được sửa ở nơi khác. Bấm “Xem trước” lại rồi thay.`);
+            const files = chosen.map((r) => ({ path: `library/${scan.slug}/${r.id}/data.json`, text: pyJson(r.newData) }));
+            const names = Object.fromEntries(chosen.filter((r) => r.titleChanged).map((r) => [r.id, r.newTitle]));
+            if (Object.keys(names).length) {
+                const list = await renameInCatalog(head, scan.slug, names);
+                if (list) files.push(list);
             }
-
-            const blob = new Blob([content], {type: "text/plain;charset=utf-8"});
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            // Gợi ý lưu kèm slug để dễ phân biệt
-            const safeStory = storyName.replace(/[\\/:*?"<>|]/g, '');
-            const safeChap = chapTitle.replace(/[\\/:*?"<>|]/g, '');
-            a.download = (safeStory ? safeStory + "_" : "") + safeChap + ".txt"; 
-            a.click();
-            URL.revokeObjectURL(url);
+            return files;
+        });
+        for (const r of chosen) {
+            const entry = (story.chapters || []).find((c) => c.id === r.id);
+            if (entry && r.titleChanged) entry.name = r.newTitle;
         }
+        selectStory(story.slug, true);
+        if (chapter && chosen.some((r) => r.id === chapter.id)) await openChapter(chapter.id);
+        scan = null;
+        $('replaceResult').classList.add('hidden');
+        setStatus(status, `✅ Đã thay ${total} chỗ trong ${chosen.length} chương · commit ${result.commit.slice(0, 7)}.`, 'ok');
+    } catch (error) {
+        setStatus(status, (error instanceof ConflictError ? '⚠️ ' : '❌ ') + error.message, error instanceof ConflictError ? 'warn' : 'bad');
+    } finally {
+        $('btnApply').disabled = false;
+    }
+}
+$('btnApply').onclick = applyReplace;
 
-        function clearEditor() {
-            if(confirm("Bạn có chắc chắn muốn xóa sạch dữ liệu trong Editor?")) {
-                document.getElementById('chapTitle').value = '';
-                document.getElementById('chapContent').value = '';
-            }
-        }
-    </script>
+// ───────────────────────── khởi động ─────────────────────────
+let pendingQuery = new URLSearchParams(location.search);
+function openFromQuery() {
+    const slug = pendingQuery.get('s'), id = pendingQuery.get('c');
+    pendingQuery = new URLSearchParams();
+    if (slug && selectStory(slug) && id) openChapter(id);
+}
+
+$('repoInput').value = cfg.repo;
+$('branchInput').value = cfg.branch;
+if (cfg.token) connect(cfg.token);
+else showConnected(null);
+</script>
 </body>
 </html>
