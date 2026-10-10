@@ -78,8 +78,23 @@ def read_catalog(path):
     return data
 
 
+def chapter_sort_key(chapter):
+    """Numeric chapter IDs in number order; any non-numeric ID goes last."""
+    chapter_id = str(chapter.get('id', ''))
+    return (0, int(chapter_id), '') if chapter_id.isdigit() else (1, 0, chapter_id)
+
+
+def sort_chapters(catalog):
+    """Order each story's chapters by ID (the web page lists them as stored)."""
+    for story in catalog:
+        chapters = story.get('chapters') if isinstance(story, dict) else None
+        if isinstance(chapters, list):
+            chapters.sort(key=chapter_sort_key)
+    return catalog
+
+
 def write_catalog(path, catalog):
-    write_json_atomic(path, catalog, indent=4, backup=True)
+    write_json_atomic(path, sort_chapters(catalog), indent=4, backup=True)
 
 
 # ─────────────────────────── text decoding ───────────────────────────
