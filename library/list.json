@@ -6549,8 +6549,8 @@
     {
         "title": "Tổng hợp truyện ngắn",
         "slug": "0130",
-        "date": "11/10/2026",
-        "timestamp": 1791689442.885342,
+        "date": "12/10/2026",
+        "timestamp": 1791781320.612326,
         "chapters": [
             {
                 "id": "000001",
@@ -6931,6 +6931,21 @@
                 "id": "000076",
                 "name": "Turnbased tu tiên",
                 "date": "11/10/2026"
+            },
+            {
+                "id": "000077",
+                "name": "Chiến bại tại người mà mình tín nhiệm nhất dưới hông",
+                "date": "12/10/2026"
+            },
+            {
+                "id": "000078",
+                "name": "Xuyên qua tu tiên thế giới, năng lực của ta là khống chế heo mẹ",
+                "date": "12/10/2026"
+            },
+            {
+                "id": "000079",
+                "name": "Đem thanh lãnh cao ngạo Đạo gia tiên đồn thao thành tiết dục thú cái",
+                "date": "12/10/2026"
             }
         ]
     },
@@ -15128,6 +15143,39 @@
                 "id": "000004",
                 "name": "Chương 04: Loại dựng Võ Đạo đại hội truyền ra ngoài: Đường đường Đại Thanh nữ Võ Thánh lại bị Đông Doanh người lùn theo trên lôi đài trước mặt mọi người chơi điểu xuất tinh gieo hạt, cuối cùng bị giáng chức đi võ tịch bán cho Đông Doanh dùng làm chuyên chúc tiết dục tiện súc gia nô",
                 "date": "11/10/2026"
+            }
+        ]
+    },
+    {
+        "title": "Thu được Hợp Hoan Tông truyền thừa ta tại đô thị điên cuồng mở hậu cung",
+        "slug": "0210",
+        "date": "12/10/2026",
+        "timestamp": 1791781383.370607,
+        "chapters": [
+            {
+                "id": "000001",
+                "name": "Chương 1: Nhà có mỹ quyến",
+                "date": "12/10/2026"
+            },
+            {
+                "id": "000002",
+                "name": "Chương 02: Mở lột!",
+                "date": "12/10/2026"
+            },
+            {
+                "id": "000003",
+                "name": "Chương 03: Cuối tuần leo núi",
+                "date": "12/10/2026"
+            },
+            {
+                "id": "000004",
+                "name": "Chương 04: Kỳ ngộ",
+                "date": "12/10/2026"
+            },
+            {
+                "id": "000005",
+                "name": "Chương 05: Hợp Hoan Tông truyền thừa",
+                "date": "12/10/2026"
             }
         ]
     }
