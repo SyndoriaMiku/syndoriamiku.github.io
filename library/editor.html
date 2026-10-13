@@ -828,7 +828,10 @@ $('btnApply').onclick = applyReplace;
 // ───────────────────────── khởi động ─────────────────────────
 let pendingQuery = new URLSearchParams(location.search);
 function openFromQuery() {
-    const slug = pendingQuery.get('s'), id = pendingQuery.get('c');
+    // Link kiểu cũ (truyện 4 chữ số, chương 6 chữ số) vẫn mở đúng chương.
+    let slug = pendingQuery.get('s'), id = pendingQuery.get('c');
+    if (slug && /^\d{4}$/.test(slug)) slug = slug.padStart(6, '0');
+    if (id && /^\d{6}$/.test(id)) id = String(parseInt(id, 10)).padStart(4, '0');
     pendingQuery = new URLSearchParams();
     if (slug && selectStory(slug) && id) openChapter(id);
 }

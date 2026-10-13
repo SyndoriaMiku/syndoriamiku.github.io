@@ -210,15 +210,28 @@ def upsert_chapter(catalog, story_slug, story_title, chapter_id, chapter_name, n
     return story
 
 
+# ID truyện 6 chữ số (000216), ID chương 4 chữ số (0068). Mọi chỗ tạo ID dùng hai hàm này.
+STORY_ID_DIGITS = 6
+CHAPTER_ID_DIGITS = 4
+
+
+def format_story_id(number):
+    return f'{int(number):0{STORY_ID_DIGITS}d}'
+
+
+def format_chapter_id(number):
+    return f'{int(number):0{CHAPTER_ID_DIGITS}d}'
+
+
 def next_story_id(catalog):
     ids = [int(item['slug']) for item in catalog if str(item.get('slug', '')).isdigit()]
-    return f'{max(ids, default=0) + 1:04d}'
+    return format_story_id(max(ids, default=0) + 1)
 
 
 def next_chapter_id(catalog, story_slug):
     story = next((item for item in catalog if item.get('slug') == story_slug), None)
     ids = [int(c['id']) for c in (story or {}).get('chapters', []) if str(c.get('id', '')).isdigit()]
-    return f'{max(ids, default=0) + 1:06d}'
+    return format_chapter_id(max(ids, default=0) + 1)
 
 
 def split_alternatives(pattern_regex):

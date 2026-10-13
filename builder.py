@@ -819,7 +819,7 @@ class ReviewWindow:
                         plan["error"] = f"Regex lỗi: {error}"
                     chapters = [(g["title"], g["items"]) for g in groups if g["items"]]
                 for offset, (name, items) in enumerate(chapters):
-                    chap_id = f"{start + offset:06d}"
+                    chap_id = store.format_chapter_id(start + offset)
                     name = name or f"Chương {start + offset}"
                     plan["chapters"].append((chap_id, name, items))
                     lines.append(f"{chap_id}  {name[:60]:<60}  {len(items):>4} đoạn")

@@ -604,7 +604,7 @@ class ChapterEditorApp:
 
 	def get_next_chapter_id(self, story_slug, catalog=None):
 		if not story_slug:
-			return "000001"
+			return store.format_chapter_id(1)
 		if catalog is None:
 			catalog = self._read_chapter_catalog()
 		return store.next_chapter_id(catalog, story_slug)
@@ -693,7 +693,7 @@ class ChapterEditorApp:
 		self.chap_select_combo["values"] = ()
 		self.chap_select_combo.set("")
 		self.chap_entry.delete(0, tk.END)
-		self.chap_entry.insert(0, "000001")
+		self.chap_entry.insert(0, store.format_chapter_id(1))
 		# Only clear the editor if it holds a chapter of the deleted story.
 		if self._loaded_chapter and self._loaded_chapter[0] == story_slug:
 			self.chap_title_entry.delete(0, tk.END)
@@ -1594,7 +1594,7 @@ class ChapterEditorApp:
 			if detected_chapters:
 				start = int(detected_chapters[0]["id"])
 				for offset, chapter in enumerate(detected_chapters):
-					chapter["id"] = f"{start + offset:06d}"
+					chapter["id"] = store.format_chapter_id(start + offset)
 
 		def split_at_cursor():
 			if preview_index is None:
@@ -1690,7 +1690,7 @@ class ChapterEditorApp:
 			slug = value.split("|", 1)[0].strip() if "|" in value else slugify_vn(value)
 			start = int(self.get_next_chapter_id(slug))
 			for offset, chapter in enumerate(detected_chapters):
-				chapter["id"] = f"{start + offset:06d}"
+				chapter["id"] = store.format_chapter_id(start + offset)
 			build_chapter_list()
 
 		def run_detect():
@@ -1716,7 +1716,7 @@ class ChapterEditorApp:
 			if "|" in story_value:
 				story_slug = story_value.split("|", 1)[0].strip()
 
-			start_id = self.get_next_chapter_id(story_slug) if story_slug else "000001"
+			start_id = self.get_next_chapter_id(story_slug) if story_slug else store.format_chapter_id(1)
 			try:
 				id_int = int(start_id)
 			except ValueError:
@@ -1725,7 +1725,7 @@ class ChapterEditorApp:
 			show_preview(None)
 			detected_chapters = []
 			for i, ch in enumerate(chapters_raw):
-				chap_id = f"{id_int + i:06d}"
+				chap_id = store.format_chapter_id(id_int + i)
 				title_val = ch["title"] if ch["title"] else f"Chương {id_int + i}"
 				detected_chapters.append({
 					"id": chap_id,
