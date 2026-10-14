@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Thông Tin Truyện</title>
+    <link rel="stylesheet" href="../css/styles.css">
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #09090b; color: #e4e4e7; margin: 0; padding: 0; }
+        .container { max-width: 800px; margin: 0 auto; padding: 20px; }
+        .back-link { color: #3b82f6; text-decoration: none; margin-bottom: 20px; display: inline-block; }
+        .story-header { background: #18181b; padding: 20px; border-radius: 8px; border: 1px solid #27272a; margin-bottom: 20px; }
+        .title { margin: 0 0 10px 0; color: #fff; overflow-wrap: anywhere; }
+        .meta { color: #a1a1aa; font-size: 0.9em; margin-bottom: 15px; }
+        .actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+        .action-btn { background: #eab308; color: #000; border: none; padding: 8px 16px; border-radius: 6px; font-weight: bold; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; text-decoration: none; font-size: 0.95em; }
+        .continue-btn { background: #2563eb; color: #fff; max-width: 100%; }
+        .continue-btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .progress-line { color: #a1a1aa; font-size: 0.85em; margin-top: 12px; }
+        .progress-bar { height: 4px; background: #27272a; border-radius: 4px; margin-top: 6px; overflow: hidden; }
+        .progress-bar div { height: 100%; background: #2563eb; width: 0; }
+        .chap-tools { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; position: sticky; top: 0; background: #09090b; padding: 8px 0; z-index: 5; }
+        .chap-tools input, .chap-tools select { background: #18181b; color: #e4e4e7; border: 1px solid #27272a; border-radius: 8px; padding: 9px 12px; font-size: 0.95em; outline: none; }
+        .chap-tools input { flex: 1; min-width: 180px; }
+        .chap-tools input:focus, .chap-tools select:focus { border-color: #3b82f6; }
+        .chap-note { color: #71717a; font-size: 0.85em; margin: 0 0 10px; }
+        .chapter-list { display: flex; flex-direction: column; gap: 10px; }
+        .chap-item { background: #18181b; padding: 15px; border-radius: 8px; border: 1px solid #27272a; text-decoration: none; color: #e4e4e7; display: flex; justify-content: space-between; gap: 12px; transition: 0.2s; }
+        .chap-item:hover { border-color: #3b82f6; background: #27272a; }
+        .chap-item .name { overflow-wrap: anywhere; }
+        .chap-item .num { color: #52525b; font-size: 0.8em; margin-right: 6px; }
+        .chap-item .state { color: #71717a; white-space: nowrap; font-size: 0.9em; }
+        .chap-item.read { opacity: 0.55; }
+        .chap-item.read .state { color: #10b981; }
+        .chap-item.current { border-color: #2563eb; background: #172554; opacity: 1; }
+        .chap-item.current .state { color: #93c5fd; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="#" class="back-link" id="backLink">← Thư Viện</a>
+
+        <div class="story-header">
+            <h1 class="title" id="sTitle">Đang tải...</h1>
+            <div class="meta" id="sMeta"></div>
+            <div class="actions">
+                <a class="action-btn continue-btn" id="btnContinue" hidden><span id="continueText">▶ Đọc từ đầu</span></a>
+                <button class="action-btn" id="btnBookmark">🔖 Lưu truyện</button>
+            </div>
+            <div class="progress-line" id="progressLine" hidden>
+                <span id="progressText"></span>
+                <div class="progress-bar"><div id="progressFill"></div></div>
+            </div>
+        </div>
+
+        <div class="chap-tools" id="chapTools" hidden>
+            <input type="search" id="chapSearch" placeholder="Nhảy tới chương số… hoặc tìm theo tên" enterkeyhint="go">
+            <select id="chapGroup" aria-label="Nhóm chương" hidden></select>
+        </div>
+        <p class="chap-note" id="chapNote" hidden></p>
+        <div class="chapter-list" id="chapList">
+            <!-- Render via JS -->
+        </div>
+    </div>
+
+    <script src="/library/progress.js"></script>
+    <script>
+        // ID truyện đổi từ 4 lên 6 chữ số (0216 → 000216): chuyển bookmark đã lưu theo ID cũ.
+        try {
+            const oldMarks = JSON.parse(localStorage.getItem('bookmarked_stories') || '[]');
+            const newMarks = [...new Set(oldMarks.map(s => /^\d{4}$/.test(s) ? s.padStart(6, '0') : s))];
+            if (newMarks.join() !== oldMarks.join()) localStorage.setItem('bookmarked_stories', JSON.stringify(newMarks));
+        } catch (e) { /* trình duyệt chặn localStorage: bỏ qua */ }
+        const urlParams = new URLSearchParams(window.location.search);
+        const isStoryTemplate = window.location.pathname.endsWith('/story.html');
+        const basePath = isStoryTemplate ? './' : '../';
+        let storyId = urlParams.get('id');
+        let storyInfo = null;
+
+        if (!storyId && !isStoryTemplate) {
+            const parts = window.location.pathname.split('/').filter(Boolean);
+            const last = parts[parts.length - 1];
+            storyId = last === 'index.html' ? parts[parts.length - 2] : last;
+        }
+
+        const backLink = document.getElementById('backLink');
+        backLink.href = isStoryTemplate ? './index.html' : '../index.html';
+
+        const GROUP_SIZE = 100;     // truyện dài: hiện từng nhóm 100 chương
+        const SEARCH_LIMIT = 200;   // số kết quả tìm kiếm hiện tối đa
+        const RP = window.ReadingProgress;
+        let chapters = [], chapBase = './', readSet = new Set(), progress = null, currentIdx = -1;
+
+        if (!storyId) {
+            document.querySelector('.container').innerHTML = '<p>Không tìm thấy truyện.</p>';
+        } else {
+            loadStoryInfo();
+        }
+
+        const escapeHtml = (text) => String(text).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        const fold = (text) => String(text).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'd').toLowerCase();
+
+        async function loadStoryInfo() {
+            try {
+                // Tạm thời lấy info từ thư viện chung
+                const res = await fetch(basePath + 'list.json');
+                const list = await res.json();
+                storyInfo = list.find(s => s.slug === storyId);
+
+                if (storyInfo) {
+                    document.getElementById('sTitle').innerText = storyInfo.title;
+                    document.getElementById('sMeta').innerText = '📅 Cập nhật: ' + (storyInfo.date || '...') + '  ·  ' + (storyInfo.chapters || []).length + ' chương';
+                    document.title = storyInfo.title;
+
+                    checkBookmark();
+                    document.getElementById('btnBookmark').onclick = toggleBookmark;
+
+                    chapters = storyInfo.chapters || [];
+                    chapBase = isStoryTemplate ? './' + storyId + '/' : './';
+                    setupProgress();
+                    setupTools();
+                    render(true);
+                } else {
+                    document.getElementById('sTitle').innerText = 'Không tồn tại';
+                }
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        // ───────── tiến độ đọc ─────────
+        function setupProgress() {
+            if (!RP || !chapters.length) return;
+            readSet = RP.readSet(storyId);
+            progress = RP.get(storyId);
+            currentIdx = progress ? chapters.findIndex(c => RP.norm(c.id) === RP.norm(progress.chapter)) : -1;
+            const btn = document.getElementById('btnContinue');
+            const label = document.getElementById('continueText');
+            if (currentIdx >= 0) {
+                const chap = chapters[currentIdx];
+                const finished = RP.isRead(readSet, chap.id) && progress.para >= (progress.total || 1) - 2;
+                if (finished && currentIdx < chapters.length - 1) {
+                    // Đã đọc xong chương đang dở: mời đọc chương kế tiếp.
+                    const next = chapters[currentIdx + 1];
+                    btn.href = chapBase + next.id + '/';
+                    label.textContent = '▶ Đọc tiếp: ' + (next.name || 'Chương ' + (currentIdx + 2));
+                } else {
+                    btn.href = chapBase + chap.id + '/';
+                    const where = progress.para > 0 && progress.total ? ` (đoạn ${progress.para + 1}/${progress.total})` : '';
+                    label.textContent = '▶ Đọc tiếp: ' + (chap.name || 'Chương ' + (currentIdx + 1)) + where;
+                }
+            } else {
+                btn.href = chapBase + chapters[0].id + '/';
+                label.textContent = '▶ Đọc từ đầu';
+            }
+            btn.hidden = false;
+            const done = chapters.filter(c => RP.isRead(readSet, c.id)).length;
+            if (done || currentIdx >= 0) {
+                document.getElementById('progressText').textContent = `Đã đọc ${done.toLocaleString('vi')}/${chapters.length.toLocaleString('vi')} chương`
+                    + (currentIdx >= 0 ? ` · đang ở chương thứ ${(currentIdx + 1).toLocaleString('vi')}` : '');
+                document.getElementById('progressFill').style.width = (100 * done / chapters.length).toFixed(1) + '%';
+                document.getElementById('progressLine').hidden = false;
+            }
+        }
+
+        // ───────── danh sách chương ─────────
+        function setupTools() {
+            if (chapters.length <= 10) return;
+            document.getElementById('chapTools').hidden = false;
+            const select = document.getElementById('chapGroup');
+            if (chapters.length > GROUP_SIZE) {
+                const currentGroup = currentIdx >= 0 ? Math.floor(currentIdx / GROUP_SIZE) : -1;
+                for (let g = 0; g * GROUP_SIZE < chapters.length; g++) {
+                    const opt = document.createElement('option');
+                    opt.value = g;
+                    opt.textContent = `Chương ${g * GROUP_SIZE + 1}–${Math.min((g + 1) * GROUP_SIZE, chapters.length)}` + (g === currentGroup ? '  • đang đọc' : '');
+                    select.appendChild(opt);
+                }
+                select.value = Math.max(currentGroup, 0);
+                select.hidden = false;
+                select.onchange = () => { document.getElementById('chapSearch').value = ''; render(false); window.scrollTo({ top: document.getElementById('chapTools').offsetTop }); };
+            }
+            const search = document.getElementById('chapSearch');
+            let timer = null;
+            search.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => render(false), 150); });
+            search.addEventListener('keydown', (e) => {
+                if (e.key !== 'Enter') return;
+                const first = document.querySelector('#chapList .chap-item');
+                if (first) location.href = first.href;
+            });
+        }
+
+        function matches(query) {
+            const q = query.trim();
+            if (/^\d+$/.test(q)) {
+                // Số: chương thứ N trong danh sách và chương có ID = N, rồi tới tên chứa số đó.
+                const n = parseInt(q, 10), out = [];
+                if (chapters[n - 1]) out.push(n - 1);
+                const byId = chapters.findIndex(c => RP ? RP.norm(c.id) === String(n) : +c.id === n);
+                if (byId >= 0 && !out.includes(byId)) out.push(byId);
+                const re = new RegExp('(^|\\D)' + n + '(\\D|$)');
+                chapters.forEach((c, i) => { if (!out.includes(i) && re.test(c.name || '')) out.push(i); });
+                return out;
+            }
+            const words = fold(q).split(/\s+/).filter(Boolean);
+            const out = [];
+            chapters.forEach((c, i) => { const name = fold(c.name || ''); if (words.every(w => name.includes(w))) out.push(i); });
+            return out;
+        }
+
+        function itemHtml(i) {
+            const chap = chapters[i];
+            const read = RP && RP.isRead(readSet, chap.id);
+            const current = i === currentIdx;
+            let state = 'Đọc →';
+            if (current && read && progress && progress.para >= (progress.total || 1) - 2) state = '✓ Vừa đọc xong';
+            else if (current) state = progress && progress.para > 0 ? `Đang đọc · đoạn ${progress.para + 1}` : 'Đang đọc';
+            else if (read) state = '✓ Đã đọc';
+            const cls = 'chap-item' + (read ? ' read' : '') + (current ? ' current' : '');
+            return `<a href="${chapBase}${encodeURIComponent(chap.id)}/" class="${cls}">
+                        <span class="name"><span class="num">${i + 1}</span>📖 ${escapeHtml(chap.name || 'Chương ' + (i + 1))}</span>
+                        <span class="state">${state}</span>
+                    </a>`;
+        }
+
+        function render(initial) {
+            const query = document.getElementById('chapSearch').value;
+            const note = document.getElementById('chapNote');
+            let indexes;
+            if (query.trim()) {
+                const found = matches(query);
+                indexes = found.slice(0, SEARCH_LIMIT);
+                note.textContent = found.length ? `${found.length} chương khớp` + (found.length > SEARCH_LIMIT ? ` · hiện ${SEARCH_LIMIT} đầu tiên` : '') + ' · Enter để mở chương đầu tiên'
+                    : 'Không có chương nào khớp.';
+                note.hidden = false;
+            } else {
+                note.hidden = true;
+                const select = document.getElementById('chapGroup');
+                const group = select.hidden ? 0 : +select.value;
+                const start = select.hidden ? 0 : group * GROUP_SIZE;
+                const end = select.hidden ? chapters.length : Math.min(start + GROUP_SIZE, chapters.length);
+                indexes = [];
+                for (let i = start; i < end; i++) indexes.push(i);
+            }
+            document.getElementById('chapList').innerHTML = indexes.map(itemHtml).join('');
+            if (initial && currentIdx >= 0) {
+                const el = document.querySelector('#chapList .chap-item.current');
+                if (el && currentIdx > 3) el.scrollIntoView({ block: 'center' });
+            }
+        }
+
+        function checkBookmark() {
+            let marks = JSON.parse(localStorage.getItem('bookmarked_stories') || '[]');
+            const btn = document.getElementById('btnBookmark');
+            if (marks.includes(storyId)) {
+                btn.innerText = '🔖 Bỏ lưu truyện';
+                btn.style.background = '#27272a';
+                btn.style.color = '#fff';
+            } else {
+                btn.innerText = '🔖 Lưu truyện';
+                btn.style.background = '#eab308';
+                btn.style.color = '#000';
+            }
+        }
+
+        function toggleBookmark() {
+            let marks = JSON.parse(localStorage.getItem('bookmarked_stories') || '[]');
+            if (marks.includes(storyId)) {
+                marks = marks.filter(m => m !== storyId);
+            } else {
+                marks.push(storyId);
+            }
+            localStorage.setItem('bookmarked_stories', JSON.stringify(marks));
+            checkBookmark();
+        }
+
+        // Quay lại trang bằng nút Back: trình duyệt có thể giữ trang cũ trong bộ nhớ, cập nhật lại tiến độ.
+        window.addEventListener('pageshow', (e) => { if (e.persisted && chapters.length) { setupProgress(); render(false); } });
+    </script>
+</body>
+</html>
