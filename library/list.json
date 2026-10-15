@@ -6830,7 +6830,7 @@
         "title": "Tổng hợp truyện ngắn",
         "slug": "000130",
         "date": "15/10/2026",
-        "timestamp": 1792035483.953625,
+        "timestamp": 1792080653.844683,
         "chapters": [
             {
                 "id": "0001",
@@ -7255,6 +7255,11 @@
             {
                 "id": "0085",
                 "name": "Vì thoát đi bị thê tử nhóm ép tinh hoa huệ tây tu vi",
+                "date": "15/10/2026"
+            },
+            {
+                "id": "0086",
+                "name": "Ta nhìn tận mắt mụ mụ bị ma tộc rút ra nhân cách chế thành máy bay",
                 "date": "15/10/2026"
             }
         ]
@@ -27183,6 +27188,79 @@
             {
                 "id": "0012",
                 "name": "Chương 12: Mưu phu đoạt của",
+                "date": "15/10/2026"
+            }
+        ]
+    },
+    {
+        "title": "Cao lãnh tiên tử Shenhe ác đọa vì trong thôn biến thái thú cái",
+        "slug": "000222",
+        "date": "15/10/2026",
+        "timestamp": 1792080471.546251,
+        "chapters": [
+            {
+                "id": "0001",
+                "name": "Chương 1:: Mão Sư Phó dạy dỗ",
+                "date": "15/10/2026"
+            },
+            {
+                "id": "0002",
+                "name": "Chương 02:: Cả đêm ân ái",
+                "date": "15/10/2026"
+            },
+            {
+                "id": "0003",
+                "name": "Chương 03:: Bắt đầu phục thị",
+                "date": "15/10/2026"
+            },
+            {
+                "id": "0004",
+                "name": "Chương 04:: Bắt đầu phục thị",
+                "date": "15/10/2026"
+            },
+            {
+                "id": "0005",
+                "name": "Chương 05:: Vạn dân đường chuyển phát nhanh",
+                "date": "15/10/2026"
+            },
+            {
+                "id": "0006",
+                "name": "Chương 7:: Lấy chồng ở xa thôn lạc tiên nữ",
+                "date": "15/10/2026"
+            },
+            {
+                "id": "0007",
+                "name": "Chương 08:: Cưới sau Shenhe",
+                "date": "15/10/2026"
+            },
+            {
+                "id": "0008",
+                "name": "Chương 09:: Mang thai Shenhe",
+                "date": "15/10/2026"
+            },
+            {
+                "id": "0009",
+                "name": "Chương 10:: Sinh nãi Shenhe",
+                "date": "15/10/2026"
+            },
+            {
+                "id": "0010",
+                "name": "Chương 11:: Mấy chục năm sau đó Shenhe",
+                "date": "15/10/2026"
+            },
+            {
+                "id": "0011",
+                "name": "Chương 12:: Mấy chục năm sau đó Shenhe",
+                "date": "15/10/2026"
+            },
+            {
+                "id": "0012",
+                "name": "Chương 13:: Mấy chục năm sau đó Shenhe",
+                "date": "15/10/2026"
+            },
+            {
+                "id": "0013",
+                "name": "Chương 14:: Mấy chục năm sau đó Shenhe",
                 "date": "15/10/2026"
             }
         ]
