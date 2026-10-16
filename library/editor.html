@@ -318,7 +318,9 @@ async function commitFiles(message, prepare) {
     throw new Error('Nhánh liên tục thay đổi, chưa lưu được. Thử lại sau ít giây.');
 }
 
-// Đổi tên chương trong list.json mới nhất, không đụng phần khác.
+// Đổi tên chương trong list.json mới nhất (không đụng phần khác) và trong
+// library/<id>/chapters.json — bản danh sách chương nhẹ mà trang đọc dùng.
+// Định dạng giống library_store.chapters_payload bên app Python.
 async function renameInCatalog(head, slug, names) {
     const file = await readFile(LIST_PATH, head.sha);
     const catalog = JSON.parse(file.text);
@@ -327,7 +329,10 @@ async function renameInCatalog(head, slug, names) {
     for (const chap of (story && story.chapters) || []) {
         if (chap.id in names && chap.name !== names[chap.id]) { chap.name = names[chap.id]; changed = true; }
     }
-    return changed ? { path: LIST_PATH, text: pyJson(catalog, 4) } : null;
+    if (!changed) return [];
+    const chapters = { slug: story.slug || '', title: story.title || '', date: story.date || '',
+        chapters: story.chapters.map((c) => ({ id: c.id || '', name: c.name || '' })) };
+    return [{ path: LIST_PATH, text: pyJson(catalog, 4) }, { path: `library/${slug}/chapters.json`, text: pyJson(chapters) }];
 }
 
 // ───────────────────────── kết nối ─────────────────────────
@@ -550,8 +555,7 @@ async function saveChapter() {
             if (latest !== snapshot.sha) throw new ConflictError('Chương này vừa được sửa ở nơi khác (app trên máy hoặc tab khác). Chép phần bạn sửa ra ngoài, tải lại chương rồi sửa lại.');
             const files = [{ path: snapshot.path, text: dataText }];
             if (nameChanged) {
-                const list = await renameInCatalog(head, story.slug, { [snapshot.id]: title });
-                if (list) files.push(list);
+                files.push(...await renameInCatalog(head, story.slug, { [snapshot.id]: title }));
             }
             return files;
         });
@@ -803,8 +807,7 @@ async function applyReplace() {
             const files = chosen.map((r) => ({ path: `library/${scan.slug}/${r.id}/data.json`, text: pyJson(r.newData) }));
             const names = Object.fromEntries(chosen.filter((r) => r.titleChanged).map((r) => [r.id, r.newTitle]));
             if (Object.keys(names).length) {
-                const list = await renameInCatalog(head, scan.slug, names);
-                if (list) files.push(list);
+                files.push(...await renameInCatalog(head, scan.slug, names));
             }
             return files;
         });

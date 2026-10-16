@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Thông Tin Truyện</title>
-    <link rel="stylesheet" href="../css/styles.css">
     <style>
         body { font-family: Arial, sans-serif; background-color: #09090b; color: #e4e4e7; margin: 0; padding: 0; }
         .container { max-width: 800px; margin: 0 auto; padding: 20px; }
@@ -98,14 +97,22 @@
         }
 
         const escapeHtml = (text) => String(text).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-        const fold = (text) => String(text).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'd').toLowerCase();
+        const fold = (text) => String(text).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[đĐ]/g, 'd').toLowerCase();
+
+        // Danh sách chương riêng của truyện (library/<id>/chapters.json, nhẹ);
+        // thiếu file thì dùng list.json chung của thư viện.
+        async function fetchStory() {
+            try {
+                const res = await fetch((isStoryTemplate ? './' + encodeURIComponent(storyId) + '/' : './') + 'chapters.json');
+                if (res.ok) return await res.json();
+            } catch (e) { /* mạng lỗi: thử list.json */ }
+            const list = await (await fetch(basePath + 'list.json')).json();
+            return list.find(s => s.slug === storyId);
+        }
 
         async function loadStoryInfo() {
             try {
-                // Tạm thời lấy info từ thư viện chung
-                const res = await fetch(basePath + 'list.json');
-                const list = await res.json();
-                storyInfo = list.find(s => s.slug === storyId);
+                storyInfo = await fetchStory();
 
                 if (storyInfo) {
                     document.getElementById('sTitle').innerText = storyInfo.title;

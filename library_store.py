@@ -93,8 +93,40 @@ def sort_chapters(catalog):
     return catalog
 
 
+def chapters_payload(story):
+    """Danh sách chương riêng của một truyện (library/<id>/chapters.json).
+
+    Trang đọc chỉ cần file nhỏ này để làm nút chương trước/sau, không phải
+    tải cả list.json của thư viện. Giữ cùng định dạng với trang biên tập web.
+    """
+    return {'slug': story.get('slug', ''), 'title': story.get('title', ''), 'date': story.get('date', ''),
+            'chapters': [{'id': c.get('id', ''), 'name': c.get('name', '')} for c in story.get('chapters', [])]}
+
+
+def write_story_chapter_lists(library_dir, catalog):
+    """Ghi chapters.json cho mọi truyện có thư mục; chỉ ghi file đã thay đổi."""
+    written = 0
+    for story in catalog:
+        story_dir = os.path.join(library_dir, str(story.get('slug', '')))
+        # stories/list.json (truyện ngắn) không có danh sách chương: bỏ qua.
+        if not story.get('slug') or not isinstance(story.get('chapters'), list) or not os.path.isdir(story_dir):
+            continue
+        path = os.path.join(story_dir, 'chapters.json')
+        text = json.dumps(chapters_payload(story), ensure_ascii=False)
+        try:
+            with open(path, 'r', encoding='utf-8') as stream:
+                if stream.read() == text:
+                    continue
+        except OSError:
+            pass
+        write_text_atomic(path, text)
+        written += 1
+    return written
+
+
 def write_catalog(path, catalog):
     write_json_atomic(path, sort_chapters(catalog), indent=4, backup=True)
+    write_story_chapter_lists(os.path.dirname(os.path.abspath(path)), catalog)
 
 
 # ─────────────────────────── text decoding ───────────────────────────

@@ -159,8 +159,12 @@
                     }
 
                     if (storyId && chapterId) {
-                        $.getJSON('../../list.json', function (list) {
-                            const story = list.find(s => s.slug === storyId);
+                        // Danh sách chương riêng của truyện (nhẹ); thiếu file thì dùng list.json chung.
+                        (function (done) {
+                            $.getJSON('../chapters.json', done).fail(function () {
+                                $.getJSON('../../list.json', function (list) { done(list.find(s => s.slug === storyId)); });
+                            });
+                        })(function (story) {
                             if (story && story.chapters) {
                                 const chapters = story.chapters;
                                 const currentIdx = chapters.findIndex(c => c.id === chapterId);

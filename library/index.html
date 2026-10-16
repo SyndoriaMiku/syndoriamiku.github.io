@@ -56,6 +56,8 @@
         const tabAll = document.getElementById('tabAll');
         const tabBookmarks = document.getElementById('tabBookmarks');
 
+        const fold = (text) => String(text).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[đĐ]/g, 'd').toLowerCase();
+
         async function loadStories() {
             try {
                 const response = await fetch('./list.json');
@@ -70,9 +72,11 @@
 
         function renderStories() {
             storyGrid.innerHTML = '';
-            const query = searchInput.value.toLowerCase().trim();
+            // Không phân biệt dấu/hoa thường, nhiều từ thì phải khớp đủ; gõ mã truyện cũng được.
+            const words = fold(searchInput.value).split(/\s+/).filter(Boolean);
             let filtered = allStories.filter(story => {
-                const matchesSearch = story.title.toLowerCase().includes(query);
+                const haystack = fold(story.title || '') + ' ' + story.slug;
+                const matchesSearch = words.every(w => haystack.includes(w));
                 const isBookmarked = bookmarkedSlugs.includes(story.slug);
                 if (currentTab === 'bookmarks') return matchesSearch && isBookmarked;
                 return matchesSearch;
