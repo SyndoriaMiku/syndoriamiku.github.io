@@ -6829,8 +6829,8 @@
     {
         "title": "Tổng hợp truyện ngắn",
         "slug": "000130",
-        "date": "15/10/2026",
-        "timestamp": 1792080653.844683,
+        "date": "17/10/2026",
+        "timestamp": 1792206203.7939,
         "chapters": [
             {
                 "id": "0001",
@@ -7261,6 +7261,11 @@
                 "id": "0086",
                 "name": "Ta nhìn tận mắt mụ mụ bị ma tộc rút ra nhân cách chế thành máy bay",
                 "date": "15/10/2026"
+            },
+            {
+                "id": "0087",
+                "name": "Chưởng môn phu nhân xuống núi hái thuốc, lại bị hai cái lưu manh chơi",
+                "date": "17/10/2026"
             }
         ]
     },
@@ -29368,6 +29373,72 @@
             {
                 "id": "0010",
                 "name": "Chương 10: Đưa tới cửa",
+                "date": "17/10/2026"
+            }
+        ]
+    },
+    {
+        "title": "Ta I cup đại vú bà mẹ chủ động câu dẫn có thể người nhát gan ta lại ra vẻ thận trọng",
+        "slug": "000227",
+        "date": "17/10/2026",
+        "timestamp": 1792206038.114491,
+        "chapters": [
+            {
+                "id": "0001",
+                "name": "Chương mở đầu",
+                "date": "17/10/2026"
+            },
+            {
+                "id": "0002",
+                "name": "Chương 1:",
+                "date": "17/10/2026"
+            },
+            {
+                "id": "0003",
+                "name": "Chương 02:",
+                "date": "17/10/2026"
+            },
+            {
+                "id": "0004",
+                "name": "Chương 03:",
+                "date": "17/10/2026"
+            },
+            {
+                "id": "0005",
+                "name": "Chương 04:",
+                "date": "17/10/2026"
+            },
+            {
+                "id": "0006",
+                "name": "Chương 05:",
+                "date": "17/10/2026"
+            }
+        ]
+    },
+    {
+        "title": "Bị tiểu quỷ đầu nhóm chi phối tuyệt sắc mẫu di",
+        "slug": "000228",
+        "date": "17/10/2026",
+        "timestamp": 1792206142.074466,
+        "chapters": [
+            {
+                "id": "0001",
+                "name": "Chương 1:",
+                "date": "17/10/2026"
+            },
+            {
+                "id": "0002",
+                "name": "Chương 02:",
+                "date": "17/10/2026"
+            },
+            {
+                "id": "0003",
+                "name": "Chương 03:",
+                "date": "17/10/2026"
+            },
+            {
+                "id": "0004",
+                "name": "Chương 04:",
                 "date": "17/10/2026"
             }
         ]
