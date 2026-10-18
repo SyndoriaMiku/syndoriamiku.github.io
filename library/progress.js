@@ -7,6 +7,8 @@
     'use strict';
     var KEY_POS = 'reading_progress_v1';
     var KEY_READ = 'read_chapters_v1';
+    var KEY_CHAPTERS = 'chapter_positions_v1';   // vị trí riêng của từng chương
+    var MAX_CHAPTER_POSITIONS = 200;              // mỗi truyện giữ N chương đọc gần nhất
 
     function load(key) {
         try { return JSON.parse(localStorage.getItem(key) || '{}') || {}; } catch (e) { return {}; }
@@ -43,6 +45,22 @@
     var RP = window.ReadingProgress = {
         get: function (story) { return load(KEY_POS)[story] || null; },
         set: function (story, data) { var all = load(KEY_POS); all[story] = data; save(KEY_POS, all); },
+        // { idChương: [đoạn, tổngĐoạn, thờiĐiểm] } của một truyện.
+        chapterPositions: function (story) { return load(KEY_CHAPTERS)[story] || {}; },
+        chapterPos: function (story, id) {
+            var pos = (load(KEY_CHAPTERS)[story] || {})[norm(id)];
+            return pos ? { para: pos[0], total: pos[1], at: pos[2] } : null;
+        },
+        setChapterPos: function (story, id, para, total) {
+            var all = load(KEY_CHAPTERS), map = all[story] || (all[story] = {});
+            map[norm(id)] = [para, total, Date.now()];
+            var keys = Object.keys(map);
+            if (keys.length > MAX_CHAPTER_POSITIONS) {
+                keys.sort(function (a, b) { return map[a][2] - map[b][2]; });
+                keys.slice(0, keys.length - MAX_CHAPTER_POSITIONS).forEach(function (k) { delete map[k]; });
+            }
+            save(KEY_CHAPTERS, all);
+        },
         readSet: function (story) { return decodeRead(load(KEY_READ)[story]); },
         isRead: function (set, id) { return set.has(norm(id)); },
         markRead: function (story, id) {
@@ -93,10 +111,16 @@
         if (!blocks.length || restoring) return;
         // Cuối chương thường thấy cùng lúc vài đoạn ngắn: coi như đã tới đoạn cuối.
         var para = atEnd() ? blocks.length - 1 : currentPara();
-        RP.set(ids.story, {
-            chapter: ids.chapter, para: para, total: blocks.length,
-            chapterName: text('chapterTitle'), storyTitle: text('title'), at: Date.now(),
-        });
+        var mine = RP.chapterPos(ids.story, ids.chapter);
+        if (para > 0 || mine) RP.setChapterPos(ids.story, ids.chapter, para, blocks.length);
+        // Chỉ mở chương ra xem (chưa cuộn) thì không cướp chỗ "Đọc tiếp" của chương đang đọc dở.
+        var pointer = RP.get(ids.story);
+        if (para > 0 || atEnd() || !pointer || pointer.chapter === ids.chapter) {
+            RP.set(ids.story, {
+                chapter: ids.chapter, para: para, total: blocks.length,
+                chapterName: text('chapterTitle'), storyTitle: text('title'), at: Date.now(),
+            });
+        }
         if (ids.chapter && (para >= blocks.length - 2 || atEnd())) RP.markRead(ids.story, ids.chapter);
     }
     function scheduleRecord() { clearTimeout(saveTimer); saveTimer = setTimeout(record, 400); }
@@ -131,8 +155,10 @@
         blocks = Array.prototype.slice.call(content.querySelectorAll('.story-block'));
         if (!blocks.length) return false;
         applyDisplay();   // nội dung đã có: biết chương có bản gốc tiếng Trung hay không
+        var own = RP.chapterPos(ids.story, ids.chapter);
         var saved = RP.get(ids.story);
-        var resume = saved && saved.chapter === ids.chapter && saved.para > 0 && !location.hash ? saved.para : 0;
+        var from = own || (saved && saved.chapter === ids.chapter ? saved : null);   // dữ liệu cũ chỉ có vị trí của truyện
+        var resume = from && from.para > 0 && !location.hash ? from.para : 0;
         if (resume) {
             scrollToPara(resume);
             // Kiểu chữ (Tailwind CDN) có thể nạp sau làm lệch bố cục: căn lại nếu người đọc chưa cuộn.

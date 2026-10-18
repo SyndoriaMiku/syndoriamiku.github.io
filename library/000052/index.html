@@ -88,7 +88,7 @@
         const GROUP_SIZE = 100;     // truyện dài: hiện từng nhóm 100 chương
         const SEARCH_LIMIT = 200;   // số kết quả tìm kiếm hiện tối đa
         const RP = window.ReadingProgress;
-        let chapters = [], chapBase = './', readSet = new Set(), progress = null, currentIdx = -1;
+        let chapters = [], chapBase = './', readSet = new Set(), positions = {}, progress = null, currentIdx = -1;
 
         if (!storyId) {
             document.querySelector('.container').innerHTML = '<p>Không tìm thấy truyện.</p>';
@@ -139,6 +139,7 @@
         function setupProgress() {
             if (!RP || !chapters.length) return;
             readSet = RP.readSet(storyId);
+            positions = RP.chapterPositions ? RP.chapterPositions(storyId) : {};
             progress = RP.get(storyId);
             currentIdx = progress ? chapters.findIndex(c => RP.norm(c.id) === RP.norm(progress.chapter)) : -1;
             const btn = document.getElementById('btnContinue');
@@ -223,6 +224,10 @@
             if (current && read && progress && progress.para >= (progress.total || 1) - 2) state = '✓ Vừa đọc xong';
             else if (current) state = progress && progress.para > 0 ? `Đang đọc · đoạn ${progress.para + 1}` : 'Đang đọc';
             else if (read) state = '✓ Đã đọc';
+            else {
+                const pos = RP && positions[RP.norm(chap.id)];
+                if (pos && pos[0] > 0) state = `Đọc dở · đoạn ${pos[0] + 1}`;
+            }
             const cls = 'chap-item' + (read ? ' read' : '') + (current ? ' current' : '');
             return `<a href="${chapBase}${encodeURIComponent(chap.id)}/" class="${cls}">
                         <span class="name"><span class="num">${i + 1}</span>📖 ${escapeHtml(chap.name || 'Chương ' + (i + 1))}</span>
