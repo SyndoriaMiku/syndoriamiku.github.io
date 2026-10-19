@@ -6829,8 +6829,8 @@
     {
         "title": "Tổng hợp truyện ngắn",
         "slug": "000130",
-        "date": "18/10/2026",
-        "timestamp": 1792266413.70371,
+        "date": "19/10/2026",
+        "timestamp": 1792398856.868276,
         "chapters": [
             {
                 "id": "0001",
@@ -7296,6 +7296,21 @@
                 "id": "0093",
                 "name": "Lưu ly Tiên Tôn dâm đọa",
                 "date": "18/10/2026"
+            },
+            {
+                "id": "0094",
+                "name": "Phòng tập thể thao lộ ra si nữ",
+                "date": "19/10/2026"
+            },
+            {
+                "id": "0095",
+                "name": "Ưa thích bị đồ đệ phản sát heo mẹ sư phụ",
+                "date": "19/10/2026"
+            },
+            {
+                "id": "0096",
+                "name": "Bị đệ tử cưỡng gian Tử Vi Nữ Đế",
+                "date": "19/10/2026"
             }
         ]
     },
@@ -30205,6 +30220,153 @@
                 "id": "0010",
                 "name": "Chương 10:: Tông môn đại điển cùng ly biệt",
                 "date": "18/10/2026"
+            }
+        ]
+    },
+    {
+        "title": "Mê vụ phòng tập thể thao",
+        "slug": "000239",
+        "date": "19/10/2026",
+        "timestamp": 1792398183.958296,
+        "chapters": [
+            {
+                "id": "0001",
+                "name": "Thứ 1 chương Lão công nhận lầm người xạ tinh đặc cho những nữ nhân khác",
+                "date": "19/10/2026"
+            },
+            {
+                "id": "0002",
+                "name": "Thứ 2 chương Thôi miên lão công trong mộng ra quỷ ( Nhân ngư qua lại! Không phải nhân viên chiến đấu lẩn tránh ), còn bị lão",
+                "date": "19/10/2026"
+            },
+            {
+                "id": "0003",
+                "name": "Thứ 3 chương Bị ba gái đứng đường ép khô (4p) nữ tính chi phối, tinh thần giày vò",
+                "date": "19/10/2026"
+            },
+            {
+                "id": "0004",
+                "name": "Thứ 4 chương Thôi miên dẫn đạo lão công bị thư ký câu dẫn ( Điên cuồng hút vú mềm )",
+                "date": "19/10/2026"
+            },
+            {
+                "id": "0005",
+                "name": "Thứ 5 chương “Thanh thuần ” Biểu muội câu dẫn ( Chơi treo niệu đạo play, thân tấc xong lão bà thao bày tỏ",
+                "date": "19/10/2026"
+            },
+            {
+                "id": "0006",
+                "name": "Thứ 6 chương Che mắt cao tất, một đời một thế một đôi người ngây thơ Đế Vương bị thị thiếp ngủ gian, tỉnh",
+                "date": "19/10/2026"
+            },
+            {
+                "id": "0007",
+                "name": "Thứ 7 chương Mạnh miệng bị nhét một đôi song bào thai tại lão bà trước mặt chứng minh ( Nhìn chằm chằm lão bà liếm cự nhũ, nhìn",
+                "date": "19/10/2026"
+            },
+            {
+                "id": "0008",
+                "name": "Thứ 1 chương Đêm tối chi diễm",
+                "date": "19/10/2026"
+            },
+            {
+                "id": "0009",
+                "name": "Thứ 2 chương Thanh xuân chi sẹo",
+                "date": "19/10/2026"
+            },
+            {
+                "id": "0010",
+                "name": "Thứ 3 chương Ngầm chi dục",
+                "date": "19/10/2026"
+            },
+            {
+                "id": "0011",
+                "name": "Thứ 4 chương Trái cấm nụ hôn",
+                "date": "19/10/2026"
+            },
+            {
+                "id": "0012",
+                "name": "Thứ 5 chương Trôi qua Ảnh chi ngấn",
+                "date": "19/10/2026"
+            },
+            {
+                "id": "0013",
+                "name": "Thứ 6 chương Dục diễm đốt người",
+                "date": "19/10/2026"
+            },
+            {
+                "id": "0014",
+                "name": "Thứ 7 chương Ôn nhu chi diễm Thuần ái H trường thiên đô thị mỹ nhân ngược tình",
+                "date": "19/10/2026"
+            },
+            {
+                "id": "0015",
+                "name": "Thứ 8 chương Nhục nhã chi dạ Cao H nữ đồng lăng nhục thiên Trường thiên đô thị mỹ nhân ngược tình",
+                "date": "19/10/2026"
+            },
+            {
+                "id": "0016",
+                "name": "Thứ 9 chương Lạc ấn cùng ngấp nghé",
+                "date": "19/10/2026"
+            },
+            {
+                "id": "0017",
+                "name": "Thứ 10 chương Ôn nhu thuộc về",
+                "date": "19/10/2026"
+            }
+        ]
+    },
+    {
+        "title": "Dùng người da đen cự căn đem mập quen long tộc nữ thần từ bằng hữu bên cạnh đoạt đi",
+        "slug": "000240",
+        "date": "19/10/2026",
+        "timestamp": 1792398307.99864,
+        "chapters": [
+            {
+                "id": "0001",
+                "name": "Chương 1:",
+                "date": "19/10/2026"
+            }
+        ]
+    },
+    {
+        "title": "Trường thành thủ vệ quân chuyên chúc phòng tập thể thao",
+        "slug": "000241",
+        "date": "19/10/2026",
+        "timestamp": 1792398559.73661,
+        "chapters": [
+            {
+                "id": "0001",
+                "name": "Chương 1",
+                "date": "19/10/2026"
+            }
+        ]
+    },
+    {
+        "title": "Tiên tử đọa hồng trần",
+        "slug": "000242",
+        "date": "19/10/2026",
+        "timestamp": 1792399076.567496,
+        "chapters": [
+            {
+                "id": "0001",
+                "name": "Thứ 1 chương Thái Nhất tông chuyện cũ: Tiên tử nhóm Tu La tràng",
+                "date": "19/10/2026"
+            },
+            {
+                "id": "0002",
+                "name": "Thứ 2 chương Vị hôn thê Doanh Châu lịch kiếp, ngoài ý muốn ký kết thần bí khế ước, tu vi cao tuyệt thanh lãnh tiên tử không có khả năng rơi vào Doanh Châu quỷ tử cạm bẫy",
+                "date": "19/10/2026"
+            },
+            {
+                "id": "0003",
+                "name": "Thứ 3 chương Thanh lãnh Kiếm Tiên vị hôn thê bị phàm nhân Doanh Châu quỷ tử trần giảo ngược bụng đánh đòn khuất phục bại trận dập đầu nhận cha biến thành kê ba mũ",
+                "date": "19/10/2026"
+            },
+            {
+                "id": "0004",
+                "name": "Thứ 6 chương Trấn thủ biên quan thục nữ tướng quân nhạc mẫu cư nhiên bị tù binh tới đại yêu trước mặt mọi người thao phục cam làm tiểu thiếp dâng lên hết thảy?",
+                "date": "19/10/2026"
             }
         ]
     }
