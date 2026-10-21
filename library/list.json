@@ -6830,7 +6830,7 @@
         "title": "Tổng hợp truyện ngắn",
         "slug": "000130",
         "date": "21/10/2026",
-        "timestamp": 1792569470.369544,
+        "timestamp": 1792575542.919019,
         "chapters": [
             {
                 "id": "0001",
@@ -7335,6 +7335,11 @@
             {
                 "id": "0101",
                 "name": "Thế tử chi ninh ngọc hợp bị hắc nô thành công mở cung gieo hạt",
+                "date": "21/10/2026"
+            },
+            {
+                "id": "0102",
+                "name": "Bởi vì ta ngu xuẩn sắp đặt dẫn đến lạnh nhạt nghiêm khắc mỹ mẫu bị người da đen sảng khoái địt cả đêm",
                 "date": "21/10/2026"
             }
         ]
@@ -30612,6 +30617,64 @@
             {
                 "id": "0010",
                 "name": "Chương 10:, trong nhà chuyện lý thú “Cấm kỵ chi dạ ” Đi qua sau một tháng một ngày, phụ thân bởi vì trên phương diện làm ăn lui tới mà ra kém bên ngoài, trong nhà chỉ còn sót ta cùng mụ mụ.",
+                "date": "21/10/2026"
+            }
+        ]
+    },
+    {
+        "title": "Quáng nô khinh nhờn lãnh diễm tiên tử",
+        "slug": "000245",
+        "date": "21/10/2026",
+        "timestamp": 1792574981.08622,
+        "chapters": [
+            {
+                "id": "0001",
+                "name": "Chương 1: Phế khoáng chỗ sâu tỉnh lại sói đói",
+                "date": "21/10/2026"
+            },
+            {
+                "id": "0002",
+                "name": "Chương 02: Quáng nô quỳ xuống đất ngửa tiên môn, xa liếc sương nguyệt lần đầu tiên",
+                "date": "21/10/2026"
+            },
+            {
+                "id": "0003",
+                "name": "Chương 03: Quáng nô ngủ đông sờ môn đạo, dưới ánh trăng váy trắng thăm đắng doanh",
+                "date": "21/10/2026"
+            },
+            {
+                "id": "0004",
+                "name": "Chương 04: Dưới ánh trăng váy trắng kinh Hồng Ảnh, quáng nô nào dám không cúi đầu",
+                "date": "21/10/2026"
+            },
+            {
+                "id": "0005",
+                "name": "Chương 05: Mưa to thuốc lều Thánh nữ ẩm ướt, quáng nô thô điểu phá thiên môn",
+                "date": "21/10/2026"
+            },
+            {
+                "id": "0006",
+                "name": "Chương 06: Thánh nữ ác mộng đêm khó ngủ, váy mỏng ám khỏa xuân tâm loạn",
+                "date": "21/10/2026"
+            },
+            {
+                "id": "0007",
+                "name": "Chương 7: Thuốc lều chỗ sâu lại tác hoan, Thánh nữ váy mỏng khó khăn che xuân",
+                "date": "21/10/2026"
+            },
+            {
+                "id": "0008",
+                "name": "Chương 08: Bích lạc sóng ngầm sơ phun trào, Trưởng Lão đường nội tàng lưỡi đao",
+                "date": "21/10/2026"
+            },
+            {
+                "id": "0009",
+                "name": "Chương 09: Trưởng lão ngầm hỏi dưới ánh trăng tới, hẹp bào siết ra xuân quang ảnh",
+                "date": "21/10/2026"
+            },
+            {
+                "id": "0010",
+                "name": "Chương 10: Chấp Pháp đường phía trước tiếng mưa gió, hắc giáp phía dưới xuân quang giấu",
                 "date": "21/10/2026"
             }
         ]
