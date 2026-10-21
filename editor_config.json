@@ -2,7 +2,7 @@
   "editor_main": "1202x800+-28+101",
   "editor_add_story_dialog": "779x223+1001+322",
   "builder_main": "931x800+301+167",
-  "builder_add_name": "779x624+1001+322",
+  "builder_add_name": "779x678+1001+322",
   "editor_split_dialog": "700x666+1001+322",
   "builder_review": "1105x801+1142+315",
   "builder_scan_names": "779x678+1001+322",
@@ -19,7 +19,7 @@
   "editor_split_dialog_state": "normal",
   "builder_library_dialog": "760x666+1329+276",
   "studio_tab": "translate",
-  "studio_main": "1105x801+64+311",
+  "studio_main": "1105x801+242+329",
   "builder_edit_line": "760x666+447+662",
   "builder_temp_names": "779x602+1001+322"
 }
