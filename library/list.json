@@ -6830,7 +6830,7 @@
         "title": "Tổng hợp truyện ngắn",
         "slug": "000130",
         "date": "23/10/2026",
-        "timestamp": 1792732131.775138,
+        "timestamp": 1792737943.544144,
         "chapters": [
             {
                 "id": "0001",
@@ -7365,6 +7365,16 @@
             {
                 "id": "0107",
                 "name": "Bạch Hổ lẳng lơ bạch phú mỹ cos học viên bị huấn luyện viên dùng cự điểu chinh phục làm chó cái qùy liếm ép tinh",
+                "date": "23/10/2026"
+            },
+            {
+                "id": "0108",
+                "name": "Ngày bình thường không khiến người ta tới gần trong vòng ba bước tiên súc các đại trưởng lão",
+                "date": "23/10/2026"
+            },
+            {
+                "id": "0109",
+                "name": "Luyến chân lục nô đệ đệ vì cầu tỷ tỷ chân giao, tự nguyện hướng tỷ phu dâng lên vẫn còn tấm thân xử nữ thê tử",
                 "date": "23/10/2026"
             }
         ]
@@ -29601,8 +29611,8 @@
     {
         "title": "Vì thoát đi bị thê tử nhóm ép tinh hoa huệ tây tu vi",
         "slug": "000229",
-        "date": "17/10/2026",
-        "timestamp": 1792206405.580017,
+        "date": "23/10/2026",
+        "timestamp": 1792737490.337283,
         "chapters": [
             {
                 "id": "0001",
@@ -29613,6 +29623,11 @@
                 "id": "0002",
                 "name": "Chương 02: Hồ Tiên Nhị lão bà giấu vào ổ chăn lộ ra hạ thân dụ hoặc ta mắc câu, lại không muốn bởi vì ta trốn tránh, ngược lại để ta cái kia lão người không vợ cha nuôi đem Nhị lão bà thao cái sảng khoái",
                 "date": "17/10/2026"
+            },
+            {
+                "id": "0003",
+                "name": "Hồ Tiên lão bà liên thủ Kiếm Tiên lão bà tính toán diệt trừ ta cái kia lão người không vợ cha nuôi diệt khẩu, không ngờ lại song song cho không, biến thành lão người không vợ cha nuôi tính nô",
+                "date": "23/10/2026"
             }
         ]
     },
