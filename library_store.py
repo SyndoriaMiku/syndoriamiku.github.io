@@ -124,9 +124,21 @@ def write_story_chapter_lists(library_dir, catalog):
     return written
 
 
+def stories_index(catalog):
+    """Danh sách truyện gọn cho trang Thư viện (library/stories.json), không kèm chương."""
+    return [{'slug': s.get('slug', ''), 'title': s.get('title', ''), 'date': s.get('date', ''),
+             'timestamp': s.get('timestamp', 0), 'count': len(s.get('chapters', []))}
+            for s in sorted(catalog, key=lambda s: -float(s.get('timestamp') or 0))
+            if s.get('slug') and isinstance(s.get('chapters'), list)]
+
+
 def write_catalog(path, catalog):
     write_json_atomic(path, sort_chapters(catalog), indent=4, backup=True)
-    write_story_chapter_lists(os.path.dirname(os.path.abspath(path)), catalog)
+    library_dir = os.path.dirname(os.path.abspath(path))
+    write_story_chapter_lists(library_dir, catalog)
+    index = stories_index(catalog)
+    if index:  # stories/list.json (truyện ngắn) không có chương: không tạo
+        write_text_atomic(os.path.join(library_dir, 'stories.json'), json.dumps(index, ensure_ascii=False))
 
 
 # ─────────────────────────── text decoding ───────────────────────────
@@ -205,7 +217,11 @@ def copy_templates(library_dir, base_dir, story_slug, chapter_id=None):
         except OSError:
             pass
     if chapter_id:
-        reader = os.path.join(base_dir, 'reader.html')
+        # Khung trang đọc của thư viện (giao diện nằm ở library/assets/).
+        # reader.html ở gốc chỉ dành cho truyện ngắn trong stories/.
+        reader = os.path.join(library_dir, 'chapter.html')
+        if not os.path.exists(reader):
+            reader = os.path.join(base_dir, 'reader.html')
         if os.path.exists(reader):
             try:
                 shutil.copy2(reader, os.path.join(story_dir, chapter_id, 'index.html'))
