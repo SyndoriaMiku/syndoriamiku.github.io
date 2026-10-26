@@ -6829,8 +6829,8 @@
     {
         "title": "Tổng hợp truyện ngắn",
         "slug": "000130",
-        "date": "25/10/2026",
-        "timestamp": 1792926023.561984,
+        "date": "26/10/2026",
+        "timestamp": 1792995959.49196,
         "chapters": [
             {
                 "id": "0001",
@@ -7396,6 +7396,11 @@
                 "id": "0113",
                 "name": "5 cái tuyệt sắc mỹ nữ",
                 "date": "25/10/2026"
+            },
+            {
+                "id": "0114",
+                "name": "Mỹ thiếu nữ thám tử ngoài ý muốn rơi vào cạm bẫy bị dạy dỗ thành hắc ám tổ chức phạm tội cố vấn",
+                "date": "26/10/2026"
             }
         ]
     },
@@ -31671,6 +31676,87 @@
                 "id": "0006",
                 "name": "Chương 06",
                 "date": "25/10/2026"
+            }
+        ]
+    },
+    {
+        "title": "Dâm lục thùng cả nhà, biến thành hùng hài tử xuất tinh nhục ngoạn cụ",
+        "slug": "000256",
+        "date": "26/10/2026",
+        "timestamp": 1792995787.491632,
+        "chapters": [
+            {
+                "id": "0001",
+                "name": "Chương 1: nhiễm lục",
+                "date": "26/10/2026"
+            },
+            {
+                "id": "0002",
+                "name": "Chương 02: tiểu quỷ vào trạch",
+                "date": "26/10/2026"
+            },
+            {
+                "id": "0003",
+                "name": "Chương 03: tam nữ nhiễm độc",
+                "date": "26/10/2026"
+            },
+            {
+                "id": "0004",
+                "name": "Chương 04: ám chiến cùng tính toán",
+                "date": "26/10/2026"
+            },
+            {
+                "id": "0005",
+                "name": "Chương 05: Về nhà",
+                "date": "26/10/2026"
+            },
+            {
+                "id": "0006",
+                "name": "Chương 06: Cô em vợ",
+                "date": "26/10/2026"
+            },
+            {
+                "id": "0007",
+                "name": "Chương 7: Tỷ muội",
+                "date": "26/10/2026"
+            },
+            {
+                "id": "0008",
+                "name": "Chương 08: Phân tổ",
+                "date": "26/10/2026"
+            },
+            {
+                "id": "0009",
+                "name": "Chương 09: Mỹ nhân hương",
+                "date": "26/10/2026"
+            },
+            {
+                "id": "0010",
+                "name": "Chương 10: Song phi",
+                "date": "26/10/2026"
+            }
+        ]
+    },
+    {
+        "title": "Nhi tử trước mặt bị dạy dỗ heo mẹ giáo sư mụ mụ",
+        "slug": "000257",
+        "date": "26/10/2026",
+        "timestamp": 1792996191.17804,
+        "chapters": [
+            {
+                "id": "0001",
+                "name": "Chương 1",
+                "date": "26/10/2026"
+            },
+            {
+                "id": "0002",
+                "name": "Chương 03:",
+                "date": "26/10/2026"
+            },
+            {
+                "id": "0003",
+                "name": "Chương 04:",
+                "date": "26/10/2026"
             }
         ]
     }
