@@ -6829,8 +6829,8 @@
     {
         "title": "Tổng hợp truyện ngắn",
         "slug": "000130",
-        "date": "26/10/2026",
-        "timestamp": 1792995959.49196,
+        "date": "28/10/2026",
+        "timestamp": 1793153759.998272,
         "chapters": [
             {
                 "id": "0001",
@@ -7401,6 +7401,16 @@
                 "id": "0114",
                 "name": "Mỹ thiếu nữ thám tử ngoài ý muốn rơi vào cạm bẫy bị dạy dỗ thành hắc ám tổ chức phạm tội cố vấn",
                 "date": "26/10/2026"
+            },
+            {
+                "id": "0115",
+                "name": "Tiên Đế mẫu thân vì ta hạ phàm bị đen thối kê ba tù binh ngộ phán thiên tư",
+                "date": "28/10/2026"
+            },
+            {
+                "id": "0116",
+                "name": "Hư vinh võng hồng danh viện triệt để rơi vào từ phòng tập thể thao đến cửa sổ phía trước tinh dịch tẩy lễ",
+                "date": "28/10/2026"
             }
         ]
     },
