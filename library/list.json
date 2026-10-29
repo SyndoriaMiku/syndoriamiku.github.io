@@ -32568,5 +32568,48 @@
                 "date": "29/10/2026"
             }
         ]
+    },
+    {
+        "title": "Nhân Gian Chi Thần thao lật Marvel",
+        "slug": "000266",
+        "date": "29/10/2026",
+        "timestamp": 1793238719.311059,
+        "chapters": [
+            {
+                "id": "0001",
+                "name": "Thứ 1 chương Mới tỉnh",
+                "date": "29/10/2026"
+            },
+            {
+                "id": "0002",
+                "name": "Thứ 2 chương S.H.I.E.L.D",
+                "date": "29/10/2026"
+            },
+            {
+                "id": "0003",
+                "name": "Thứ 3 chương Người báo thù chuẩn bị chiến đấu",
+                "date": "29/10/2026"
+            },
+            {
+                "id": "0004",
+                "name": "Thứ 4 chương Ngoài hành tinh tỷ muội",
+                "date": "29/10/2026"
+            },
+            {
+                "id": "0005",
+                "name": "Thứ 5 chương Nhân thê thu hoạch",
+                "date": "29/10/2026"
+            },
+            {
+                "id": "0006",
+                "name": "Thứ 6 chương Chung cuộc tùy tâm",
+                "date": "29/10/2026"
+            },
+            {
+                "id": "0007",
+                "name": "Thứ 7 chương Nhân Gian Chi Thần",
+                "date": "29/10/2026"
+            }
+        ]
     }
 ]
