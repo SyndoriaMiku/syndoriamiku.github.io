@@ -32314,7 +32314,7 @@
         "title": "Người khác vớt nước biển loại bỏ khí, ta chỉ cần mỹ nữ",
         "slug": "000263",
         "date": "29/10/2026",
-        "timestamp": 1793207927.811171,
+        "timestamp": 1793238302.560349,
         "chapters": [
             {
                 "id": "0001",
@@ -32425,6 +32425,36 @@
                 "id": "0022",
                 "name": "Thứ 22 chương Lão Hán đẩy xe",
                 "date": "29/10/2026"
+            },
+            {
+                "id": "0023",
+                "name": "Thứ 23 chương Bè gỗ thăng cấp",
+                "date": "29/10/2026"
+            },
+            {
+                "id": "0024",
+                "name": "Thứ 24 chương Gặp phải khác cầu sinh giả",
+                "date": "29/10/2026"
+            },
+            {
+                "id": "0025",
+                "name": "Thứ 25 chương Giết người quy tắc",
+                "date": "29/10/2026"
+            },
+            {
+                "id": "0026",
+                "name": "Thứ 26 chương Quay về",
+                "date": "29/10/2026"
+            },
+            {
+                "id": "0027",
+                "name": "Thứ 27 chương Ngày mai, ta nghĩ tại hải đảo nhìn thấy ngươi",
+                "date": "29/10/2026"
+            },
+            {
+                "id": "0028",
+                "name": "Thứ 28 chương Chó cái Trương Mạn Ngọc",
+                "date": "29/10/2026"
             }
         ]
     },
@@ -32457,6 +32487,84 @@
             {
                 "id": "0005",
                 "name": "Thứ 5 chương hạ thiên ( Xem trước không được đầy đủ )",
+                "date": "29/10/2026"
+            }
+        ]
+    },
+    {
+        "title": "Cao ngạo nữ tổng giám đốc bị ta dạy dỗ thành chuyên chúc tính nô",
+        "slug": "000265",
+        "date": "29/10/2026",
+        "timestamp": 1793238229.348603,
+        "chapters": [
+            {
+                "id": "0001",
+                "name": "Chương 1:",
+                "date": "29/10/2026"
+            },
+            {
+                "id": "0002",
+                "name": "Chương 02:",
+                "date": "29/10/2026"
+            },
+            {
+                "id": "0003",
+                "name": "Chương 03:",
+                "date": "29/10/2026"
+            },
+            {
+                "id": "0004",
+                "name": "Chương 04:",
+                "date": "29/10/2026"
+            },
+            {
+                "id": "0005",
+                "name": "Chương 05:",
+                "date": "29/10/2026"
+            },
+            {
+                "id": "0006",
+                "name": "Chương 06:",
+                "date": "29/10/2026"
+            },
+            {
+                "id": "0007",
+                "name": "Chương 7:",
+                "date": "29/10/2026"
+            },
+            {
+                "id": "0008",
+                "name": "Chương 08:",
+                "date": "29/10/2026"
+            },
+            {
+                "id": "0009",
+                "name": "Chương 09:",
+                "date": "29/10/2026"
+            },
+            {
+                "id": "0010",
+                "name": "Chương 10:",
+                "date": "29/10/2026"
+            },
+            {
+                "id": "0011",
+                "name": "Chương 11:",
+                "date": "29/10/2026"
+            },
+            {
+                "id": "0012",
+                "name": "Chương 12:",
+                "date": "29/10/2026"
+            },
+            {
+                "id": "0013",
+                "name": "Chương 13:",
+                "date": "29/10/2026"
+            },
+            {
+                "id": "0014",
+                "name": "Chương 14:",
                 "date": "29/10/2026"
             }
         ]
