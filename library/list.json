@@ -6835,7 +6835,7 @@
         "title": "Tổng hợp truyện ngắn",
         "slug": "000130",
         "date": "29/10/2026",
-        "timestamp": 1793208386.456083,
+        "timestamp": 1793273433.507928,
         "chapters": [
             {
                 "id": "0001",
@@ -7420,6 +7420,11 @@
             {
                 "id": "0117",
                 "name": "Khinh thường mập lồn heo mẹ Zhuang Fangyi cùng nhân viên quản lý bị liệt địa giả thôi miên tức đọa bạo thao",
+                "date": "29/10/2026"
+            },
+            {
+                "id": "0118",
+                "name": "Bởi vì tai nạn xe cộ đụng vào đầu biến thành ngu ngốc giáo sư mỹ mẫu bị ta dạy dỗ thành mẫu heo",
                 "date": "29/10/2026"
             }
         ]
@@ -32912,6 +32917,74 @@
             {
                 "id": "0013",
                 "name": "Chương 09:: Phụ thân bảy thất lang",
+                "date": "29/10/2026"
+            }
+        ]
+    },
+    {
+        "title": "Thú cái mụ mụ cũng nghĩ tu tiên",
+        "slug": "000270",
+        "date": "29/10/2026",
+        "timestamp": 1793262513.530726,
+        "chapters": [
+            {
+                "id": "0001",
+                "name": "1- Đồ đần thôn phụ",
+                "date": "29/10/2026"
+            },
+            {
+                "id": "0002",
+                "name": "2- Mắt đỏ con nuôi",
+                "date": "29/10/2026"
+            },
+            {
+                "id": "0003",
+                "name": "3- Thoát đi ô sông",
+                "date": "29/10/2026"
+            },
+            {
+                "id": "0004",
+                "name": "4- Liệu phòng chịu nhục",
+                "date": "29/10/2026"
+            },
+            {
+                "id": "0005",
+                "name": "5- Từ Phàm nhập Tiên",
+                "date": "29/10/2026"
+            },
+            {
+                "id": "0006",
+                "name": "6- Viện thù phải báo",
+                "date": "29/10/2026"
+            },
+            {
+                "id": "0007",
+                "name": "7- Nhất giai thí luyện",
+                "date": "29/10/2026"
+            },
+            {
+                "id": "0008",
+                "name": "8- Nhị giai thí luyện • Bên trên",
+                "date": "29/10/2026"
+            },
+            {
+                "id": "0009",
+                "name": "9- Nhị giai thí luyện • Phía dưới",
+                "date": "29/10/2026"
+            },
+            {
+                "id": "0010",
+                "name": "10- Nghĩa cứu sư tỷ",
+                "date": "29/10/2026"
+            },
+            {
+                "id": "0011",
+                "name": "11- Thế ngoại phế viên",
+                "date": "29/10/2026"
+            },
+            {
+                "id": "0012",
+                "name": "12- Gặp chiêu phá chiêu",
                 "date": "29/10/2026"
             }
         ]
