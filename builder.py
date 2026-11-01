@@ -7,7 +7,7 @@ from name_glossary import (update_name_cfg, normalize_entries, compile_name_sour
                            substitute_names, fix_name_spacing)
 import library_store as store
 from library_store import CatalogError, read_catalog, write_catalog
-from editor_widgets import search_key
+from editor_widgets import search_key, apply_tk_defaults, StyledScrolledText
 try:
     import han_viet as _hv
     _HAN_VIET_OK = True
@@ -43,7 +43,7 @@ LIBRARY_CATALOG = os.path.join(LIBRARY_DIR, "list.json")
 DRAFT_DIR = os.path.join(BASE_DIR, ".drafts")
 
 # Bảng màu dùng chung
-BG, PANEL, FIELD, MUTED, TEXT = "#09090b", "#18181b", "#27272a", "#a1a1aa", "#e4e4e7"
+BG, PANEL, FIELD, MUTED, TEXT = "#15130f", "#1e1b17", "#29251f", "#a39887", "#e6dfd2"
 
 
 def name_cfg_path():
@@ -240,13 +240,13 @@ class ReviewWindow:
         self.setup_ui()
         self.load_content()
         if from_draft:
-            self.set_status(f"📝 Đã mở nháp: {len(cn_lines)} đoạn — chưa lưu", "#f59e0b")
+            self.set_status(f"📝 Đã mở nháp: {len(cn_lines)} đoạn — chưa lưu", "#e0b25c")
         else:
             self.save_draft()
 
     # ── nháp & trạng thái ──
 
-    def set_status(self, text, color="#10b981"):
+    def set_status(self, text, color="#8fc29a"):
         self.status_lbl.config(text=text, fg=color)
 
     def mark_changed(self):
@@ -260,13 +260,13 @@ class ReviewWindow:
         try:
             write_draft(self.title, self.slug, self.cn_lines, self.vi_lines)
             self.set_status(f"📝 Nháp tự lưu lúc {time.strftime('%H:%M:%S')} — .drafts/{self.slug}.json",
-                            "#71717a" if self.saved else "#f59e0b")
+                            "#8a7f70" if self.saved else "#e0b25c")
         except Exception as error:
-            self.set_status(f"⚠ Không lưu được nháp: {error}", "#ef4444")
+            self.set_status(f"⚠ Không lưu được nháp: {error}", "#e8857b")
 
     def _release_app(self):
         self.app.btn_run.config(state="normal")
-        self.app.set_status("Sẵn sàng", "#71717a")
+        self.app.set_status("Sẵn sàng", "#8a7f70")
         self.app.btn_clear.pack(side="right", padx=5)
 
     def close_window(self):
@@ -301,25 +301,25 @@ class ReviewWindow:
         ctrl_frame = tk.Frame(self.top, bg=BG)
         ctrl_frame.pack(fill="x", padx=10, pady=10)
 
-        tk.Label(ctrl_frame, text="Bôi đen ➡️ chuột phải: Thêm Name  ·  Bấm đúp một dòng để sửa câu",
-                 fg=MUTED, bg=BG).pack(side="left")
+        btn = dict(fg="white", borderwidth=0, padx=14, pady=5, cursor="hand2")
+        tk.Button(ctrl_frame, text="🔍 Kiểm tra lỗi", command=self.check_translation_errors, bg=FIELD, **btn).pack(side="left")
+        tk.Button(ctrl_frame, text="🔄 Dịch lại toàn bộ", command=self.retranslate_all, bg=FIELD, **btn).pack(side="left", padx=(8, 0))
+        tk.Button(ctrl_frame, text="💾 Lưu data.json", command=self.save_data, bg="#4f7f58", **btn).pack(side="right")
+        tk.Button(ctrl_frame, text="📚 Lưu vào thư viện", command=self.save_to_library, bg="#9c6a28", **btn).pack(side="right", padx=(0, 8))
+        tk.Button(ctrl_frame, text="✎ Thêm Name", command=self.prompt_add_name, bg="#6a5683", **btn).pack(side="right", padx=(0, 8))
+        tk.Label(self.top, text="Bôi đen chữ rồi chuột phải để thêm Name  ·  Bấm đúp một dòng để sửa câu",
+                 fg="#8a7f70", bg=BG, font=("Segoe UI", 9), anchor="w").pack(fill="x", padx=12, pady=(0, 6))
 
-        btn = dict(fg="white", borderwidth=0, padx=12, cursor="hand2")
-        tk.Button(ctrl_frame, text="💾 Lưu data.json", command=self.save_data, bg="#10b981", **btn).pack(side="right")
-        tk.Button(ctrl_frame, text="📚 Lưu vào thư viện", command=self.save_to_library, bg="#0f766e", **btn).pack(side="right", padx=(0, 10))
-        tk.Button(ctrl_frame, text="✏️ Thêm Name", command=self.prompt_add_name, bg="#3b82f6", **btn).pack(side="right", padx=(0, 10))
-        tk.Button(ctrl_frame, text="🔄 Dịch Lại Toàn Bộ", command=self.retranslate_all, bg="#f59e0b", **btn).pack(side="right", padx=(0, 10))
-        tk.Button(ctrl_frame, text="🔍 Kiểm tra lỗi", command=self.check_translation_errors, bg="#ef4444", **btn).pack(side="right", padx=(0, 10))
-
-        self.status_lbl = tk.Label(self.top, text="", fg="#71717a", bg=BG, anchor="w", font=("Arial", 9))
+        self.status_lbl = tk.Label(self.top, text="", fg="#8a7f70", bg=BG, anchor="w", font=("Segoe UI", 9))
         self.status_lbl.pack(side="bottom", fill="x", padx=12, pady=(0, 6))
 
-        self.text_editor = scrolledtext.ScrolledText(self.top, wrap=tk.WORD, bg=PANEL, fg=TEXT, font=("Consolas", 11), borderwidth=0)
+        self.text_editor = StyledScrolledText(self.top, wrap=tk.WORD, bg=PANEL, fg=TEXT, font=("Segoe UI", 11), borderwidth=0,
+                                                     padx=12, pady=8, spacing1=2, spacing3=2)
         self.text_editor.pack(fill="both", expand=True, padx=10, pady=5)
 
-        self.text_editor.tag_config("cn", foreground="#71717a")
-        self.text_editor.tag_config("vi", foreground="#ffffff")
-        self.text_editor.tag_config("line_hover", background="#1f2937")
+        self.text_editor.tag_config("cn", foreground="#8a7f70")
+        self.text_editor.tag_config("vi", foreground="#f4ede1")
+        self.text_editor.tag_config("line_hover", background="#221e19")
 
         self.menu = tk.Menu(self.top, tearoff=0, bg=FIELD, fg="white", borderwidth=0)
         self.menu.add_command(label="Sửa lỗi & Thêm Name (từ đoạn bôi đen)", command=self.prompt_add_name)
@@ -353,7 +353,7 @@ class ReviewWindow:
 
     def check_translation_errors(self):
         self.text_editor.tag_remove("error_highlight", "1.0", tk.END)
-        self.text_editor.tag_config("error_highlight", background="#ef4444", foreground="white")
+        self.text_editor.tag_config("error_highlight", background="#9a3f35", foreground="white")
 
         # Ký tự Hán chưa dịch, ký tự lỗi Unicode � và dòng API lỗi
         error_pattern = re.compile(r'[㐀-䶿一-鿿�]|\[Lỗi dịch\]')
@@ -425,16 +425,16 @@ class ReviewWindow:
             dialog.geometry("760x360")
 
         tk.Label(dialog, text="Tiếng Trung gốc:", fg=MUTED, bg=PANEL).pack(anchor="w", padx=14, pady=(10, 2))
-        cn_box = tk.Text(dialog, height=3, wrap=tk.WORD, bg=BG, fg="#a1a1aa", font=("Consolas", 11),
+        cn_box = tk.Text(dialog, height=3, wrap=tk.WORD, bg=BG, fg="#a39887", font=("Microsoft YaHei UI", 11),
                          borderwidth=0, padx=8, pady=6)
         cn_box.insert("1.0", self.cn_lines[index])
         cn_box.config(state=tk.DISABLED)
         cn_box.pack(fill="x", padx=14)
 
-        tk.Label(dialog, text="Bản dịch (Ctrl+Enter để lưu, Esc để hủy):", fg="#10b981", bg=PANEL,
-                 font=("Arial", 10, "bold")).pack(anchor="w", padx=14, pady=(10, 2))
+        tk.Label(dialog, text="Bản dịch (Ctrl+Enter để lưu, Esc để hủy):", fg="#8fc29a", bg=PANEL,
+                 font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=14, pady=(10, 2))
         vi_box = tk.Text(dialog, height=6, wrap=tk.WORD, bg=FIELD, fg="white", insertbackground="white",
-                         font=("Consolas", 11), borderwidth=0, padx=8, pady=6, undo=True)
+                         font=("Segoe UI", 11), borderwidth=0, padx=8, pady=6, undo=True)
         vi_box.insert("1.0", self.vi_lines[index])
         vi_box.pack(fill="both", expand=True, padx=14)
         vi_box.focus_set()
@@ -461,7 +461,7 @@ class ReviewWindow:
         buttons = tk.Frame(dialog, bg=PANEL)
         buttons.pack(fill="x", padx=14, pady=10)
         tk.Button(buttons, text="Hủy", command=close, bg=FIELD, fg="white", borderwidth=0, padx=14).pack(side="right")
-        tk.Button(buttons, text="💾 Lưu câu", command=apply, bg="#10b981", fg="white", borderwidth=0, padx=14).pack(side="right", padx=8)
+        tk.Button(buttons, text="💾 Lưu câu", command=apply, bg="#4f7f58", fg="white", borderwidth=0, padx=14).pack(side="right", padx=8)
         vi_box.bind("<Control-Return>", apply)
         dialog.bind("<Escape>", close)
         dialog.protocol("WM_DELETE_WINDOW", close)
@@ -504,15 +504,15 @@ class ReviewWindow:
         if not is_cn and selected_text:
             ent_wrong.insert(0, selected_text)
 
-        tk.Label(dialog, text="3. Sửa thành (Name đúng):", fg="#10b981", bg=PANEL, font=("Arial", 10, "bold")).pack(pady=(10,0), anchor="w", padx=20)
+        tk.Label(dialog, text="3. Sửa thành (Name đúng):", fg="#8fc29a", bg=PANEL, font=("Segoe UI", 10, "bold")).pack(pady=(10,0), anchor="w", padx=20)
         ent_right = tk.Entry(dialog, **entry_opts)
         ent_right.pack(fill="x", padx=20, pady=5, ipady=5)
         ent_right.focus_set()
 
         temp_var = tk.BooleanVar(value=False)
         tk.Checkbutton(dialog, text="🏷 Name tạm — chỉ dùng cho lượt dịch này, không lưu name.cfg",
-                       variable=temp_var, bg=PANEL, fg="#fbbf24", selectcolor=BG, activebackground=PANEL,
-                       activeforeground="#fbbf24").pack(anchor="w", padx=16, pady=(6, 0))
+                       variable=temp_var, bg=PANEL, fg="#e8c27a", selectcolor=BG, activebackground=PANEL,
+                       activeforeground="#e8c27a").pack(anchor="w", padx=16, pady=(6, 0))
 
         if is_cn and selected_text:
             # Gợi ý Name bằng API dịch; cập nhật ô qua hàng đợi luồng chính.
@@ -618,8 +618,8 @@ class ReviewWindow:
         btn_frame = tk.Frame(dialog, bg=PANEL)
         btn_frame.pack(pady=20)
 
-        tk.Button(btn_frame, text="🚀 Cập nhật nhanh (Enter)", command=lambda: apply_name(False), bg="#3b82f6", fg="white", borderwidth=0).pack(side="left", padx=10, ipadx=10, ipady=5)
-        tk.Button(btn_frame, text="🔄 Dịch Lại Toàn Bộ", command=lambda: apply_name(True), bg="#f59e0b", fg="white", borderwidth=0).pack(side="left", padx=10, ipadx=10, ipady=5)
+        tk.Button(btn_frame, text="🚀 Cập nhật nhanh (Enter)", command=lambda: apply_name(False), bg="#9c6a28", fg="white", borderwidth=0).pack(side="left", padx=10, ipadx=10, ipady=5)
+        tk.Button(btn_frame, text="🔄 Dịch Lại Toàn Bộ", command=lambda: apply_name(True), bg="#8a5a22", fg="white", borderwidth=0).pack(side="left", padx=10, ipadx=10, ipady=5)
         dialog.bind("<Return>", lambda e: apply_name(False))
         dialog.bind("<Escape>", close_dialog)
         dialog.protocol("WM_DELETE_WINDOW", close_dialog)
@@ -684,7 +684,7 @@ class ReviewWindow:
         self.saved = True
         cleared = self.app.clear_temp_names()
         self.app.set_status("✅ Đã lưu data.json thành công!"
-                            + (f" · đã xoá {cleared} name tạm" if cleared else ""), "#10b981")
+                            + (f" · đã xoá {cleared} name tạm" if cleared else ""), "#8fc29a")
         self.app.btn_run.config(state="normal")
         self.app.btn_clear.pack(side="right", padx=5)
         messagebox.showinfo("Thành công", f"Đã xuất dữ liệu truyện: {self.slug}", parent=self.top)
@@ -711,14 +711,14 @@ class ReviewWindow:
         dlg.configure(bg=PANEL)
         dlg.transient(self.top)
         dlg.grab_set()
-        geo = load_config().get("builder_library_dialog", "620x560")
+        geo = load_config().get("builder_library_dialog", "680x680")
         try:
             dlg.geometry(geo)
         except tk.TclError:
-            dlg.geometry("620x560")
-        dlg.minsize(520, 480)
+            dlg.geometry("680x680")
+        dlg.minsize(560, 560)
 
-        label = dict(bg=PANEL, fg=MUTED, font=("Arial", 9, "bold"))
+        label = dict(bg=PANEL, fg=MUTED, font=("Segoe UI", 9, "bold"))
         radio = dict(bg=PANEL, fg="white", selectcolor=BG, activebackground=PANEL, activeforeground="white")
         entry = dict(bg=FIELD, fg="white", insertbackground="white", borderwidth=0)
 
@@ -737,7 +737,7 @@ class ReviewWindow:
         tk.Radiobutton(row_exist, text="Truyện có sẵn — tìm:", variable=story_mode, value="existing", **radio).pack(side="left")
         story_filter = tk.Entry(row_exist, **entry)
         story_filter.pack(side="left", fill="x", expand=True, ipady=4, padx=(6, 0))
-        story_list = tk.Listbox(dlg, height=6, bg=BG, fg=TEXT, selectbackground="#0f766e", borderwidth=0,
+        story_list = tk.Listbox(dlg, height=6, bg=BG, fg=TEXT, selectbackground="#9c6a28", borderwidth=0,
                                 highlightthickness=0, exportselection=False, activestyle="none")
         story_list.pack(fill="x", padx=16, pady=(4, 0))
 
@@ -777,8 +777,8 @@ class ReviewWindow:
         pattern_combo = ttk.Combobox(row_split, textvariable=pattern_var,
                                      values=[rx for _n, rx in patterns], font=("Consolas", 9))
         pattern_combo.pack(side="left", fill="x", expand=True, padx=(6, 0))
-        pattern_hint = tk.Label(dlg, text=" · ".join(n for n, _ in patterns), fg="#52525b", bg=PANEL,
-                                font=("Arial", 8), wraplength=560, justify="left")
+        pattern_hint = tk.Label(dlg, text=" · ".join(n for n, _ in patterns), fg="#6b6255", bg=PANEL,
+                                font=("Segoe UI", 9), wraplength=560, justify="left")
         pattern_hint.pack(anchor="w", padx=16, pady=(2, 0))
         one_title.bind("<KeyRelease>", lambda e: (split_mode.set("one"), update_preview()))
         pattern_combo.bind("<<ComboboxSelected>>", lambda e: (split_mode.set("split"), update_preview()))
@@ -786,11 +786,44 @@ class ReviewWindow:
         split_mode.trace_add("write", lambda *_: update_preview())
         story_mode.trace_add("write", lambda *_: update_preview())
 
-        # 3. Xem trước
-        tk.Label(dlg, text="3. XEM TRƯỚC", **label).pack(anchor="w", padx=16, pady=(14, 4))
-        preview = tk.Text(dlg, height=7, bg=BG, fg="#cbd5e1", borderwidth=0, font=("Consolas", 9), padx=8, pady=6)
-        preview.pack(fill="both", expand=True, padx=16)
+        # 3. Chọn chương lưu (bản dịch mới có thể trùng các chương đã có trong truyện)
+        tk.Label(dlg, text="3. CHỌN CHƯƠNG ĐỂ LƯU", **label).pack(anchor="w", padx=16, pady=(14, 4))
+        pick_row = tk.Frame(dlg, bg=PANEL)
+        pick_row.pack(fill="x", padx=16)
+        small = dict(bg=FIELD, fg="white", borderwidth=0, padx=8, pady=2, cursor="hand2", font=("Segoe UI", 9))
+        range_var = tk.StringVar()
+        range_entry = tk.Entry(pick_row, textvariable=range_var, width=16, **entry)
+        range_entry.pack(side="left", ipady=3)
+        tk.Button(pick_row, text="Chọn khoảng", command=lambda: pick_range(), **small).pack(side="left", padx=(4, 0))
+        tk.Button(pick_row, text="Tất cả", command=lambda: pick_all(True), **small).pack(side="left", padx=(8, 0))
+        tk.Button(pick_row, text="Bỏ hết", command=lambda: pick_all(False), **small).pack(side="left", padx=(4, 0))
+        tk.Button(pick_row, text="Bỏ chương đã có", command=lambda: pick_missing(), **small).pack(side="left", padx=(4, 0))
+        tk.Label(dlg, text="Bấm vào dòng hoặc phím Space để tick/bỏ · Khoảng: 41-60 hoặc 1-5, 8 (theo cột #)",
+                 fg="#6b6255", bg=PANEL, font=("Segoe UI", 9)).pack(anchor="w", padx=16, pady=(2, 4))
+
+        tree_box = tk.Frame(dlg, bg=BG)
+        tree_box.pack(fill="both", expand=True, padx=16)
+        tree = ttk.Treeview(tree_box, columns=("pick", "no", "id", "name", "count"), show="headings",
+                            style="Scan.Treeview", selectmode="extended", height=8)
+        for col, text, width, anchor in (("pick", "✓", 34, "center"), ("no", "#", 46, "e"), ("id", "Mã", 60, "center"),
+                                         ("name", "Tên chương", 300, "w"), ("count", "Đoạn", 60, "e")):
+            tree.heading(col, text=text)
+            tree.column(col, width=width, anchor=anchor, stretch=(col == "name"))
+        tree_scroll = ttk.Scrollbar(tree_box, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=tree_scroll.set)
+        tree_scroll.pack(side="right", fill="y")
+        tree.pack(side="left", fill="both", expand=True)
+        tree.tag_configure("off", foreground="#6b6255")
+        tree.tag_configure("dup", foreground="#c9a063")
+        summary = tk.Label(dlg, text="", fg=MUTED, bg=PANEL, anchor="w", justify="left", font=("Segoe UI", 9))
+        summary.pack(fill="x", padx=16, pady=(4, 0))
+
         plan = {"slug": None, "title": None, "chapters": [], "error": None}
+        state = {"key": None, "groups": [], "picked": [], "existing": set(), "start": 1, "is_new": True}
+
+        def name_key(name):
+            """So tên chương không phân biệt dấu, hoa thường, khoảng trắng."""
+            return re.sub(r"\s+", " ", search_key(name or "")).strip()
 
         def selected_story():
             if story_mode.get() == "new":
@@ -802,34 +835,112 @@ class ReviewWindow:
             return None, None, False
 
         def update_preview(*_args):
+            """Chia lại chương khi đổi truyện/mẫu; giữ lựa chọn nếu cách chia không đổi."""
             slug, title, is_new = selected_story()
-            plan.update(slug=slug, title=title, chapters=[], error=None)
-            lines = []
+            plan.update(slug=slug, title=title, error=None)
+            groups = []
             if not slug:
                 plan["error"] = "Chọn truyện có sẵn hoặc nhập tên truyện mới."
+            elif split_mode.get() == "one":
+                groups = [(one_title.get().strip() or "Oneshot", pairs)]
             else:
-                start = int(store.next_chapter_id(catalog, slug))
-                if split_mode.get() == "one":
-                    chapters = [(one_title.get().strip() or "Oneshot", pairs)]
-                else:
-                    try:
-                        groups = store.split_into_chapters(pairs, pattern_var.get().strip() or "^$", text_of=lambda p: p[1])
-                    except re.error as error:
-                        groups = []
-                        plan["error"] = f"Regex lỗi: {error}"
-                    chapters = [(g["title"], g["items"]) for g in groups if g["items"]]
-                for offset, (name, items) in enumerate(chapters):
-                    chap_id = store.format_chapter_id(start + offset)
-                    name = name or f"Chương {start + offset}"
+                try:
+                    found = store.split_into_chapters(pairs, pattern_var.get().strip() or "^$", text_of=lambda p: p[1])
+                    groups = [(g["title"], g["items"]) for g in found if g["items"]]
+                except re.error as error:
+                    plan["error"] = f"Regex lỗi: {error}"
+            story = next((s for s in catalog if s.get("slug") == slug), None) if slug and not is_new else None
+            existing = {name_key(c.get("name")) for c in (story or {}).get("chapters", [])} - {""}
+            key = (slug, split_mode.get(), tuple(name for name, _ in groups), tuple(len(i) for _, i in groups))
+            if key != state["key"]:
+                # Đổi truyện đích hoặc cách chia: tick sẵn những chương chưa có trong truyện.
+                picked = [name_key(name) not in existing for name, _ in groups]
+                if groups and not any(picked):
+                    picked = [True] * len(groups)
+                state.update(key=key, picked=picked)
+            state.update(groups=groups, existing=existing, is_new=is_new,
+                         start=int(store.next_chapter_id(catalog, slug)) if slug else 1)
+            draw()
+
+        def draw():
+            """Vẽ bảng + lập kế hoạch lưu: chỉ chương được tick, mã nối tiếp truyện."""
+            groups, picked = state["groups"], state["picked"]
+            plan["chapters"] = []
+            next_no = state["start"]
+            tree.delete(*tree.get_children())
+            for i, (name, items) in enumerate(groups):
+                name = name or f"Chương {i + 1}"
+                dup = name_key(name) in state["existing"]
+                chap_id = ""
+                if picked[i]:
+                    chap_id = store.format_chapter_id(next_no)
                     plan["chapters"].append((chap_id, name, items))
-                    lines.append(f"{chap_id}  {name[:60]:<60}  {len(items):>4} đoạn")
-                head = f"{'TRUYỆN MỚI' if is_new else 'Truyện'} {slug} | {title} — {len(plan['chapters'])} chương"
-                lines.insert(0, head + "\n" + "─" * 60)
-            preview.config(state=tk.NORMAL)
-            preview.delete("1.0", tk.END)
-            preview.insert("1.0", plan["error"] or "\n".join(lines[:300]))
-            preview.config(state=tk.DISABLED)
-            save_btn.config(state=tk.NORMAL if plan["chapters"] and not plan["error"] else tk.DISABLED)
+                    next_no += 1
+                tags = () if picked[i] else ("off",)
+                if dup:
+                    tags += ("dup",)
+                tree.insert("", "end", iid=str(i), tags=tags,
+                            values=("☑" if picked[i] else "☐", i + 1, chap_id, name[:120] + ("  · đã có" if dup else ""), len(items)))
+            if plan["error"]:
+                summary.config(text=plan["error"], fg="#e8857b")
+            else:
+                n = len(plan["chapters"])
+                span = ""
+                if n:
+                    first, last = plan["chapters"][0][0], plan["chapters"][-1][0]
+                    span = f" → mã {first}" + (f"–{last}" if first != last else "")
+                head = "TRUYỆN MỚI" if state["is_new"] else "Truyện"
+                dups = sum(1 for name, _ in groups if name_key(name) in state["existing"])
+                summary.config(text=f"{head} {plan['slug']} | {plan['title']} — lưu {n}/{len(groups)} chương{span}"
+                               + (f" · {dups} chương trùng tên với chương đã có" if dups else ""), fg=MUTED)
+            save_btn.config(state=tk.NORMAL if plan["chapters"] and not plan["error"] else tk.DISABLED,
+                            text=f"📚 Lưu {len(plan['chapters'])} chương vào thư viện" if plan["chapters"] else "📚 Lưu vào thư viện")
+
+        def toggle(indexes):
+            if not indexes:
+                return
+            value = not all(state["picked"][i] for i in indexes)
+            for i in indexes:
+                state["picked"][i] = value
+            keep = tree.yview()[0]
+            draw()
+            tree.yview_moveto(keep)
+            tree.selection_set([str(i) for i in indexes])
+
+        def on_click(event):
+            row = tree.identify_row(event.y)
+            if row and tree.identify_region(event.x, event.y) == "cell":
+                toggle([int(row)])
+                return "break"
+
+        def pick_all(value):
+            state["picked"] = [value] * len(state["groups"])
+            draw()
+
+        def pick_missing():
+            state["picked"] = [name_key(name) not in state["existing"] for name, _ in state["groups"]]
+            draw()
+
+        def pick_range(event=None):
+            """'41-60', '1-5, 8' theo số thứ tự sau khi chia (cột #)."""
+            chosen = set()
+            for part in re.split(r"[,;\s]+", range_var.get().strip()):
+                match = re.fullmatch(r"(\d+)(?:-(\d+))?", part)
+                if not match:
+                    if part:
+                        messagebox.showwarning("Khoảng không hợp lệ", f"Không hiểu “{part}”. Ví dụ: 41-60 hoặc 1-5, 8", parent=dlg)
+                        return "break"
+                    continue
+                a, b = int(match.group(1)), int(match.group(2) or match.group(1))
+                chosen.update(range(min(a, b), max(a, b) + 1))
+            if chosen:
+                state["picked"] = [(i + 1) in chosen for i in range(len(state["groups"]))]
+                draw()
+            return "break"
+
+        tree.bind("<Button-1>", on_click)
+        tree.bind("<space>", lambda e: (toggle([int(i) for i in tree.selection()]), "break")[1])
+        range_entry.bind("<Return>", pick_range)
 
         def close(event=None):
             save_config({"builder_library_dialog": dlg.geometry()})
@@ -868,14 +979,17 @@ class ReviewWindow:
             self.set_status(f"📚 Đã lưu {len(plan['chapters'])} chương vào library/{slug} ({span}) · {title}")
             cleared = self.app.clear_temp_names()
             self.app.set_status(f"📚 Đã lưu vào thư viện: {slug} | {title}"
-                                + (f" · đã xoá {cleared} name tạm" if cleared else ""), "#10b981")
+                                + (f" · đã xoá {cleared} name tạm" if cleared else ""), "#8fc29a")
             close()
 
         bottom = tk.Frame(dlg, bg=PANEL)
-        bottom.pack(fill="x", padx=16, pady=12)
+        # Pack lên trước các khối khác để nút Lưu/Hủy và dòng tóm tắt không bị bảng chương đẩy khuất.
+        bottom.pack(side="bottom", fill="x", padx=16, pady=12, before=dlg.winfo_children()[0])
+        summary.pack_forget()
+        summary.pack(side="bottom", fill="x", padx=16, pady=(4, 0), after=bottom)
         tk.Button(bottom, text="Hủy", command=close, bg=FIELD, fg="white", borderwidth=0, padx=14, pady=4).pack(side="right")
-        save_btn = tk.Button(bottom, text="📚 Lưu vào thư viện", command=do_save, bg="#0f766e", fg="white",
-                             borderwidth=0, padx=14, pady=4, font=("Arial", 9, "bold"))
+        save_btn = tk.Button(bottom, text="📚 Lưu vào thư viện", command=do_save, bg="#9c6a28", fg="white",
+                             borderwidth=0, padx=14, pady=4, font=("Segoe UI", 9, "bold"))
         save_btn.pack(side="right", padx=8)
         dlg.bind("<Escape>", close)
         dlg.protocol("WM_DELETE_WINDOW", close)
@@ -908,6 +1022,7 @@ class TranslatorGUI:
             # Restore saved geometry or use default
             self.root.geometry(load_config().get("builder_main", "700x600"))
 
+        apply_tk_defaults(self.root)
         self._configure_styles()
         self.setup_ui()
         self._pump_ui_queue()
@@ -953,20 +1068,20 @@ class TranslatorGUI:
         except tk.TclError:
             pass
         style.configure("TCombobox", fieldbackground=FIELD, background=FIELD, foreground="white",
-                        arrowcolor=MUTED, bordercolor="#3f3f46", lightcolor="#3f3f46", darkcolor="#3f3f46")
+                        arrowcolor=MUTED, bordercolor="#4a4238", lightcolor="#4a4238", darkcolor="#4a4238")
         style.map("TCombobox", fieldbackground=[("readonly", FIELD)], foreground=[("readonly", "white")])
         self.root.option_add("*TCombobox*Listbox.background", FIELD)
         self.root.option_add("*TCombobox*Listbox.foreground", "white")
-        style.configure("Run.Horizontal.TProgressbar", troughcolor=PANEL, background="#3b82f6",
-                        bordercolor=BG, lightcolor="#3b82f6", darkcolor="#3b82f6", thickness=8)
+        style.configure("Run.Horizontal.TProgressbar", troughcolor=PANEL, background="#9c6a28",
+                        bordercolor=BG, lightcolor="#d9a35c", darkcolor="#d9a35c", thickness=8)
         style.configure("Scan.Treeview", background=PANEL, fieldbackground=PANEL, foreground=TEXT,
                         rowheight=26, borderwidth=0, font=("Segoe UI", 10))
-        style.map("Scan.Treeview", background=[("selected", "#4c1d95")], foreground=[("selected", "white")])
+        style.map("Scan.Treeview", background=[("selected", "#4f3f63")], foreground=[("selected", "white")])
         style.configure("Scan.Treeview.Heading", background=FIELD, foreground=MUTED, relief="flat",
-                        font=("Arial", 8, "bold"), bordercolor=BG, lightcolor=FIELD, darkcolor=FIELD)
-        style.map("Scan.Treeview.Heading", background=[("active", "#3f3f46")])
-        style.configure("Vertical.TScrollbar", background="#3f3f46", troughcolor=BG, bordercolor=BG,
-                        arrowcolor=MUTED, lightcolor="#3f3f46", darkcolor="#3f3f46")
+                        font=("Segoe UI", 9, "bold"), bordercolor=BG, lightcolor=FIELD, darkcolor=FIELD)
+        style.map("Scan.Treeview.Heading", background=[("active", "#3a332c")])
+        style.configure("Vertical.TScrollbar", background="#3a332c", troughcolor=BG, bordercolor=BG,
+                        arrowcolor=MUTED, lightcolor="#4a4238", darkcolor="#4a4238")
 
     def _preload_name_model(self):
         try:
@@ -987,23 +1102,24 @@ class TranslatorGUI:
 
     def setup_ui(self):
         # Header
-        tk.Label(self.frame, text="DỊCH TRUYỆN TRUNG - VIỆT", font=("Arial", 14, "bold"), fg="#ffffff", bg=BG).pack(pady=10)
+        tk.Label(self.frame, text="DỊCH TRUYỆN TRUNG - VIỆT", font=("Segoe UI", 14, "bold"), fg="#f4ede1", bg=BG).pack(pady=10)
 
         # Story Title Input
         frame_title = tk.Frame(self.frame, bg=BG)
         frame_title.pack(fill="x", padx=20, pady=5)
-        tk.Label(frame_title, text="Story Title:", fg=MUTED, bg=BG).pack(side="left")
-        self.ent_title = tk.Entry(frame_title, bg=PANEL, fg="#ffffff", insertbackground="white", borderwidth=0)
+        tk.Label(frame_title, text="Tên truyện:", fg=MUTED, bg=BG).pack(side="left")
+        self.ent_title = tk.Entry(frame_title, bg=PANEL, fg="#f4ede1", insertbackground="white", borderwidth=0)
         self.ent_title.pack(side="left", fill="x", expand=True, padx=10, ipady=5)
 
         # Text Area for Copy-Paste
         head = tk.Frame(self.frame, bg=BG)
         head.pack(fill="x", padx=20, pady=(10, 0))
         tk.Label(head, text="Nội dung tiếng Trung:", fg=MUTED, bg=BG).pack(side="left")
-        self.lbl_counter = tk.Label(head, text="", fg="#71717a", bg=BG, font=("Arial", 9))
+        self.lbl_counter = tk.Label(head, text="", fg="#8a7f70", bg=BG, font=("Segoe UI", 9))
         self.lbl_counter.pack(side="right")
-        self.txt_area = scrolledtext.ScrolledText(self.frame, height=15, bg=PANEL, fg=TEXT, borderwidth=0,
-                                                  font=("Consolas", 10), insertbackground="white", undo=True)
+        self.txt_area = StyledScrolledText(self.frame, height=15, bg=PANEL, fg=TEXT, borderwidth=0,
+                                                  font=("Microsoft YaHei UI", 11), insertbackground="white", undo=True,
+                                                  padx=10, pady=8, spacing1=2)
         self.txt_area.pack(fill="both", expand=True, padx=20, pady=5)
         self.txt_area.bind("<<Modified>>", self._on_text_modified)
         self.txt_area.bind("<Control-Return>", lambda e: (self.start_thread(), "break")[1])
@@ -1012,14 +1128,14 @@ class TranslatorGUI:
         # Drop Zone
         self.drop_zone = tk.Label(
             self.frame, text="📂  Kéo thả file .txt vào đây",
-            bg=PANEL, fg="#71717a", font=("Arial", 10),
+            bg=PANEL, fg="#8a7f70", font=("Segoe UI", 10),
             relief="groove", borderwidth=2, pady=12
         )
         self.drop_zone.pack(fill="x", padx=20, pady=(0, 5))
         self.drop_zone.drop_target_register(DND_FILES)
         self.drop_zone.dnd_bind("<<Drop>>", self.handle_drop)
-        self.drop_zone.dnd_bind("<<DragEnter>>", lambda e: self.drop_zone.config(bg=FIELD, fg="#3b82f6"))
-        self.drop_zone.dnd_bind("<<DragLeave>>", lambda e: self.drop_zone.config(bg=PANEL, fg="#71717a"))
+        self.drop_zone.dnd_bind("<<DragEnter>>", lambda e: self.drop_zone.config(bg=FIELD, fg="#d9a35c"))
+        self.drop_zone.dnd_bind("<<DragLeave>>", lambda e: self.drop_zone.config(bg=PANEL, fg="#8a7f70"))
 
         # Buttons Frame
         btn_frame = tk.Frame(self.frame, bg=BG)
@@ -1028,7 +1144,7 @@ class TranslatorGUI:
         self.btn_file = tk.Button(btn_frame, text="📁 Chọn File .txt", command=self.load_file, bg=FIELD, fg="white", borderwidth=0, padx=15)
         self.btn_file.pack(side="left", padx=5)
 
-        self.btn_scan = tk.Button(btn_frame, text="🔍 Scan Names", command=self.open_scan_names_dialog, bg="#7c3aed", fg="white", borderwidth=0, padx=15)
+        self.btn_scan = tk.Button(btn_frame, text="🔍 Scan Names", command=self.open_scan_names_dialog, bg="#6a5683", fg="white", borderwidth=0, padx=15)
         self.btn_scan.pack(side="left", padx=5)
 
         self.btn_draft = tk.Button(btn_frame, text="📝 Mở nháp", command=self.open_draft, bg=FIELD, fg="white", borderwidth=0, padx=15)
@@ -1038,16 +1154,16 @@ class TranslatorGUI:
                                         bg=FIELD, fg="white", borderwidth=0, padx=15)
         self.btn_temp_names.pack(side="left", padx=5)
 
-        self.btn_run = tk.Button(btn_frame, text="🚀 Bắt đầu dịch", command=self.start_thread, bg="#1d4ed8", fg="white", borderwidth=0, padx=25)
+        self.btn_run = tk.Button(btn_frame, text="🚀 Bắt đầu dịch", command=self.start_thread, bg="#9c6a28", fg="white", borderwidth=0, padx=25)
         self.btn_run.pack(side="right", padx=5)
 
-        self.btn_cancel = tk.Button(btn_frame, text="⏹ Huỷ", command=self.cancel_translation, bg="#b91c1c", fg="white", borderwidth=0, padx=15)
+        self.btn_cancel = tk.Button(btn_frame, text="⏹ Huỷ", command=self.cancel_translation, bg="#8a372e", fg="white", borderwidth=0, padx=15)
 
-        self.btn_clear = tk.Button(btn_frame, text="🗑️ Xóa tất cả", command=self.clear_all, bg="#dc2626", fg="white", borderwidth=0, padx=15)
+        self.btn_clear = tk.Button(btn_frame, text="🗑️ Xóa tất cả", command=self.clear_all, bg="#9a3f35", fg="white", borderwidth=0, padx=15)
 
         # Progress
         self.progress = ttk.Progressbar(self.frame, style="Run.Horizontal.TProgressbar", mode="determinate")
-        self.lbl_status = tk.Label(self.frame, text="Sẵn sàng  ·  Ctrl+Enter để dịch", fg="#71717a", bg=BG)
+        self.lbl_status = tk.Label(self.frame, text="Sẵn sàng  ·  Ctrl+Enter để dịch", fg="#8a7f70", bg=BG)
         self.lbl_status.pack(pady=5)
 
     # ── tìm kiếm (Ctrl+F) ──
@@ -1062,12 +1178,12 @@ class TranslatorGUI:
         bar = self.find_bar = tk.Frame(self.frame, bg=FIELD)
         tk.Label(bar, text="🔍", bg=FIELD, fg=MUTED).pack(side="left", padx=(8, 2))
         self.find_var = tk.StringVar()
-        self.find_entry = tk.Entry(bar, textvariable=self.find_var, bg=PANEL, fg="#ffffff",
+        self.find_entry = tk.Entry(bar, textvariable=self.find_var, bg=PANEL, fg="#f4ede1",
                                    insertbackground="white", borderwidth=0, font=("Consolas", 10))
         self.find_entry.pack(side="left", fill="x", expand=True, ipady=4, pady=4)
-        self.find_status = tk.Label(bar, text="", width=12, bg=FIELD, fg=MUTED, font=("Arial", 9))
+        self.find_status = tk.Label(bar, text="", width=12, bg=FIELD, fg=MUTED, font=("Segoe UI", 9))
         self.find_status.pack(side="left", padx=6)
-        small = dict(bg="#3f3f46", fg="white", activebackground="#52525b", activeforeground="white",
+        small = dict(bg="#3a332c", fg="white", activebackground="#4a4238", activeforeground="white",
                      borderwidth=0, padx=8, cursor="hand2")
         tk.Button(bar, text="▲", command=lambda: self.find_step(-1), **small).pack(side="left", padx=(0, 2), pady=4)
         tk.Button(bar, text="▼", command=lambda: self.find_step(1), **small).pack(side="left", padx=(0, 6), pady=4)
@@ -1084,8 +1200,8 @@ class TranslatorGUI:
             widget.bind("<Shift-F3>", lambda e: (self.find_step(-1), "break")[1])
         self.txt_area.bind("<Escape>", lambda e: self.hide_find_bar() if self.find_bar.winfo_ismapped() else None)
 
-        self.txt_area.tag_configure("find_match", background="#854d0e", foreground="#ffffff")
-        self.txt_area.tag_configure("find_current", background="#f59e0b", foreground="#09090b")
+        self.txt_area.tag_configure("find_match", background="#6b4a1c", foreground="#f4ede1")
+        self.txt_area.tag_configure("find_current", background="#8a5a22", foreground="#15130f")
         self.txt_area.tag_raise("find_current", "find_match")
         self.txt_area.tag_raise("sel")
 
@@ -1146,7 +1262,7 @@ class TranslatorGUI:
             text.tag_add("find_match", index, end)
             index = end
         if not self._find_matches:
-            self.find_status.config(text="Không thấy", fg="#f87171")
+            self.find_status.config(text="Không thấy", fg="#e8857b")
             return
         # Bắt đầu từ kết quả gần con trỏ (hoặc vị trí cũ khi nội dung vừa đổi).
         anchor = previous or text.index("insert")
@@ -1210,11 +1326,11 @@ class TranslatorGUI:
         self.ent_title.delete(0, tk.END)
         self.txt_area.delete(1.0, tk.END)
         self.clear_temp_names()  # truyện mới: name tạm của truyện cũ không còn dùng
-        self.set_status("Sẵn sàng", "#71717a")
+        self.set_status("Sẵn sàng", "#8a7f70")
         self.btn_clear.pack_forget()
 
     def handle_drop(self, event):
-        self.drop_zone.config(bg=PANEL, fg="#71717a")
+        self.drop_zone.config(bg=PANEL, fg="#8a7f70")
         try:
             paths = self.root.tk.splitlist(event.data)
         except tk.TclError:
@@ -1225,7 +1341,7 @@ class TranslatorGUI:
             return
         self._load_from_path(txt_files[0])
         if len(txt_files) > 1:
-            self.set_status(f"Đã tải {os.path.basename(txt_files[0])} (bỏ qua {len(txt_files) - 1} file còn lại)", "#f59e0b")
+            self.set_status(f"Đã tải {os.path.basename(txt_files[0])} (bỏ qua {len(txt_files) - 1} file còn lại)", "#e0b25c")
 
     def load_file(self):
         file_path = filedialog.askopenfilename(filetypes=[("Text files", "*.txt")])
@@ -1244,7 +1360,7 @@ class TranslatorGUI:
         title_suggest = os.path.splitext(os.path.basename(file_path))[0]
         self.ent_title.delete(0, tk.END)
         self.ent_title.insert(0, title_suggest)
-        color = "#f59e0b" if "lỗi" in encoding else "#10b981"
+        color="#e0b25c" if "lỗi" in encoding else "#8fc29a"
         self.set_status(f"Đã tải: {os.path.basename(file_path)}  ·  mã hoá {encoding}", color)
         self.update_counter()
 
@@ -1267,7 +1383,7 @@ class TranslatorGUI:
         slug = draft.get("slug") or slugify_vn(title)
         self.btn_run.config(state="disabled")
         self.btn_clear.pack_forget()
-        self.set_status(f"Đang xem nháp: {title} ({draft.get('time', '')})", "#f59e0b")
+        self.set_status(f"Đang xem nháp: {title} ({draft.get('time', '')})", "#e0b25c")
         ReviewWindow(self.root, title, slug, cn, vi, self, from_draft=True)
 
     def update_catalog(self, title, slug):
@@ -1475,20 +1591,20 @@ class TranslatorGUI:
         # Header
         hdr = tk.Frame(dlg, bg=PANEL, pady=10)
         hdr.pack(fill=tk.X)
-        tk.Label(hdr, text="🔍 Scan Names", fg="#ffffff", bg=PANEL, font=("Arial", 12, "bold")).pack(side=tk.LEFT, padx=16)
-        hdr_count_lbl = tk.Label(hdr, text=f"{len(candidates)} ứng viên tìm được", fg=MUTED, bg=PANEL, font=("Arial", 9))
+        tk.Label(hdr, text="🔍 Scan Names", fg="#f4ede1", bg=PANEL, font=("Segoe UI", 12, "bold")).pack(side=tk.LEFT, padx=16)
+        hdr_count_lbl = tk.Label(hdr, text=f"{len(candidates)} ứng viên tìm được", fg=MUTED, bg=PANEL, font=("Segoe UI", 9))
         hdr_count_lbl.pack(side=tk.LEFT)
 
         def rerun():
             on_close()
             self.open_scan_names_dialog()
 
-        tk.Button(hdr, text="🔄 Quét lại", bg="#3f3f46", fg="#ffffff", relief="flat", borderwidth=0,
-                  padx=10, pady=4, font=("Arial", 8), cursor="hand2", command=rerun).pack(side=tk.RIGHT, padx=16)
+        tk.Button(hdr, text="🔄 Quét lại", bg="#3a332c", fg="#f4ede1", relief="flat", borderwidth=0,
+                  padx=10, pady=4, font=("Segoe UI", 9), cursor="hand2", command=rerun).pack(side=tk.RIGHT, padx=16)
 
         if not candidates:
             tk.Label(dlg, text="Không tìm thấy tên nào mới trong văn bản.\n(Tất cả các tên có thể đã có trong name.cfg).",
-                     fg="#ef4444", bg=BG, font=("Arial", 10)).pack(pady=40)
+                     fg="#e8857b", bg=BG, font=("Segoe UI", 10)).pack(pady=40)
             tk.Button(dlg, text="Đóng", command=on_close, bg=FIELD, fg="white",
                       relief="flat", borderwidth=0, padx=16, pady=6).pack()
             return
@@ -1496,24 +1612,24 @@ class TranslatorGUI:
         # Filter bar
         filter_frame = tk.Frame(dlg, bg=PANEL, padx=16, pady=6)
         filter_frame.pack(fill=tk.X)
-        tk.Label(filter_frame, text="Lọc:", fg=MUTED, bg=PANEL, font=("Arial", 9)).pack(side=tk.LEFT)
+        tk.Label(filter_frame, text="Lọc:", fg=MUTED, bg=PANEL, font=("Segoe UI", 9)).pack(side=tk.LEFT)
         type_filter_var = tk.StringVar(value="TẤT CẢ")
         types = ["TẤT CẢ"] + sorted({c['type'] for c in candidates})
         type_combo = ttk.Combobox(filter_frame, textvariable=type_filter_var, values=types,
-                                  state="readonly", width=12, font=("Arial", 9))
+                                  state="readonly", width=12, font=("Segoe UI", 9))
         type_combo.pack(side=tk.LEFT, padx=(4, 12))
         min_conf_var = tk.IntVar(value=0)
-        tk.Label(filter_frame, text="Điểm ≥", fg=MUTED, bg=PANEL, font=("Arial", 9)).pack(side=tk.LEFT)
+        tk.Label(filter_frame, text="Điểm ≥", fg=MUTED, bg=PANEL, font=("Segoe UI", 9)).pack(side=tk.LEFT)
         tk.Spinbox(filter_frame, from_=0, to=99, textvariable=min_conf_var, width=4, bg=FIELD, fg="white",
-                   insertbackground="white", relief="flat", font=("Arial", 9)).pack(side=tk.LEFT, padx=(2, 0))
-        tk.Label(filter_frame, text="%", fg=MUTED, bg=PANEL, font=("Arial", 9)).pack(side=tk.LEFT, padx=(2, 12))
+                   insertbackground="white", relief="flat", font=("Segoe UI", 9)).pack(side=tk.LEFT, padx=(2, 0))
+        tk.Label(filter_frame, text="%", fg=MUTED, bg=PANEL, font=("Segoe UI", 9)).pack(side=tk.LEFT, padx=(2, 12))
         search_var = tk.StringVar()
-        tk.Label(filter_frame, text="Tìm:", fg=MUTED, bg=PANEL, font=("Arial", 9)).pack(side=tk.LEFT)
+        tk.Label(filter_frame, text="Tìm:", fg=MUTED, bg=PANEL, font=("Segoe UI", 9)).pack(side=tk.LEFT)
         search_entry = tk.Entry(filter_frame, textvariable=search_var, width=20, bg=FIELD, fg="white",
-                                insertbackground="white", relief="flat", font=("Arial", 9))
+                                insertbackground="white", relief="flat", font=("Segoe UI", 9))
         search_entry.pack(side=tk.LEFT, padx=(4, 0), ipady=2)
         tk.Label(filter_frame, text="Space: chọn · Del: bỏ qua · Enter: sửa bản dịch",
-                 fg="#52525b", bg=PANEL, font=("Arial", 8)).pack(side=tk.RIGHT)
+                 fg="#6b6255", bg=PANEL, font=("Segoe UI", 9)).pack(side=tk.RIGHT)
 
         # Bảng
         table = tk.Frame(dlg, bg=BG)
@@ -1530,40 +1646,40 @@ class TranslatorGUI:
                 ("conf", "Điểm", 64, "center", False), ("vi", "Bản dịch đề xuất", 300, "w", True)):
             tree.heading(col, text=text, command=lambda c=col: sort_by(c))
             tree.column(col, width=width, minwidth=width if not stretch else 120, anchor=anchor, stretch=stretch)
-        tree.tag_configure("odd", background="#1c1c1f")
-        tree.tag_configure("checked", foreground="#c4b5fd")
-        tree.tag_configure("empty", foreground="#f59e0b")
+        tree.tag_configure("odd", background="#221e19")
+        tree.tag_configure("checked", foreground="#c9b8e0")
+        tree.tag_configure("empty", foreground="#e0b25c")
 
         # Khung chi tiết
         detail = tk.Frame(dlg, bg=PANEL, padx=12, pady=8)
         detail.pack(fill=tk.X, padx=12, pady=(6, 0))
         top_row = tk.Frame(detail, bg=PANEL)
         top_row.pack(fill=tk.X)
-        detail_cn = tk.Label(top_row, text="—", fg="#ffffff", bg=PANEL, font=("Consolas", 14, "bold"))
+        detail_cn = tk.Label(top_row, text="—", fg="#f4ede1", bg=PANEL, font=("Microsoft YaHei UI", 14, "bold"))
         detail_cn.pack(side=tk.LEFT)
-        detail_meta = tk.Label(top_row, text="", fg=MUTED, bg=PANEL, font=("Arial", 8))
+        detail_meta = tk.Label(top_row, text="", fg=MUTED, bg=PANEL, font=("Segoe UI", 9))
         detail_meta.pack(side=tk.LEFT, padx=10)
         vi_row = tk.Frame(detail, bg=PANEL)
         vi_row.pack(fill=tk.X, pady=(6, 4))
-        tk.Label(vi_row, text="Bản dịch:", fg="#10b981", bg=PANEL, font=("Arial", 9, "bold")).pack(side=tk.LEFT)
+        tk.Label(vi_row, text="Bản dịch:", fg="#8fc29a", bg=PANEL, font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT)
         vi_var = tk.StringVar()
         vi_entry = tk.Entry(vi_row, textvariable=vi_var, bg=FIELD, fg="white", insertbackground="white",
-                            relief="flat", font=("Arial", 11), highlightthickness=1,
-                            highlightbackground="#3f3f46", highlightcolor="#7c3aed")
+                            relief="flat", font=("Segoe UI", 11), highlightthickness=1,
+                            highlightbackground="#4a4238", highlightcolor="#b8a4d6")
         vi_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=8, ipady=3)
-        small = dict(relief="flat", borderwidth=0, padx=10, pady=3, font=("Arial", 8, "bold"), cursor="hand2", fg="white")
-        tk.Button(vi_row, text="Copy Hán", bg="#1d4ed8", command=lambda: copy_chinese(), **small).pack(side=tk.LEFT, padx=2)
-        tk.Button(vi_row, text="Thêm", bg="#059669", command=lambda: add_current(), **small).pack(side=tk.LEFT, padx=2)
-        tk.Button(vi_row, text="Bỏ qua", bg="#3f3f46", command=lambda: ignore_rows(tree.selection()), **small).pack(side=tk.LEFT, padx=2)
-        context_box = tk.Text(detail, height=4, wrap=tk.WORD, bg=BG, fg="#a1a1aa", font=("Consolas", 10),
+        small = dict(relief="flat", borderwidth=0, padx=10, pady=3, font=("Segoe UI", 9, "bold"), cursor="hand2", fg="white")
+        tk.Button(vi_row, text="Copy Hán", bg="#9c6a28", command=lambda: copy_chinese(), **small).pack(side=tk.LEFT, padx=2)
+        tk.Button(vi_row, text="Thêm", bg="#46734f", command=lambda: add_current(), **small).pack(side=tk.LEFT, padx=2)
+        tk.Button(vi_row, text="Bỏ qua", bg="#3a332c", command=lambda: ignore_rows(tree.selection()), **small).pack(side=tk.LEFT, padx=2)
+        context_box = tk.Text(detail, height=4, wrap=tk.WORD, bg=BG, fg="#a39887", font=("Microsoft YaHei UI", 10),
                               borderwidth=0, padx=8, pady=4)
         context_box.pack(fill=tk.X)
-        context_box.tag_configure("hit", foreground="#fde68a", background="#3f2d0a")
+        context_box.tag_configure("hit", foreground="#f0d9a8", background="#3a2a12")
         context_box.config(state=tk.DISABLED)
 
         # Status bar
         status_var = tk.StringVar(value="")
-        tk.Label(dlg, textvariable=status_var, fg="#10b981", bg=BG, font=("Arial", 8)).pack(anchor="w", padx=16, pady=4)
+        tk.Label(dlg, textvariable=status_var, fg="#8fc29a", bg=BG, font=("Segoe UI", 9)).pack(anchor="w", padx=16, pady=4)
 
         by_cn = {c['cn']: c for c in candidates}
         ignored: set = set()
@@ -1806,19 +1922,19 @@ class TranslatorGUI:
             where = "name tạm" if scan_temp_var.get() else "name.cfg"
             status_var.set(f"✅ Đã lưu {len(entries)} tên vào {where}{suffix}")
 
-        bar_btn = dict(relief="flat", borderwidth=0, padx=10, pady=6, font=("Arial", 8), cursor="hand2")
-        tk.Button(bot, text="Chọn mục đang hiện (có bản dịch)", bg=FIELD, fg="#d4d4d8",
+        bar_btn = dict(relief="flat", borderwidth=0, padx=10, pady=6, font=("Segoe UI", 9), cursor="hand2")
+        tk.Button(bot, text="Chọn mục đang hiện (có bản dịch)", bg=FIELD, fg="#ddd5c7",
                   command=lambda: select_visible(True), **bar_btn).pack(side=tk.LEFT)
         tk.Button(bot, text="Bỏ chọn đang hiện", bg=FIELD, fg=MUTED,
                   command=lambda: select_visible(False), **bar_btn).pack(side=tk.LEFT, padx=4)
-        tk.Button(bot, text="Đóng", bg=FIELD, fg=MUTED, activebackground="#3f3f46", relief="flat", borderwidth=0,
-                  padx=16, pady=6, font=("Arial", 9), cursor="hand2", command=on_close).pack(side=tk.RIGHT, padx=(6, 0))
-        tk.Button(bot, text="✅ Thêm các mục đã chọn", bg="#7c3aed", fg="white", activebackground="#6d28d9",
-                  relief="flat", borderwidth=0, padx=16, pady=6, font=("Arial", 9, "bold"), cursor="hand2",
+        tk.Button(bot, text="Đóng", bg=FIELD, fg=MUTED, activebackground="#3a332c", relief="flat", borderwidth=0,
+                  padx=16, pady=6, font=("Segoe UI", 9), cursor="hand2", command=on_close).pack(side=tk.RIGHT, padx=(6, 0))
+        tk.Button(bot, text="✅ Thêm các mục đã chọn", bg="#6a5683", fg="white", activebackground="#5c4a73",
+                  relief="flat", borderwidth=0, padx=16, pady=6, font=("Segoe UI", 9, "bold"), cursor="hand2",
                   command=add_selected).pack(side=tk.RIGHT)
-        tk.Checkbutton(bot, text="🏷 Thêm làm name tạm", variable=scan_temp_var, bg=BG, fg="#fbbf24",
-                       selectcolor=FIELD, activebackground=BG, activeforeground="#fbbf24",
-                       font=("Arial", 8)).pack(side=tk.RIGHT, padx=8)
+        tk.Checkbutton(bot, text="🏷 Thêm làm name tạm", variable=scan_temp_var, bg=BG, fg="#e8c27a",
+                       selectcolor=FIELD, activebackground=BG, activeforeground="#e8c27a",
+                       font=("Segoe UI", 9)).pack(side=tk.RIGHT, padx=8)
 
         rebuild()
         tree.focus_set()
@@ -1853,7 +1969,7 @@ class TranslatorGUI:
     def _refresh_temp_names_button(self):
         count = len(self.temp_names)
         self.btn_temp_names.config(text=f"🏷 Name tạm ({count})" if count else "🏷 Name tạm",
-                                   bg="#b45309" if count else FIELD)
+                                   bg="#8a5a22" if count else FIELD)
 
     def add_names(self, entries, temporary, parent=None):
         """Thêm vào name tạm hoặc name.cfg tuỳ lựa chọn của người dùng."""
@@ -1892,9 +2008,9 @@ class TranslatorGUI:
         ent_vi = tk.Entry(row, **entry)
         ent_vi.pack(side="left", fill="x", expand=True, ipady=4)
         btn = dict(fg="white", borderwidth=0, padx=12, pady=4, cursor="hand2")
-        tk.Button(row, text="➕ Thêm", bg="#b45309", command=lambda: add(), **btn).pack(side="left", padx=(8, 0))
+        tk.Button(row, text="➕ Thêm", bg="#8a5a22", command=lambda: add(), **btn).pack(side="left", padx=(8, 0))
 
-        listbox = tk.Listbox(dlg, bg=BG, fg=TEXT, selectbackground="#b45309", borderwidth=0, highlightthickness=0,
+        listbox = tk.Listbox(dlg, bg=BG, fg=TEXT, selectbackground="#8a5a22", borderwidth=0, highlightthickness=0,
                              font=("Segoe UI", 10), activestyle="none", selectmode="extended")
         listbox.pack(fill="both", expand=True, padx=16, pady=(10, 0))
         status = tk.Label(dlg, text="", fg=MUTED, bg=PANEL, anchor="w")
@@ -1954,9 +2070,9 @@ class TranslatorGUI:
         bottom = tk.Frame(dlg, bg=PANEL)
         bottom.pack(fill="x", padx=16, pady=12)
         tk.Button(bottom, text="Xoá mục chọn", bg=FIELD, command=remove_selected, **btn).pack(side="left")
-        tk.Button(bottom, text="Xoá hết", bg="#7f1d1d", command=clear_all, **btn).pack(side="left", padx=6)
+        tk.Button(bottom, text="Xoá hết", bg="#5a2a24", command=clear_all, **btn).pack(side="left", padx=6)
         tk.Button(bottom, text="Đóng", bg=FIELD, command=close, **btn).pack(side="right")
-        tk.Button(bottom, text="💾 Lưu vĩnh viễn vào name.cfg", bg="#0f766e", command=make_permanent,
+        tk.Button(bottom, text="💾 Lưu vĩnh viễn vào name.cfg", bg="#9c6a28", command=make_permanent,
                   **btn).pack(side="right", padx=6)
 
         ent_cn.bind("<Return>", lambda e: (ent_vi.focus_set(), "break")[1])
@@ -2000,7 +2116,7 @@ class TranslatorGUI:
         if self._cancel_event is not None:
             self._cancel_event.set()
             self.btn_cancel.config(state="disabled", text="Đang dừng…")
-            self.set_status("Đang dừng sau đợt hiện tại…", "#f59e0b")
+            self.set_status("Đang dừng sau đợt hiện tại…", "#e0b25c")
 
     def start_thread(self):
         """Main thread: read and validate inputs, then translate in the background."""
@@ -2020,7 +2136,7 @@ class TranslatorGUI:
 
         self._cancel_event = threading.Event()
         self._set_busy(True)
-        self.set_status(f"Slug: {slug} — Đang xử lý dữ liệu...", "#3b82f6")
+        self.set_status(f"Slug: {slug} — Đang xử lý dữ liệu...", "#d9a35c")
         # Chụp name tạm trên luồng chính; luồng nền không đọc trạng thái giao diện.
         self._worker = threading.Thread(target=self.run_process,
                                         args=(title, slug, content, self._cancel_event, dict(self.temp_names)),
@@ -2033,7 +2149,7 @@ class TranslatorGUI:
         if done:
             remaining = (time.time() - started) / done * (total - done)
             text += f" · còn ~{remaining / 60:.0f} phút" if remaining >= 90 else f" · còn ~{remaining:.0f} giây"
-        self.set_status(text + "...", "#3b82f6")
+        self.set_status(text + "...", "#d9a35c")
 
     def run_process(self, title, slug, content, cancel, temp_names=None):
         """Worker thread. Never touch Tk widgets here."""
@@ -2074,7 +2190,7 @@ class TranslatorGUI:
         self._set_busy(False)
         self.btn_run.config(state="normal")
         self.btn_clear.pack(side="right", padx=5)
-        self.set_status("❌ Lỗi khi dịch", "#ef4444")
+        self.set_status("❌ Lỗi khi dịch", "#e8857b")
         messagebox.showerror("Lỗi", f"Lỗi khi dịch:\n{error}")
 
     def _translation_finished(self, title, slug, cn_lines, vi_lines, cancelled, total):
@@ -2082,14 +2198,14 @@ class TranslatorGUI:
         if cancelled:
             if cn_lines and messagebox.askyesno(
                     "Đã huỷ", f"Đã dịch {len(cn_lines)}/{total} đoạn trước khi huỷ.\nMở Review với phần đã dịch?"):
-                self.set_status(f"Đã huỷ — xem {len(cn_lines)}/{total} đoạn đã dịch", "#f59e0b")
+                self.set_status(f"Đã huỷ — xem {len(cn_lines)}/{total} đoạn đã dịch", "#e0b25c")
                 ReviewWindow(self.root, title, slug, cn_lines, vi_lines, self)
             else:
                 self.btn_run.config(state="normal")
                 self.btn_clear.pack(side="right", padx=5)
-                self.set_status("Đã huỷ dịch.", "#f59e0b")
+                self.set_status("Đã huỷ dịch.", "#e0b25c")
             return
-        self.set_status("Hoàn tất dịch API. Đang mở cửa sổ Review...", "#f59e0b")
+        self.set_status("Hoàn tất dịch API. Đang mở cửa sổ Review...", "#e0b25c")
         ReviewWindow(self.root, title, slug, cn_lines, vi_lines, self)
 
 

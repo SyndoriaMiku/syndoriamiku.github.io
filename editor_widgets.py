@@ -70,9 +70,9 @@ class StorySearchCombo(ttk.Combobox):
             self._popup = tk.Toplevel(self)
             self._popup.withdraw()
             self._popup.overrideredirect(True)
-            self._popup.configure(bg='#334155')
-            self._list = tk.Listbox(self._popup, bg='#172338', fg='#e2e8f0',
-                selectbackground='#0f766e', selectforeground='white',
+            self._popup.configure(bg='#3a332c')
+            self._list = tk.Listbox(self._popup, bg='#231f1a', fg='#e6dfd2',
+                selectbackground='#9c6a28', selectforeground='white',
                 font=('Segoe UI', 10), bd=0, highlightthickness=0,
                 activestyle='none', exportselection=False, takefocus=False)
             scrollbar = ttk.Scrollbar(self._popup, style='Editor.Vertical.TScrollbar', command=self._list.yview)
@@ -169,14 +169,16 @@ class StyledScrolledText(scrolledtext.ScrolledText):
     """Keep the Text interface while using the editor's themed scrollbar."""
     def __init__(self, master=None, **kwargs):
         kwargs.setdefault('exportselection', False)
-        kwargs.setdefault('selectbackground', '#0f766e')
-        kwargs.setdefault('selectforeground', '#ffffff')
-        kwargs.setdefault('inactiveselectbackground', '#254d58')
+        kwargs.setdefault('selectbackground', '#5a4426')
+        kwargs.setdefault('selectforeground', '#f4ede1')
+        kwargs.setdefault('inactiveselectbackground', '#4a3a22')
         kwargs.setdefault('takefocus', True)
         kwargs.setdefault('highlightthickness', 1)
-        kwargs.setdefault('highlightbackground', '#25344b')
-        kwargs.setdefault('highlightcolor', '#0f766e')
+        kwargs.setdefault('highlightbackground', '#2f2a23')
+        kwargs.setdefault('highlightcolor', '#d9a35c')
         super().__init__(master, **kwargs)
+        # Khung chứa mặc định nền trắng: khe giữa chữ và thanh cuộn lộ thành vạch trắng.
+        self.frame.configure(bg=kwargs.get('bg', kwargs.get('background', '#1e1b17')))
         self.vbar.destroy()
         self.vbar = ttk.Scrollbar(self.frame, orient='vertical',
             style='Editor.Vertical.TScrollbar', command=self.yview)
@@ -186,24 +188,67 @@ class StyledScrolledText(scrolledtext.ScrolledText):
         self.bind('<Button-1>', lambda event: self.focus_set(), add='+')
 
 
-def configure_theme(root):
+# Tông màu chung của builder + editor (tối ấm, giống trang web Thư viện).
+THEME = {
+    'bg': '#15130f', 'panel': '#1e1b17', 'field': '#29251f', 'line': '#3a332c',
+    'text': '#e6dfd2', 'strong': '#f4ede1', 'muted': '#a39887', 'accent': '#d9a35c', 'select': '#5a4426',
+}
+
+
+def apply_tk_defaults(root):
+    """Mặc định cho widget tk: nút phẳng, hover/bấm cùng tông (thay cho màu xám hệ thống),
+    viền ô nhập sáng màu nhấn khi đang gõ. Chỉ áp cho widget không tự đặt các thuộc tính này."""
+    t = THEME
+    for pattern, value in (
+            ('*Button.relief', 'flat'), ('*Button.borderWidth', 0), ('*Button.cursor', 'hand2'),
+            ('*Button.activeBackground', t['line']), ('*Button.activeForeground', t['strong']),
+            ('*Button.padY', 4), ('*Button.font', ('Segoe UI', 10)),
+            ('*Label.font', ('Segoe UI', 10)),
+            ('*Checkbutton.activeBackground', t['bg']), ('*Radiobutton.activeBackground', t['bg']),
+            ('*Entry.relief', 'flat'), ('*Entry.highlightThickness', 1),
+            ('*Entry.highlightBackground', t['line']), ('*Entry.highlightColor', t['accent']),
+            ('*Entry.selectBackground', t['select']), ('*Entry.selectForeground', t['strong']),
+            ('*Entry.font', ('Segoe UI', 10)),
+            ('*Text.selectBackground', t['select']), ('*Text.selectForeground', t['strong']),
+            ('*Text.insertBackground', t['strong']), ('*Text.highlightThickness', 0),
+            ('*Listbox.selectBackground', t['select']), ('*Listbox.selectForeground', t['strong']),
+            ('*Listbox.font', ('Segoe UI', 10)), ('*Listbox.relief', 'flat'),
+            ('*Menu.background', t['panel']), ('*Menu.foreground', t['text']),
+            ('*Menu.activeBackground', t['select']), ('*Menu.activeForeground', t['strong']),
+            ('*Menu.relief', 'flat'), ('*Menu.font', ('Segoe UI', 10)),
+            ('*Toplevel.background', t['bg'])):
+        root.option_add(pattern, value)
+    # Thanh cuộn tối, mảnh (thanh cuộn mặc định của Windows luôn màu trắng).
     style = ttk.Style(root)
     style.theme_use('clam')
-    style.configure('TCombobox', fieldbackground='#0b1220', background='#25344b',
-        foreground='#e2e8f0', arrowcolor='#94a3b8', bordercolor='#334155',
-        lightcolor='#334155', darkcolor='#334155', padding=7)
-    style.map('TCombobox', fieldbackground=[('readonly', '#0b1220')],
-        foreground=[('readonly', '#e2e8f0')], selectbackground=[('!disabled', '#0f766e')])
-    style.configure('Vertical.TScrollbar', background='#334155', troughcolor='#0b1220',
-        borderwidth=0, arrowcolor='#94a3b8')
     style.layout('Editor.Vertical.TScrollbar', [
         ('Vertical.Scrollbar.trough', {'sticky': 'ns', 'children': [
             ('Vertical.Scrollbar.thumb', {'expand': '1', 'sticky': 'nswe'})]})])
-    style.configure('Editor.Vertical.TScrollbar', background='#475569',
-        troughcolor='#111c2e', bordercolor='#111c2e', lightcolor='#475569',
-        darkcolor='#475569', borderwidth=0, width=12, arrowsize=12, gripcount=0)
-    style.map('Editor.Vertical.TScrollbar', background=[('pressed', '#0f766e'), ('active', '#64748b')])
+    style.configure('Editor.Vertical.TScrollbar', background='#4a4238',
+        troughcolor=t['panel'], bordercolor=t['panel'], lightcolor='#4a4238',
+        darkcolor='#4a4238', borderwidth=0, width=12, arrowsize=12, gripcount=0)
+    style.map('Editor.Vertical.TScrollbar', background=[('pressed', '#9c6a28'), ('active', '#5c5347')])
+
+
+def configure_theme(root):
+    apply_tk_defaults(root)
+    style = ttk.Style(root)
+    style.theme_use('clam')
+    style.configure('TCombobox', fieldbackground='#15130f', background='#2f2a23',
+        foreground='#e6dfd2', arrowcolor='#a39887', bordercolor='#4a4238',
+        lightcolor='#4a4238', darkcolor='#4a4238', padding=7)
+    style.map('TCombobox', fieldbackground=[('readonly', '#15130f')],
+        foreground=[('readonly', '#e6dfd2')], selectbackground=[('!disabled', '#d9a35c')])
+    style.configure('Vertical.TScrollbar', background='#3a332c', troughcolor='#15130f',
+        borderwidth=0, arrowcolor='#a39887')
+    style.layout('Editor.Vertical.TScrollbar', [
+        ('Vertical.Scrollbar.trough', {'sticky': 'ns', 'children': [
+            ('Vertical.Scrollbar.thumb', {'expand': '1', 'sticky': 'nswe'})]})])
+    style.configure('Editor.Vertical.TScrollbar', background='#4a4238',
+        troughcolor='#1e1b17', bordercolor='#1e1b17', lightcolor='#4a4238',
+        darkcolor='#4a4238', borderwidth=0, width=12, arrowsize=12, gripcount=0)
+    style.map('Editor.Vertical.TScrollbar', background=[('pressed', '#9c6a28'), ('active', '#5c5347')])
     root.option_add('*Font', ('Segoe UI', 10))
-    root.option_add('*TCombobox*Listbox.background', '#172338')
-    root.option_add('*TCombobox*Listbox.foreground', '#e2e8f0')
-    root.option_add('*TCombobox*Listbox.selectBackground', '#0f766e')
+    root.option_add('*TCombobox*Listbox.background', '#231f1a')
+    root.option_add('*TCombobox*Listbox.foreground', '#e6dfd2')
+    root.option_add('*TCombobox*Listbox.selectBackground', '#5a4426')

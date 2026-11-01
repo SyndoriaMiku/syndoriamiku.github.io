@@ -21,12 +21,12 @@ from tkinterdnd2 import TkinterDnD
 import builder
 import editor
 
-TAB_BAR_BG = "#050507"
-ACCENT = "#3b82f6"
+TAB_BAR_BG = "#100e0b"
+ACCENT = "#d9a35c"
 # key, nhãn, màu nền trang (khớp với nền của từng app)
 TABS = (
     ("translate", "🈶  Dịch truyện", builder.BG, "Ctrl+1"),
-    ("library", "📚  Biên tập thư viện", "#0b1220", "Ctrl+2"),
+    ("library", "📚  Biên tập thư viện", "#15130f", "Ctrl+2"),
 )
 
 
@@ -64,7 +64,7 @@ class StoryStudio:
                 widget.bind("<Button-1>", lambda e, k=key: self.show(k))
             self.tab_widgets[key] = (tab, text, line)
             root.bind(f"<Control-Key-{len(self.tab_widgets)}>", lambda e, k=key: (self.show(k), "break")[1])
-        tk.Label(self.tab_bar, text="Ctrl+1 / Ctrl+2 để chuyển tab", bg=TAB_BAR_BG, fg="#52525b",
+        tk.Label(self.tab_bar, text="Ctrl+1 / Ctrl+2 để chuyển tab", bg=TAB_BAR_BG, fg="#6b6255",
                  font=("Segoe UI", 9)).pack(side="right", padx=16)
 
         self.current = None
@@ -86,7 +86,7 @@ class StoryStudio:
         for tab_key, label, bg, _shortcut in TABS:
             _tab, text, line = self.tab_widgets[tab_key]
             active = tab_key == key
-            text.config(bg=bg if active else TAB_BAR_BG, fg="#ffffff" if active else "#71717a")
+            text.config(bg=bg if active else TAB_BAR_BG, fg="#f4ede1" if active else "#8a7f70")
             line.config(bg=ACCENT if active else TAB_BAR_BG)
             _tab.config(bg=bg if active else TAB_BAR_BG)
             if active:
