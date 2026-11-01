@@ -1012,6 +1012,16 @@ class TranslatorGUI:
         self._count_timer = None
         self._worker = None
         self._cancel_event = None
+        # Thanh tiến trình: giữ một giá trị đích và nội suy từng khung hình
+        # thay vì nhảy cóc mỗi khi API trả về một đợt.
+        self._busy = False
+        self._progress_value = 0.0
+        self._progress_from = 0.0
+        self._progress_to = 0.0
+        self._progress_started = 0.0
+        self._progress_duration = 0.45
+        self._progress_anim = None
+        self._progress_max = 1
         # Name tạm: chỉ dùng cho lượt dịch hiện tại, không ghi name.cfg,
         # tự xoá sau khi lưu data.json / lưu vào thư viện.
         self.temp_names = {}
@@ -1161,8 +1171,12 @@ class TranslatorGUI:
 
         self.btn_clear = tk.Button(btn_frame, text="🗑️ Xóa tất cả", command=self.clear_all, bg="#9a3f35", fg="white", borderwidth=0, padx=15)
 
-        # Progress
-        self.progress = ttk.Progressbar(self.frame, style="Run.Horizontal.TProgressbar", mode="determinate")
+        # Progress: khung giữ chỗ cố định để thanh tiến trình hiện/ẩn
+        # không làm co giãn vùng nội dung phía trên.
+        self.progress_row = tk.Frame(self.frame, bg=BG, height=18)
+        self.progress_row.pack(fill="x")
+        self.progress_row.pack_propagate(False)
+        self.progress = ttk.Progressbar(self.progress_row, style="Run.Horizontal.TProgressbar", mode="determinate")
         self.lbl_status = tk.Label(self.frame, text="Sẵn sàng  ·  Ctrl+Enter để dịch", fg="#8a7f70", bg=BG)
         self.lbl_status.pack(pady=5)
 
@@ -2101,15 +2115,21 @@ class TranslatorGUI:
     # ─────────────────────────────────────────────────────────────
 
     def _set_busy(self, busy):
+        self._busy = busy
         if busy:
             self.btn_run.config(state="disabled")
             self.btn_clear.pack_forget()
             self.btn_cancel.config(state="normal", text="⏹ Huỷ")
             self.btn_cancel.pack(side="right", padx=5, before=self.btn_run)
-            self.progress.config(value=0, maximum=1)
-            self.progress.pack(fill="x", padx=20, before=self.lbl_status)
+            self._progress_max = 1
+            self._progress_value = 0.0
+            self._progress_from = 0.0
+            self._progress_to = 0.0
+            self.progress.config(value=0.0, maximum=1)
+            self.progress.pack(fill="x", padx=20, pady=5)
         else:
             self.btn_cancel.pack_forget()
+            self._stop_progress_animation()
             self.progress.pack_forget()
 
     def cancel_translation(self):
@@ -2143,8 +2163,45 @@ class TranslatorGUI:
                                         daemon=True)
         self._worker.start()
 
+    def _stop_progress_animation(self):
+        if self._progress_anim is not None:
+            try:
+                self.root.after_cancel(self._progress_anim)
+            except tk.TclError:
+                pass
+            self._progress_anim = None
+
+    def _animate_progress(self):
+        """Nội suy giá trị thanh tiến trình ở ~60fps (16ms/khung hình)."""
+        self._progress_anim = None
+        if not self._busy:
+            return
+        elapsed = time.perf_counter() - self._progress_started
+        ratio = min(1.0, elapsed / self._progress_duration) if self._progress_duration else 1.0
+        eased = 1 - (1 - ratio) ** 3  # ease-out: nhanh lúc đầu, chậm dần, không giật
+        self._progress_value = self._progress_from + (self._progress_to - self._progress_from) * eased
+        self.progress.config(value=self._progress_value)
+        if ratio < 1.0:
+            self._progress_anim = self.root.after(16, self._animate_progress)
+        else:
+            self._progress_value = self._progress_to
+
+    def _move_progress_to(self, value):
+        """Đặt đích mới; thanh chạy tới đó trong ~0.45s thay vì nhảy cóc."""
+        self._progress_from = self._progress_value
+        self._progress_to = float(value)
+        self._progress_started = time.perf_counter()
+        if self._progress_anim is None:
+            self._animate_progress()
+
     def _update_progress(self, done, total, started):
-        self.progress.config(maximum=max(total, 1), value=done)
+        total = max(total, 1)
+        if total != self._progress_max:
+            self._progress_max = total
+            self.progress.config(maximum=total)
+        # +0.5: thanh nhích lên trong lúc chờ API của đợt hiện tại,
+        # để không đứng im rồi nhảy một mạch khi đợt xong.
+        self._move_progress_to(min(done + 0.5, total))
         text = f"Đang dịch đợt {min(done + 1, total)}/{total}"
         if done:
             remaining = (time.time() - started) / done * (total - done)
