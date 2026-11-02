@@ -1032,11 +1032,10 @@ class ChapterEditorApp:
 				return False
 
 		paragraphs = [p.strip() for p in content.split("\n\n") if p.strip()]
-		payload = store.chapter_payload(story_title, chap_title, (("", p) for p in paragraphs))
 		try:
-			store.write_chapter(LIBRARY_DIR, BASE_DIR, story_slug, chap_slug, payload)
-			store.upsert_chapter(catalog, story_slug, story_title, chap_slug, chap_title)
-			write_catalog(CATALOG_PATH, catalog)
+			catalog, _slug, _saved = store.save_chapters(
+				LIBRARY_DIR, BASE_DIR, CATALOG_PATH, story_slug, story_title,
+				[(chap_slug, chap_title, (("", p) for p in paragraphs))], overwrite=True)
 		except Exception as e:
 			messagebox.showerror("Lỗi", f"Không thể lưu chương:\n{e}")
 			return False
@@ -1251,32 +1250,16 @@ class ChapterEditorApp:
 		Split paragraphs (separated by \\n\\n) into chapters based on a regex header pattern.
 		Returns list of {"title": str, "paragraphs": [str]} dicts.
 		Paragraphs before the first header are grouped under title="".
+
+		Thin wrapper over library_store.split_into_chapters so the editor and
+		the builder share one grouping implementation.
 		"""
+		paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
 		try:
-			compiled = re.compile(pattern_regex, re.IGNORECASE | re.MULTILINE)
+			groups = store.split_into_chapters(paragraphs, pattern_regex)
 		except re.error:
 			return []
-
-		paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
-		chapters = []
-		current_title = None
-		current_paras = []
-
-		for para in paragraphs:
-			if compiled.match(para):
-				# Flush previous group
-				if current_title is not None or current_paras:
-					chapters.append({"title": current_title or "", "paragraphs": current_paras})
-				current_title = para.strip()
-				current_paras = []
-			else:
-				current_paras.append(para)
-
-		# Flush last group
-		if current_title is not None or current_paras:
-			chapters.append({"title": current_title or "", "paragraphs": current_paras})
-
-		return chapters
+		return [{"title": group["title"], "paragraphs": group["items"]} for group in groups]
 
 	def open_split_chapters_dialog(self):
 		"""Open the auto-split chapters dialog."""
@@ -1795,8 +1778,6 @@ class ChapterEditorApp:
 
 	def save_all_split_chapters(self, dlg, story_combo, detected_chapters, close_callback):
 		"""Save all detected chapters to the library."""
-		import datetime
-
 		story_value = story_combo.get().strip()
 		if story_value and story_value not in self.story_options:
 			messagebox.showwarning("Chọn truyện", "Hãy chọn một truyện trong danh sách gợi ý trước khi lưu.", parent=dlg)
@@ -1836,42 +1817,25 @@ class ChapterEditorApp:
 				parent=dlg, icon="warning", default="no"):
 			return
 
-		now = datetime.datetime.now()
-		saved_count = 0
-		last_saved_id = None
-		errors = []
-
+		chapters = []
 		for ch in detected_chapters:
 			if not ch["paragraphs"]:
 				continue
 			chap_slug = ch["id"]
 			chap_title = ch["title_var"].get().strip() or f"Chương {chap_slug}"
-			payload = store.chapter_payload(story_title, chap_title, (("", p) for p in ch["paragraphs"]))
-			try:
-				store.write_chapter(LIBRARY_DIR, BASE_DIR, story_slug, chap_slug, payload)
-			except Exception as e:
-				errors.append(f"{chap_slug}: {e}")
-				continue
-			store.upsert_chapter(catalog, story_slug, story_title, chap_slug, chap_title, now)
-			saved_count += 1
-			last_saved_id = chap_slug
-
+			chapters.append((chap_slug, chap_title, (("", p) for p in ch["paragraphs"])))
 		try:
-			write_catalog(CATALOG_PATH, catalog)
+			catalog, _slug, saved_ids = store.save_chapters(
+				LIBRARY_DIR, BASE_DIR, CATALOG_PATH, story_slug, story_title,
+				chapters, overwrite=True)
 		except Exception as e:
-			messagebox.showerror("Lỗi", f"Không thể cập nhật list.json:\n{e}", parent=dlg)
+			messagebox.showerror("Lỗi", f"Không thể lưu chương:\n{e}", parent=dlg)
 			return
 
-		if saved_count:
-			self._sync_saved_chapters(story_slug, catalog, last_saved_id)
-
-		if errors:
-			messagebox.showwarning("Hoàn thành (có lỗi)",
-				f"Đã lưu {saved_count}/{len(detected_chapters)} chương.\n\nLỗi:\n" + "\n".join(errors[:5]),
-				parent=dlg)
+		if saved_ids:
+			self._sync_saved_chapters(story_slug, catalog, saved_ids[-1])
 		close_callback()
-		if not errors:
-			self.flash(f"✅ Đã lưu {saved_count} chương vào truyện '{story_title}'")
+		self.flash(f"✅ Đã lưu {len(saved_ids)} chương vào truyện '{story_title}'")
 
 	# --- TÌM & THAY THẾ (DÙNG CHUNG CHO 2 Ô VĂN BẢN) ---
 

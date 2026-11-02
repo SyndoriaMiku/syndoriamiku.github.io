@@ -282,6 +282,48 @@ def next_chapter_id(catalog, story_slug):
     return format_chapter_id(max(ids, default=0) + 1)
 
 
+class ChapterClashError(ValueError):
+    """Requested chapter IDs already exist in the story; nothing was written."""
+
+    def __init__(self, chapter_ids):
+        self.chapter_ids = list(chapter_ids)
+        super().__init__('Chương đã tồn tại: ' + ', '.join(self.chapter_ids))
+
+
+def save_chapters(library_dir, base_dir, catalog_path, story_slug, story_title, chapters,
+                  now=None, overwrite=False):
+    """Write chapters into library/<story>/ and update the catalog at catalog_path.
+
+    ``chapters`` is an iterable of (chapter_id, chapter_name, pairs), where
+    ``pairs`` is an iterable of (cn, vi). ``story_slug`` may be empty/None for a
+    new story, in which case the next story id is allocated. The catalog is read
+    fresh, so a change made in another window is not lost. With
+    ``overwrite=False`` an id that already exists in the story aborts before any
+    write (ChapterClashError); with ``overwrite=True`` the chapter is replaced.
+
+    Returns (catalog, story_slug, saved_ids).
+    """
+    catalog = read_catalog(catalog_path)
+    chapters = [(chapter_id, chapter_name, list(pairs))
+                for chapter_id, chapter_name, pairs in chapters]
+    if not story_slug:
+        story_slug = next_story_id(catalog)
+    if not overwrite:
+        existing = {c.get('id') for story in catalog if story.get('slug') == story_slug
+                    for c in story.get('chapters', [])}
+        clashes = [chapter_id for chapter_id, _name, _pairs in chapters if chapter_id in existing]
+        if clashes:
+            raise ChapterClashError(clashes)
+    now = now or datetime.datetime.now()
+    copy_templates(library_dir, base_dir, story_slug)
+    for chapter_id, chapter_name, pairs in chapters:
+        payload = chapter_payload(story_title, chapter_name, pairs)
+        write_chapter(library_dir, base_dir, story_slug, chapter_id, payload)
+        upsert_chapter(catalog, story_slug, story_title, chapter_id, chapter_name, now)
+    write_catalog(catalog_path, catalog)
+    return catalog, story_slug, [chapter_id for chapter_id, _name, _pairs in chapters]
+
+
 def split_alternatives(pattern_regex):
     """Split a regex at its top-level ``|`` (not inside groups or [...])."""
     parts, depth, in_class, start, i = [], 0, False, 0, 0

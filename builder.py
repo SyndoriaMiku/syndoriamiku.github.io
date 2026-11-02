@@ -229,6 +229,9 @@ class ReviewWindow:
         self._saved_data_once = False  # đã ghi stories/<slug>/data.json trong phiên này
         self._draft_timer = None
         self._status_timer = None
+        # Đọc lại nội dung trong lúc cửa sổ đang mở: dùng số thế hệ để bỏ
+        # lần chèn theo lô cũ khi load_content được gọi lần nữa.
+        self._paint_generation = 0
 
         # Restore saved geometry or use default
         cfg = load_config()
@@ -377,23 +380,48 @@ class ReviewWindow:
             messagebox.showinfo("Hoàn tất", "Không phát hiện ký tự tiếng Trung chưa dịch hay lỗi font.", parent=self.top)
 
     def load_content(self):
+        """Chèn nội dung Trung/Việt theo lô nhỏ, nhường main loop giữa các lô.
+
+        Chèn một mạch hàng nghìn đoạn làm cửa sổ Review đứng hình; ở đây
+        load_content trả về trước khi chèn xong, phần còn lại tự chạy tiếp.
+        """
         # Lưu lại vị trí cuộn chuột (scrollbar) và con trỏ hiện tại
         scroll_pos = self.text_editor.yview()
         insert_pos = self.text_editor.index("insert")
+        self._paint_generation += 1
+        self._paint_index = 0
+        self._paint_scroll = scroll_pos[0]
+        self._paint_insert = insert_pos
 
         self.text_editor.config(state=tk.NORMAL)
         self.text_editor.delete(1.0, tk.END)
-        for i in range(len(self.cn_lines)):
-            self.text_editor.insert(tk.END, f"{self.cn_lines[i]}\n", "cn")
-            self.text_editor.insert(tk.END, f"{self.vi_lines[i]}\n\n", "vi")
-        self.text_editor.config(state=tk.DISABLED)
+        self._paint_lines(self._paint_generation)
 
-        self.text_editor.update_idletasks()
-        self.text_editor.mark_set("insert", insert_pos)
-        self.text_editor.yview_moveto(scroll_pos[0])
-        self.text_editor.after(10, lambda: self.text_editor.yview_moveto(scroll_pos[0]))
-        self.text_editor.after(50, lambda: self.text_editor.yview_moveto(scroll_pos[0]))
-        self.text_editor.after(100, lambda: self.text_editor.yview_moveto(scroll_pos[0]))
+    def _paint_lines(self, generation):
+        try:
+            if generation != self._paint_generation or not self.top.winfo_exists():
+                return
+        except tk.TclError:
+            return
+        deadline = time.perf_counter() + 0.008
+        count = len(self.cn_lines)
+        self.text_editor.config(state=tk.NORMAL)
+        try:
+            while self._paint_index < count and time.perf_counter() < deadline:
+                i = self._paint_index
+                self.text_editor.insert(tk.END, f"{self.cn_lines[i]}\n", "cn")
+                self.text_editor.insert(tk.END, f"{self.vi_lines[i]}\n\n", "vi")
+                self._paint_index += 1
+        finally:
+            if self._paint_index >= count:
+                self.text_editor.config(state=tk.DISABLED)
+                self.text_editor.update_idletasks()
+                self.text_editor.mark_set("insert", self._paint_insert)
+                self.text_editor.yview_moveto(self._paint_scroll)
+                for delay in (10, 50, 100):
+                    self.text_editor.after(delay, lambda: self.text_editor.yview_moveto(self._paint_scroll))
+            else:
+                self.top.after(1, self._paint_lines, generation)
 
     def show_context_menu(self, event):
         self._menu_index = self._pair_index_at(f"@{event.x},{event.y}")
@@ -947,38 +975,30 @@ class ReviewWindow:
             dlg.destroy()
 
         def do_save():
-            slug, title = plan["slug"], plan["title"]
             if not plan["chapters"]:
                 return
+            # Truyện mới: để save_chapters tự cấp mã từ catalog đọc mới nhất,
+            # tránh dùng mã đã xem trước khi có người khác thêm truyện.
+            slug = None if story_mode.get() == "new" else plan["slug"]
             try:
-                fresh = read_catalog(LIBRARY_CATALOG)  # đọc lại, tránh ghi đè thay đổi từ editor
+                _catalog, slug, _saved = store.save_chapters(
+                    LIBRARY_DIR, BASE_DIR, LIBRARY_CATALOG, slug, plan["title"], plan["chapters"])
+            except store.ChapterClashError as error:
+                messagebox.showerror("Trùng mã chương",
+                    f"Chương {', '.join(error.chapter_ids[:5])} đã tồn tại. Mở lại hộp thoại để lấy mã mới.", parent=dlg)
+                return
             except CatalogError as error:
                 messagebox.showerror("Không đọc được danh mục", str(error), parent=dlg)
                 return
-            if story_mode.get() == "new":
-                slug = store.next_story_id(fresh)
-            clashes = [cid for cid, _n, _items in plan["chapters"]
-                       if any(c.get("id") == cid for s in fresh if s.get("slug") == slug for c in s.get("chapters", []))]
-            if clashes:
-                messagebox.showerror("Trùng mã chương", f"Chương {', '.join(clashes[:5])} đã tồn tại. Mở lại hộp thoại để lấy mã mới.", parent=dlg)
-                return
-            try:
-                now = datetime.datetime.now()
-                store.copy_templates(LIBRARY_DIR, BASE_DIR, slug)
-                for chap_id, name, items in plan["chapters"]:
-                    payload = store.chapter_payload(title, name, items)
-                    store.write_chapter(LIBRARY_DIR, BASE_DIR, slug, chap_id, payload)
-                    store.upsert_chapter(fresh, slug, title, chap_id, name, now)
-                write_catalog(LIBRARY_CATALOG, fresh)
             except Exception as error:
                 messagebox.showerror("Lỗi khi lưu thư viện", str(error), parent=dlg)
                 return
             self.saved = True
             first, last = plan["chapters"][0][0], plan["chapters"][-1][0]
             span = first if first == last else f"{first}–{last}"
-            self.set_status(f"📚 Đã lưu {len(plan['chapters'])} chương vào library/{slug} ({span}) · {title}")
+            self.set_status(f"📚 Đã lưu {len(plan['chapters'])} chương vào library/{slug} ({span}) · {plan['title']}")
             cleared = self.app.clear_temp_names()
-            self.app.set_status(f"📚 Đã lưu vào thư viện: {slug} | {title}"
+            self.app.set_status(f"📚 Đã lưu vào thư viện: {slug} | {plan['title']}"
                                 + (f" · đã xoá {cleared} name tạm" if cleared else ""), "#8fc29a")
             close()
 
