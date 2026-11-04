@@ -33989,7 +33989,7 @@
         "title": "Bởi vì nhất thời hảo tâm thu lưu lão đầu, lão đầu dùng hệ thống đem ta cái kia biết sách đạt mỹ mẫu chậm rãi thôi miên thành hắn thú cái",
         "slug": "000283",
         "date": "04/11/2026",
-        "timestamp": 1793757465.279479,
+        "timestamp": 1793761347.969595,
         "chapters": [
             {
                 "id": "0001",
@@ -34003,6 +34003,11 @@
             },
             {
                 "id": "0003",
+                "name": "Thứ 3 chương",
+                "date": "04/11/2026"
+            },
+            {
+                "id": "0004",
                 "name": "Thứ 4 chương",
                 "date": "04/11/2026"
             }
