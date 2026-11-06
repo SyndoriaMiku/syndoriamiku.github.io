@@ -6834,8 +6834,8 @@
     {
         "title": "Tổng hợp truyện ngắn",
         "slug": "000130",
-        "date": "05/11/2026",
-        "timestamp": 1793875373.170083,
+        "date": "06/11/2026",
+        "timestamp": 1793954067.806985,
         "chapters": [
             {
                 "id": "0001",
@@ -7456,6 +7456,11 @@
                 "id": "0124",
                 "name": "Ta súc sinh chính đạo khôi thủ mẫu thân",
                 "date": "05/11/2026"
+            },
+            {
+                "id": "0125",
+                "name": "Mỹ nữ hiệu trưởng bị thôi miên vặn vẹo thường thức, đối với nhà giàu mới nổi hiến huyệt dụ gian",
+                "date": "06/11/2026"
             }
         ]
     },
