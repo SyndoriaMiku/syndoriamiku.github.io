@@ -6834,8 +6834,8 @@
     {
         "title": "Tổng hợp truyện ngắn",
         "slug": "000130",
-        "date": "07/11/2026",
-        "timestamp": 1794040247.369259,
+        "date": "08/11/2026",
+        "timestamp": 1794155695.919312,
         "chapters": [
             {
                 "id": "0001",
@@ -7466,6 +7466,16 @@
                 "id": "0126",
                 "name": "Cao ngạo mẫu thân bị người theo đuổi thay nhân cách, triệt để trở thành người đeo đuổi chó cái",
                 "date": "07/11/2026"
+            },
+            {
+                "id": "0127",
+                "name": "Sau khi say rượu ta đây đem ở chung cùng phòng thao thành nhục tiện khí",
+                "date": "08/11/2026"
+            },
+            {
+                "id": "0128",
+                "name": "Quân lâm thiên hạ Nữ Đế không nghĩ tới sẽ bị bại quốc tiểu nhân cho dạy dỗ thành tính nô",
+                "date": "08/11/2026"
             }
         ]
     },
@@ -34593,6 +34603,72 @@
             {
                 "id": "0003",
                 "name": "2. Cái gì gọi là ta dùng tiền điểm lão bà của ta cho nam nhân khác phục vụ? Lão bà còn chủ động tiễn đưa lồn lấy lại?",
+                "date": "08/11/2026"
+            }
+        ]
+    },
+    {
+        "title": "Diệu Âm Môn chủ Tử Linh tiên tử vì Diệu Âm Môn thoát khỏi triệu tranh cùng Phù trưởng lão khống chế",
+        "slug": "000292",
+        "date": "08/11/2026",
+        "timestamp": 1794153776.770598,
+        "chapters": [
+            {
+                "id": "0001",
+                "name": "Chương 1: Thượng thiên",
+                "date": "08/11/2026"
+            },
+            {
+                "id": "0002",
+                "name": "Chương 02: Hạ thiên",
+                "date": "08/11/2026"
+            }
+        ]
+    },
+    {
+        "title": "Thiên hạ vô song Đại Thừa kỳ mông bự Kiếm Tiên",
+        "slug": "000293",
+        "date": "08/11/2026",
+        "timestamp": 1794154756.506834,
+        "chapters": [
+            {
+                "id": "0001",
+                "name": "Thứ 1 chương",
+                "date": "08/11/2026"
+            },
+            {
+                "id": "0002",
+                "name": "Thứ 2 chương",
+                "date": "08/11/2026"
+            },
+            {
+                "id": "0003",
+                "name": "Thứ 3 chương",
+                "date": "08/11/2026"
+            },
+            {
+                "id": "0004",
+                "name": "Thứ 4 chương",
+                "date": "08/11/2026"
+            },
+            {
+                "id": "0005",
+                "name": "Thứ 5 chương",
+                "date": "08/11/2026"
+            },
+            {
+                "id": "0006",
+                "name": "Thứ 6 chương",
+                "date": "08/11/2026"
+            },
+            {
+                "id": "0007",
+                "name": "Thứ 7 chương",
+                "date": "08/11/2026"
+            },
+            {
+                "id": "0008",
+                "name": "Thứ 8 chương",
                 "date": "08/11/2026"
             }
         ]
