@@ -6835,7 +6835,7 @@
         "title": "Tổng hợp truyện ngắn",
         "slug": "000130",
         "date": "09/11/2026",
-        "timestamp": 1794213629.599567,
+        "timestamp": 1794219047.530565,
         "chapters": [
             {
                 "id": "0001",
@@ -7480,6 +7480,11 @@
             {
                 "id": "0129",
                 "name": "Himeko cùng Kafka hài tử quyền nuôi dưỡng tranh đoạt chiến long trọng khai mạc",
+                "date": "09/11/2026"
+            },
+            {
+                "id": "0130",
+                "name": "Vốn là cấm phái nam bách hợp Thánh nữ học viện, bị duy nhất chủ nhân dùng ma pháp",
                 "date": "09/11/2026"
             }
         ]
@@ -34891,6 +34896,64 @@
             {
                 "id": "0003",
                 "name": "Chương 03:",
+                "date": "09/11/2026"
+            }
+        ]
+    },
+    {
+        "title": "Bởi vì ra ngoài, bốn vị kiều thê bị chăn ngựa lão đầu thừa lúc vắng mà vào",
+        "slug": "000298",
+        "date": "09/11/2026",
+        "timestamp": 1794234551.6927,
+        "chapters": [
+            {
+                "id": "0001",
+                "name": "Thứ 1 chương",
+                "date": "09/11/2026"
+            },
+            {
+                "id": "0002",
+                "name": "Thứ 2 chương",
+                "date": "09/11/2026"
+            },
+            {
+                "id": "0003",
+                "name": "Thứ 3 chương",
+                "date": "09/11/2026"
+            },
+            {
+                "id": "0004",
+                "name": "Thứ 4 chương",
+                "date": "09/11/2026"
+            },
+            {
+                "id": "0005",
+                "name": "Thứ 5 chương",
+                "date": "09/11/2026"
+            },
+            {
+                "id": "0006",
+                "name": "Thứ 6 chương",
+                "date": "09/11/2026"
+            },
+            {
+                "id": "0007",
+                "name": "Thứ 7 chương",
+                "date": "09/11/2026"
+            },
+            {
+                "id": "0008",
+                "name": "Chương 08: Tô Uyển Nhu cả một ngày đều tâm thần có chút không tập trung.",
+                "date": "09/11/2026"
+            },
+            {
+                "id": "0009",
+                "name": "Chương 08:",
+                "date": "09/11/2026"
+            },
+            {
+                "id": "0010",
+                "name": "Chương 10:",
                 "date": "09/11/2026"
             }
         ]
