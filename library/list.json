@@ -6834,8 +6834,8 @@
     {
         "title": "Tổng hợp truyện ngắn",
         "slug": "000130",
-        "date": "08/11/2026",
-        "timestamp": 1794155695.919312,
+        "date": "09/11/2026",
+        "timestamp": 1794213629.599567,
         "chapters": [
             {
                 "id": "0001",
@@ -7476,6 +7476,11 @@
                 "id": "0128",
                 "name": "Quân lâm thiên hạ Nữ Đế không nghĩ tới sẽ bị bại quốc tiểu nhân cho dạy dỗ thành tính nô",
                 "date": "08/11/2026"
+            },
+            {
+                "id": "0129",
+                "name": "Himeko cùng Kafka hài tử quyền nuôi dưỡng tranh đoạt chiến long trọng khai mạc",
+                "date": "09/11/2026"
             }
         ]
     },
@@ -33112,8 +33117,8 @@
     {
         "title": "Cửu Châu yêu vật phong nguyệt đánh giá ghi chép",
         "slug": "000271",
-        "date": "01/11/2026",
-        "timestamp": 1793530011.639117,
+        "date": "09/11/2026",
+        "timestamp": 1794212330.034551,
         "chapters": [
             {
                 "id": "0001",
@@ -33154,6 +33159,26 @@
                 "id": "0008",
                 "name": "Thứ 8 chương Sau đó",
                 "date": "01/11/2026"
+            },
+            {
+                "id": "0009",
+                "name": "Thứ 9 chương Rõ ràng là ta tới trước",
+                "date": "09/11/2026"
+            },
+            {
+                "id": "0010",
+                "name": "Thứ 10 chương Tìm người",
+                "date": "09/11/2026"
+            },
+            {
+                "id": "0011",
+                "name": "Thứ 11 chương Mưa xuống",
+                "date": "09/11/2026"
+            },
+            {
+                "id": "0012",
+                "name": "Thứ 12 chương Đối thủ một mất một còn",
+                "date": "09/11/2026"
             }
         ]
     },
@@ -34670,6 +34695,203 @@
                 "id": "0008",
                 "name": "Thứ 8 chương",
                 "date": "08/11/2026"
+            }
+        ]
+    },
+    {
+        "title": "Cự nhũ sư phụ trầm luân",
+        "slug": "000294",
+        "date": "09/11/2026",
+        "timestamp": 1794213838.794566,
+        "chapters": [
+            {
+                "id": "0001",
+                "name": "Chương 1:",
+                "date": "09/11/2026"
+            },
+            {
+                "id": "0002",
+                "name": "Chương 02:",
+                "date": "09/11/2026"
+            },
+            {
+                "id": "0003",
+                "name": "Chương 03:",
+                "date": "09/11/2026"
+            },
+            {
+                "id": "0004",
+                "name": "Chương 04:",
+                "date": "09/11/2026"
+            },
+            {
+                "id": "0005",
+                "name": "Chương 05:",
+                "date": "09/11/2026"
+            },
+            {
+                "id": "0006",
+                "name": "Chương 06:",
+                "date": "09/11/2026"
+            },
+            {
+                "id": "0007",
+                "name": "Chương 7:",
+                "date": "09/11/2026"
+            },
+            {
+                "id": "0008",
+                "name": "Chương 08:",
+                "date": "09/11/2026"
+            },
+            {
+                "id": "0009",
+                "name": "Chương 09:",
+                "date": "09/11/2026"
+            },
+            {
+                "id": "0010",
+                "name": "Chương 10:",
+                "date": "09/11/2026"
+            },
+            {
+                "id": "0011",
+                "name": "Chương 11:",
+                "date": "09/11/2026"
+            },
+            {
+                "id": "0012",
+                "name": "Chương 12:",
+                "date": "09/11/2026"
+            },
+            {
+                "id": "0013",
+                "name": "Chương 13:",
+                "date": "09/11/2026"
+            },
+            {
+                "id": "0014",
+                "name": "Chương 14:",
+                "date": "09/11/2026"
+            },
+            {
+                "id": "0015",
+                "name": "Chương 15:",
+                "date": "09/11/2026"
+            },
+            {
+                "id": "0016",
+                "name": "Chương 15: phiên ngoại",
+                "date": "09/11/2026"
+            },
+            {
+                "id": "0017",
+                "name": "Chương 16:",
+                "date": "09/11/2026"
+            },
+            {
+                "id": "0018",
+                "name": "Chương 17:",
+                "date": "09/11/2026"
+            },
+            {
+                "id": "0019",
+                "name": "Chương 18:",
+                "date": "09/11/2026"
+            },
+            {
+                "id": "0020",
+                "name": "Chương 19:",
+                "date": "09/11/2026"
+            },
+            {
+                "id": "0021",
+                "name": "Chương 20:",
+                "date": "09/11/2026"
+            },
+            {
+                "id": "0022",
+                "name": "Chương 21:",
+                "date": "09/11/2026"
+            },
+            {
+                "id": "0023",
+                "name": "Chương 22:",
+                "date": "09/11/2026"
+            }
+        ]
+    },
+    {
+        "title": "Ta phía trước thần tượng nữ đoàn mỹ mẫu thế nào lại là một cái bị kim chủ đại điểu khai phát qua",
+        "slug": "000295",
+        "date": "09/11/2026",
+        "timestamp": 1794214035.707145,
+        "chapters": [
+            {
+                "id": "0001",
+                "name": "Chương 1:: Thượng thiên",
+                "date": "09/11/2026"
+            },
+            {
+                "id": "0002",
+                "name": "Chương 02:: Hạ thiên",
+                "date": "09/11/2026"
+            }
+        ]
+    },
+    {
+        "title": "Tỷ tỷ và thê tử lật xe",
+        "slug": "000296",
+        "date": "09/11/2026",
+        "timestamp": 1794214311.472995,
+        "chapters": [
+            {
+                "id": "0001",
+                "name": "Chương 06:",
+                "date": "09/11/2026"
+            },
+            {
+                "id": "0002",
+                "name": "Chương 7:",
+                "date": "09/11/2026"
+            },
+            {
+                "id": "0003",
+                "name": "Chương 08:",
+                "date": "09/11/2026"
+            },
+            {
+                "id": "0004",
+                "name": "Chương 09:",
+                "date": "09/11/2026"
+            },
+            {
+                "id": "0005",
+                "name": "Chương 10:",
+                "date": "09/11/2026"
+            }
+        ]
+    },
+    {
+        "title": "Sau khi xuyên việt, trên thế giới tất cả mỹ nữ đều thành khao khát ta côn thịt sủng ái dâm đãng ngu ngốc nữ",
+        "slug": "000297",
+        "date": "09/11/2026",
+        "timestamp": 1794214632.521517,
+        "chapters": [
+            {
+                "id": "0001",
+                "name": "Chương 1:",
+                "date": "09/11/2026"
+            },
+            {
+                "id": "0002",
+                "name": "Chương 02:",
+                "date": "09/11/2026"
+            },
+            {
+                "id": "0003",
+                "name": "Chương 03:",
+                "date": "09/11/2026"
             }
         ]
     }
