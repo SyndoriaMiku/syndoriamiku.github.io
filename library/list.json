@@ -6835,7 +6835,7 @@
         "title": "Tổng hợp truyện ngắn",
         "slug": "000130",
         "date": "10/11/2026",
-        "timestamp": 1794288542.618448,
+        "timestamp": 1794299811.486952,
         "chapters": [
             {
                 "id": "0001",
@@ -7490,6 +7490,16 @@
             {
                 "id": "0131",
                 "name": "Đại Hoàng phong vân ghi chép",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0132",
+                "name": "Thanh lãnh bạn gái cùng nữ vương tỷ tỷ, ôn nhu mỹ mẫu đều khuất phục tại học sinh chuyển trường dưới mặt dương vật",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0133",
+                "name": "Tiểu sư di x Dâm tặc",
                 "date": "10/11/2026"
             }
         ]
@@ -35749,6 +35759,49 @@
             {
                 "id": "0111",
                 "name": "Chương 102: Đồng tâm khóa",
+                "date": "10/11/2026"
+            }
+        ]
+    },
+    {
+        "title": "Mỹ mẫu giáo sư dần dần sa đọa",
+        "slug": "000304",
+        "date": "10/11/2026",
+        "timestamp": 1794299891.473934,
+        "chapters": [
+            {
+                "id": "0001",
+                "name": "Chương 1: Giáo sư mỹ mẫu",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0002",
+                "name": "Chương 02: Tiếp cận",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0003",
+                "name": "Chương 03: Xúc động",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0004",
+                "name": "Chương 04: Sườn xám mẫu nữ hoa",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0005",
+                "name": "Chương 05: Sắc tình mẫu nữ hoa",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0006",
+                "name": "Chương 06: Mẫu nữ hoa thịt heo mông vừa đi vừa về cắm",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0007",
+                "name": "Chương 7: Mẫu tử mâu thuẫn bộc phát",
                 "date": "10/11/2026"
             }
         ]
