@@ -5,6 +5,7 @@ so every launch loads it straight from disk, fully offline. It is fetched from
 Hugging Face only when that folder is missing or incomplete, and an existing
 Hugging Face cache copy is migrated into it without re-downloading.
 """
+import bisect
 import json
 import os
 import re
@@ -18,6 +19,69 @@ LABELS = ['I-ORG', 'B-LOC', 'O', 'B-ORG', 'I-LOC', 'I-PER',
           'B-TIME', 'I-TIME', 'B-PER']
 TYPES = {'PER': 'PERSON', 'LOC': 'PLACE', 'ORG': 'ORG'}
 _LOCK = threading.Lock()
+
+# ── Bộ lọc ứng viên (ưu tiên không bỏ sót) ──
+# Tên có thể chứa chữ số/chữ Latin (tên ngoại quốc) và dấu chấm giữa, nhưng phải
+# có ít nhất một chữ Hán. Ngưỡng giữ thấp để ứng viên mơ hồ vẫn tới bảng duyệt;
+# cột "Điểm" và bộ lọc sẵn có trong dialog đóng vai trò van chính xác.
+NAME_RE = re.compile(r'(?=.*[\u3400-\u9fff])[\u3400-\u9fffA-Za-z0-9·]{1,40}\Z')
+MIN_SCORE = 0.55
+SINGLE_CHAR_SCORE = 0.90
+
+
+def is_name_shape(name):
+    return bool(name) and NAME_RE.fullmatch(name) is not None
+
+
+def keep_candidate(name, score):
+    """Giữ tên đúng dạng và đủ điểm; tên 1 chữ cần điểm cao hơn."""
+    if not is_name_shape(name):
+        return False
+    return score >= (SINGLE_CHAR_SCORE if len(name) == 1 else MIN_SCORE)
+
+
+def saved_spans(text, names):
+    """Mọi vị trí của các tên đã lưu, để không đề xuất lại chúng."""
+    names = sorted({n for n in (names or ()) if n}, key=lambda n: (-len(n), n))
+    if not names:
+        return []
+    pattern = re.compile('|'.join(re.escape(n) for n in names))
+    return [match.span() for match in pattern.finditer(text)]
+
+
+def _overlaps(span, spans):
+    start, end = span
+    return any(start < other_end and other_start < end for other_start, other_end in spans)
+
+
+def resolve_spans(found, text, saved=()):
+    """Chọn span cuối cùng từ ``{(start, end, kind): score}``.
+
+    - Bỏ ứng viên nằm trong một tên đã lưu (chỉ khi đúng vị trí đó).
+    - Hai span khác loại được phép chồng nhau; cùng loại thì giữ span dài hơn.
+    - Hai span cùng loại chỉ cách nhau một dấu · được nối lại.
+
+    ``saved`` là danh sách (start, end) từ :func:`saved_spans`.
+    """
+    accepted = {}
+    for (start, end, kind), score in sorted(
+            found.items(), key=lambda item: (item[0][0], -(item[0][1] - item[0][0]))):
+        if _overlaps((start, end), saved):
+            continue
+        spans = accepted.setdefault(kind, [])
+        index = bisect.bisect_left([span[0] for span in spans], start)
+        previous = spans[index - 1] if index else None
+        following = spans[index] if index < len(spans) else None
+        if (previous is not None and previous[1] > start) or (following is not None and following[0] < end):
+            continue
+        if previous is not None and previous[1] == start and text[start - 1] == '·':
+            previous[1] = end
+            previous[3] = max(previous[3], score)
+            continue
+        spans.insert(index, [start, end, kind, score])
+    merged = [tuple(span) for spans in accepted.values() for span in spans]
+    merged.sort(key=lambda span: span[0])
+    return merged
 _SESSION = None
 
 MANIFEST = 'stv_model.json'
