@@ -35189,5 +35189,568 @@
                 "date": "10/11/2026"
             }
         ]
+    },
+    {
+        "title": "Ngự tiên",
+        "slug": "000303",
+        "date": "10/11/2026",
+        "timestamp": 1794292198.300651,
+        "chapters": [
+            {
+                "id": "0001",
+                "name": "Thứ 0 chương Chương mở đầu: Kiếm Tông thiếu niên",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0002",
+                "name": "Chương 1: Nguyên nhân",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0003",
+                "name": "Chương 02: Đánh gãy phàm niệm",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0004",
+                "name": "Chương 03: Đạp tiên đồ ( Bên trên )",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0005",
+                "name": "Chương 04: Đạp tiên đồ ( Phía dưới )",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0006",
+                "name": "Chương 05: Trảm dâm tà",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0007",
+                "name": "Thứ 0 chương Phiên ngoại long năm tết xuân đặc biệt chương tiết",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0008",
+                "name": "Chương 06: Ngự tiên quyết",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0009",
+                "name": "Chương 7: Tiên Nô Ấn",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0010",
+                "name": "Chương 08: Trình Ngọc Khiết",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0011",
+                "name": "Chương 09: Thu tiên nô",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0012",
+                "name": "Chương 10: Trói tiên lời",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0013",
+                "name": "Chương 11: Trèo lên nhân tiên",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0014",
+                "name": "Chương 12: Đọa thư khuyển",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0015",
+                "name": "Chương 13: Người thứ ba",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0016",
+                "name": "Thứ 0 chương Ở giữa chương: Tiểu Lâu Nhất Dạ nghe gió mưa",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0017",
+                "name": "Thứ 0 chương Ở giữa chương: Ăn mật đường",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0018",
+                "name": "Thứ 0 chương Ở giữa chương: Long năm tết xuân đặc biệt chương tiết",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0019",
+                "name": "Chương 14: · Ức năm xưa",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0020",
+                "name": "Chương 15: · Kiếm tiên tử",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0021",
+                "name": "Chương 16: · Dưới ánh trăng đàm luận",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0022",
+                "name": "Chương 17: · Lăng Mặc Tuyết ( Bên trên )",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0023",
+                "name": "Chương 18: · Lăng Mặc Tuyết ( Phía dưới )",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0024",
+                "name": "Chương 19: · Tiên Giới mê",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0025",
+                "name": "Chương 20: · Long khí ngưng",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0026",
+                "name": "Chương 21: · Khung đỉnh hiện",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0027",
+                "name": "Chương 22: · Trấn thương khung",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0028",
+                "name": "Chương 23: · Khóa Tiên Đài",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0029",
+                "name": "Chương 24: Mật thất cấm",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0030",
+                "name": "Chương 25: Giải khúc mắc",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0031",
+                "name": "Chương 26: Đậu đỏ dâm",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0032",
+                "name": "Chương 27: Cấm các đàm luận",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0033",
+                "name": "Chương 28: Ba người đi",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0034",
+                "name": "Thứ 0 chương Cuốn tự",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0035",
+                "name": "Chương 29: Vào lê kinh",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0036",
+                "name": "Chương 30: Phó thịnh yến",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0037",
+                "name": "Chương 31: Thưởng sử sách",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0038",
+                "name": "Chương 32: Nạp quốc vận",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0039",
+                "name": "Chương 33: Điều dương khí",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0040",
+                "name": "Chương 34: Hương bên trong án",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0041",
+                "name": "Chương 35: Thanh Hà hiện",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0042",
+                "name": "Chương 36: Hồ Uyển Oánh",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0043",
+                "name": "Chương 37: Vào đông xi",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0044",
+                "name": "Chương 38: Mưa xuân đừng",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0045",
+                "name": "Chương 39: Hiệp Khách Hành",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0046",
+                "name": "Chương 40: Càng linh đan",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0047",
+                "name": "Chương 41: Đoạt dị bảo",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0048",
+                "name": "Chương 42: Lau kiếm tâm",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0049",
+                "name": "Chương 43: Giận chướng mắt",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0050",
+                "name": "Chương 44: Ngũ Thánh quyết",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0051",
+                "name": "Chương 45: Phù Sinh tình",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0052",
+                "name": "Chương 46: Ứng thiên mệnh",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0053",
+                "name": "Chương 47: Về Kiếm Các",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0054",
+                "name": "Chương 48: Thuần Trì Dạ ( Bên trên )",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0055",
+                "name": "Chương 49: Thuần Trì Dạ ( Bên trong )",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0056",
+                "name": "Chương 50:: Thuần Trì Dạ ( Phía dưới )",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0057",
+                "name": "Thứ 0 chương Tự",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0058",
+                "name": "Thứ 0 chương 【 Ngự tiên - Xà năm tết xuân đặc biệt chương tiết 】",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0059",
+                "name": "Chương 51: Đêm Bàn Long",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0060",
+                "name": "Chương 52: Muốn hầu hạ",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0061",
+                "name": "Chương 53: Thí Kiếm Hội",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0062",
+                "name": "Chương 54: Kiếm ảnh thân",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0063",
+                "name": "Chương 55: Đêm thư đọa",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0064",
+                "name": "Chương 56: Lý Tố hỏi",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0065",
+                "name": "Chương 57: Vào huyễn cảnh",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0066",
+                "name": "Chương 58: Tương Kiến Hoan",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0067",
+                "name": "Chương 59: Ức cô tuyết",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0068",
+                "name": "Chương 60: Mưu linh xà",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0069",
+                "name": "Chương 61: Trở vào bao kiếm",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0070",
+                "name": "Chương 62: Dạ Lai Hương",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0071",
+                "name": "Chương 63: Yêu Hoàng hiện",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0072",
+                "name": "Chương 64: Thứ hai tiên",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0073",
+                "name": "Chương 65: Thỏ khôn chết",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0074",
+                "name": "Chương 66: Táng Hiên Viên",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0075",
+                "name": "Chương 67: Thông long mạch",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0076",
+                "name": "Chương 68: Ảo mộng cảnh",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0077",
+                "name": "Chương 69: Tâm hai cách",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0078",
+                "name": "Chương 70: Nhớ chuyện xưa",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0079",
+                "name": "Chương 71: Trong mộng hẹn",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0080",
+                "name": "Chương 72: Trưng thu thịnh cúc",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0081",
+                "name": "Chương 73: Lấy linh khuẩn",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0082",
+                "name": "Chương 74: Thuần vận nhiễm",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0083",
+                "name": "Chương 75: Thôi Thi Thi ( Bên trên )",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0084",
+                "name": "Chương 76: Thôi Thi Thi ( Phía dưới )",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0085",
+                "name": "Chương 77: Linh lung các",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0086",
+                "name": "Chương 78: Giang sơn cười",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0087",
+                "name": "Chương 79: Roi người",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0088",
+                "name": "Chương 80: Câu cơ thể",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0089",
+                "name": "Chương 81: Thuần kỳ thần",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0090",
+                "name": "Chương 82: Huyết dạy bí",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0091",
+                "name": "Chương 83: Long xà múa",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0092",
+                "name": "Chương 84: Yêu gấu hiện",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0093",
+                "name": "Chương 85: Đông dưới rào",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0094",
+                "name": "Chương 86: Gặp Nam Sơn",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0095",
+                "name": "Thứ 0 chương Mã năm tân xuân đặc biệt chương tiết",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0096",
+                "name": "Chương 87: Phân song hồn",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0097",
+                "name": "Chương 88: Sơn hà tế",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0098",
+                "name": "Chương 89: Thiên cơ lộ ra",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0099",
+                "name": "Chương 90: Giết tận tà",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0100",
+                "name": "Chương 91: Tụ bảo các",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0101",
+                "name": "Chương 92: Ám âm mưu thâm độc",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0102",
+                "name": "Chương 93: Tỉnh mộng còn",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0103",
+                "name": "Chương 94: Rèn kiếm thể",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0104",
+                "name": "Chương 95: Bốn kiếm hợp",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0105",
+                "name": "Chương 96: Thuần song long ( Bên trên )",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0106",
+                "name": "Chương 97: Thuần song long 《 Bên trong 》",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0107",
+                "name": "Chương 98: Thuần song long ( Phía dưới )",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0108",
+                "name": "Chương 99: Trưng thu linh giao ( Bên trên )",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0109",
+                "name": "Chương 100: Trưng thu linh giao ( Bên trong )",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0110",
+                "name": "Chương 101: Trưng thu linh giao ( Phía dưới )",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0111",
+                "name": "Chương 102: Đồng tâm khóa",
+                "date": "10/11/2026"
+            }
+        ]
     }
 ]
