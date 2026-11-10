@@ -6834,8 +6834,8 @@
     {
         "title": "Tổng hợp truyện ngắn",
         "slug": "000130",
-        "date": "09/11/2026",
-        "timestamp": 1794219047.530565,
+        "date": "10/11/2026",
+        "timestamp": 1794288542.618448,
         "chapters": [
             {
                 "id": "0001",
@@ -7486,6 +7486,11 @@
                 "id": "0130",
                 "name": "Vốn là cấm phái nam bách hợp Thánh nữ học viện, bị duy nhất chủ nhân dùng ma pháp",
                 "date": "09/11/2026"
+            },
+            {
+                "id": "0131",
+                "name": "Đại Hoàng phong vân ghi chép",
+                "date": "10/11/2026"
             }
         ]
     },
@@ -34264,8 +34269,8 @@
     {
         "title": "Đoan trang ôn uyển tài trí thục mẫu vậy mà trở thành khế ước của ta thú",
         "slug": "000285",
-        "date": "05/11/2026",
-        "timestamp": 1793875578.772553,
+        "date": "10/11/2026",
+        "timestamp": 1794289308.638934,
         "chapters": [
             {
                 "id": "0001",
@@ -34351,6 +34356,51 @@
                 "id": "0017",
                 "name": "Thứ 17 chương Mặc sức tưởng tượng tỷ tỷ",
                 "date": "05/11/2026"
+            },
+            {
+                "id": "0018",
+                "name": "Chương 18: Nhập vai",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0019",
+                "name": "Chương 19: jk mỹ mẫu",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0020",
+                "name": "Chương 20: Thần gian dâm hí kịch",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0021",
+                "name": "Chương 21: Nhu tình mẫu thượng",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0022",
+                "name": "Chương 22: Đến ngọc thành",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0023",
+                "name": "Chương 23: Khế ước tỷ tỷ",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0024",
+                "name": "Chương 24: Mẫu nữ khẩu giao",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0025",
+                "name": "Chương 25: Phá thân tỷ tỷ",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0026",
+                "name": "Chương 26: Mẫu tỷ cùng bay",
+                "date": "10/11/2026"
             }
         ]
     },
@@ -34955,6 +35005,188 @@
                 "id": "0010",
                 "name": "Chương 10:",
                 "date": "09/11/2026"
+            }
+        ]
+    },
+    {
+        "title": "Xa ngút ngàn dặm Lạc Tinh Trì",
+        "slug": "000299",
+        "date": "10/11/2026",
+        "timestamp": 1794289400.972866,
+        "chapters": [
+            {
+                "id": "0001",
+                "name": "Chương 1::",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0002",
+                "name": "Chương 02::",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0003",
+                "name": "Chương 03:",
+                "date": "10/11/2026"
+            }
+        ]
+    },
+    {
+        "title": "Giới cảnh sát tân tinh cùng tuyệt sắc quái tặc tuyệt vọng dạy dỗ",
+        "slug": "000300",
+        "date": "10/11/2026",
+        "timestamp": 1794289532.686878,
+        "chapters": [
+            {
+                "id": "0001",
+                "name": "Chương 1:",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0002",
+                "name": "Chương 03:",
+                "date": "10/11/2026"
+            }
+        ]
+    },
+    {
+        "title": "Đem hảo huynh đệ cả nhà nữ tính dạy dỗ thành ác đọa chó cái",
+        "slug": "000301",
+        "date": "10/11/2026",
+        "timestamp": 1794289722.815213,
+        "chapters": [
+            {
+                "id": "0001",
+                "name": "Chương 1",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0002",
+                "name": "Chương 02:",
+                "date": "10/11/2026"
+            }
+        ]
+    },
+    {
+        "title": "Trùng sinh Vân Triệt sẽ không dạy dỗ mình hậu cung, đúng không",
+        "slug": "000302",
+        "date": "10/11/2026",
+        "timestamp": 1794290015.873364,
+        "chapters": [
+            {
+                "id": "0001",
+                "name": "Chương 0 Nhân vật thiết lập",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0002",
+                "name": "Chương 1: Tiêu Linh Tịch phá thân mời",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0003",
+                "name": "Chương 02: Liên Tịch tính nô dạy dỗ khế ước",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0004",
+                "name": "Chương 03: Thư khuyển sa đọa bản thân tĩnh dưỡng, Tiêu Thương Tịch cuối cùng thành tính nô",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0005",
+                "name": "Chương 04: Ma hậu Khuynh Nguyệt khống chế dục",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0006",
+                "name": "Chương 05: Hạ Khuynh Nguyệt đối với Tiêu Thương Tịch tư mật trừng phạt.",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0007",
+                "name": "Chương 06: Tà Đế Tiêu Triệt tại 3 tuổi phá đồng tử thân",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0008",
+                "name": "Chương 7: Ma hậu Khuynh Nguyệt mặt khác càng là M?",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0009",
+                "name": "Chương 08: Dưới giường Khuynh Nguyệt trên giường Liên Tịch",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0010",
+                "name": "Chương 09: Khuynh Nguyệt cùng Liên Tịch mười năm thủ vững",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0011",
+                "name": "Chương 10: Gian ác điều ước: Tiêu Triệt cơ thể chột dạ chân tướng",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0012",
+                "name": "Chương 11: Mạt Lỵ: La lỵ cái nào không xong?",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0013",
+                "name": "Chương 12: Mạt Lỵ: Ngươi không phải là muốn khi sư diệt tổ a?",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0014",
+                "name": "Chương 13: Tân thủ BOSS vào Huyền tốc thông sổ tay",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0015",
+                "name": "Chương 14: Giai đoạn ~ Tính chất thắng lợi",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0016",
+                "name": "Chương 15: Mạt Lỵ bại gia sẽ gặp phải trừng phạt!",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0017",
+                "name": "Chương 16: Sắc tức là không, hoàng thiên tại thượng",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0018",
+                "name": "Chương 17: Đến chậm trừng phạt",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0019",
+                "name": "Chương 18: Có thể so với thủy tổ đẳng cấp kém",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0020",
+                "name": "Chương 19: Mỹ nam cùng “Dã thú ” ?",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0021",
+                "name": "Chương 20: Cuối cùng bị lừa rồi ~",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0022",
+                "name": "Chương 21: Mạt Lỵ quỷ kế?",
+                "date": "10/11/2026"
+            },
+            {
+                "id": "0023",
+                "name": "Chương 22: Tù Long giương lạnh",
+                "date": "10/11/2026"
             }
         ]
     }
