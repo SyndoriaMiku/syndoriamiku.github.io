@@ -6639,8 +6639,8 @@
     {
         "title": "Loạn thế sách",
         "slug": "000125",
-        "date": "08/10/2026",
-        "timestamp": 1791448662.612986,
+        "date": "11/11/2026",
+        "timestamp": 1794415668.880596,
         "chapters": [
             {
                 "id": "0001",
@@ -6656,6 +6656,16 @@
                 "id": "0003",
                 "name": "NTR Đường Vãn Trang 1",
                 "date": "08/10/2026"
+            },
+            {
+                "id": "0004",
+                "name": "Nương tử về nhà thăm người thân, bất hạnh cùng cha loạn luân tính khí kẹt tại cùng một chỗ không nhổ ra được sau chỉ có thể bên trong xạ giải trừ?!【 Trên 】",
+                "date": "11/11/2026"
+            },
+            {
+                "id": "0005",
+                "name": "Nương tử về nhà thăm người thân, bất hạnh cùng cha loạn luân, tính khí kẹt tại cùng một chỗ không nhổ ra được sau chỉ có thể bên trong xạ giải trừ?!【 Dưới 】",
+                "date": "11/11/2026"
             }
         ]
     },
@@ -36315,6 +36325,29 @@
             {
                 "id": "0006",
                 "name": "Thứ 6 chương Trên cổ dấu răng cùng trên ghế sa lon viền ren",
+                "date": "11/11/2026"
+            }
+        ]
+    },
+    {
+        "title": "Ma pháp sư tiểu thư ngoài ý muốn mang lên trên tự chế nô lệ vòng cổ",
+        "slug": "000311",
+        "date": "11/11/2026",
+        "timestamp": 1794414744.129144,
+        "chapters": [
+            {
+                "id": "0001",
+                "name": "Chương 1:: Mỹ thiếu nữ ma pháp sư bị tự chế nô lệ vòng cổ khống chế , tại gỡ giáp sau đó âm u bò",
+                "date": "11/11/2026"
+            },
+            {
+                "id": "0002",
+                "name": "Chương 02:: Linh đang, ma pháp sư tiểu thư, cùng nàng chó con",
+                "date": "11/11/2026"
+            },
+            {
+                "id": "0003",
+                "name": "Chương 03:: Miêu nương xảo thi liên hoàn kế, Alice ngộ nhập phòng tối",
                 "date": "11/11/2026"
             }
         ]
