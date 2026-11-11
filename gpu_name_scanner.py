@@ -74,7 +74,7 @@ def resolve_spans(found, text, saved=()):
         following = spans[index] if index < len(spans) else None
         if (previous is not None and previous[1] > start) or (following is not None and following[0] < end):
             continue
-        if previous is not None and previous[1] == start and text[start - 1] == '·':
+        if previous is not None and text[previous[1]:start] == '·':
             previous[1] = end
             previous[3] = max(previous[3], score)
             continue
@@ -108,18 +108,36 @@ def model_dir():
         _app_dir(), 'models', MODEL.split('/')[-1])
 
 
+def _read_manifest(path):
+    try:
+        with open(os.path.join(path, MANIFEST), encoding='utf-8') as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return None
+
+
+def custom_manifest(path):
+    """True when the folder declares itself a fine-tuned model."""
+    info = _read_manifest(path)
+    return bool(info and info.get('custom'))
+
+
 def is_installed(path=None):
-    """True when the local folder holds the pinned revision and its files."""
+    """True when the folder holds the pinned base model or a valid custom one.
+
+    A custom (fine-tuned) folder must keep the exact label order so predictions
+    cannot silently map to the wrong type.
+    """
     path = path or model_dir()
     if not all(os.path.isfile(os.path.join(path, name)) for name in REQUIRED):
         return False
     if not any(os.path.isfile(os.path.join(path, name)) for name in ('vocab.txt', 'tokenizer.json')):
         return False
-    try:
-        with open(os.path.join(path, MANIFEST), encoding='utf-8') as fh:
-            info = json.load(fh)
-    except (OSError, ValueError):
+    info = _read_manifest(path)
+    if info is None:
         return False
+    if info.get('custom'):
+        return info.get('labels') == LABELS
     return info.get('model') == MODEL and info.get('revision') == REVISION
 
 
@@ -194,8 +212,14 @@ def _load(progress):
     global _SESSION
     if _SESSION is not None:
         return _SESSION
-    path = install_model(progress)
-    progress('Đang nạp mô hình NER từ máy…')
+    requested = model_dir()
+    if custom_manifest(requested) and is_installed(requested):
+        # A fine-tuned folder: load it in place, never download over it.
+        path = requested
+        progress('Đang nạp mô hình NER fine-tune từ máy…')
+    else:
+        path = install_model(progress)
+        progress('Đang nạp mô hình NER từ máy…')
     # Model is on disk: forbid any Hugging Face network call. PyTorch backend only.
     os.environ['HF_HUB_OFFLINE'] = '1'
     os.environ['TRANSFORMERS_OFFLINE'] = '1'
@@ -285,7 +309,7 @@ class NameScanner:
     def _scan(self, text, glossary, limit, progress):
         global _SESSION
         torch, tokenizer, model, device = _load(progress)
-        saved = set(glossary)
+        saved = saved_spans(text, glossary)
         found = {}
         batch_size = 4 if device == 'cuda' else 2
         # Bound tokenizer memory for large novels; overlap gives edge context.
@@ -333,28 +357,20 @@ class NameScanner:
                     if (a == left and source + a > 0) or (b == right and source + b < len(text)):
                         continue
                     name = text[source + a:source + b]
-                    if score < .80 or not re.fullmatch(r'[\u3400-\u9fff·]{2,40}', name):
-                        continue
-                    if name in saved or any(name in full for full in saved):
+                    if not keep_candidate(name, score):
                         continue
                     key = (source + a, source + b, kind)
                     found[key] = max(score, found.get(key, 0))
             cursor += len(batch_starts)
             progress(f'NER {device.upper()} — {min(100, cursor * 100 // len(starts))}%')
-        # Prefer the complete span where overlapping passes disagree.
-        spans = sorted(found, key=lambda k: (k[0], -(k[1] - k[0])))
         entities = {}
-        previous_end = -1
-        for start, end, kind in spans:
-            if start < previous_end:
-                continue
-            previous_end = end
+        for start, end, kind, score in resolve_spans(found, text, saved):
             name = text[start:end]
             entry = entities.setdefault((name, kind), dict(
                 cn=name, type=TYPES[kind], confidence=0, count=0, contexts=[],
                 signals=[f'BERT NER / {device.upper()}'], suggested_vi=''))
             entry['count'] += 1
-            entry['confidence'] = max(entry['confidence'], found[start, end, kind])
+            entry['confidence'] = max(entry['confidence'], score)
             if len(entry['contexts']) < 3:
                 entry['contexts'].append(text[max(0, start-45):min(len(text), end+45)])
         progress(f'NER {device.upper()} hoàn tất — đang lấy gợi ý tên từ API…')

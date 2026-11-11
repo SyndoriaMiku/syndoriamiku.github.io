@@ -1,0 +1,19 @@
+{
+  "tp": 1769,
+  "fp": 27987,
+  "fn": 291,
+  "precision": 0.059450194918671866,
+  "recall": 0.8587378640776699,
+  "f1": 0.11120191098818205,
+  "eval_names": 217,
+  "test_chapters": 200,
+  "gold": 2060,
+  "predicted": 29756,
+  "model_dir": "models\\bert4ner-name-vi",
+  "settings": {
+    "holdout": 0.1,
+    "name_seed": 0,
+    "split_seed": 0,
+    "max_chapters": 200
+  }
+}

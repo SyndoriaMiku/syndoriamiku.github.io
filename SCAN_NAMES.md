@@ -59,8 +59,16 @@ The scanner recognizes PERSON, PLACE and ORG using Chinese context. It does
 not separately classify fantasy skills or items. This model was trained on
 news/general Chinese, so fantasy names still require review. Scores are
 model confidence, not a guarantee that a candidate is a proper name.
-Counts represent detected, deduplicated occurrences. Saved names and their
-fragments are excluded. Overlapping token windows avoid truncating novels.
+Counts represent detected, deduplicated occurrences. Overlapping token windows
+avoid truncating novels.
+
+The candidate filter is recall-first: a name survives down to 55% confidence
+(a one-character name needs 90%), may contain digits or Latin letters, and two
+spans separated only by a middle dot are joined. A candidate is dropped only
+when the occurrence itself sits inside a saved name, so a shorter name that
+also appears on its own is still reported. Overlapping spans of different
+types are kept; same-type overlaps keep the longer span. Use the "Điểm" filter
+in the dialog to trade recall for precision.
 
 CUDA runs FP16 with small batches. VRAM exhaustion reduces batch size, then
 falls back to the same model on CPU. Progress displays the active device.

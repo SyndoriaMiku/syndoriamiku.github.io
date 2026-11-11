@@ -56,7 +56,7 @@ class SavedSpansTest(unittest.TestCase):
 
     def test_finds_every_occurrence_of_saved_names(self):
         text = "王宏伟走进来，王宏伟笑了。"
-        self.assertEqual(scanner.saved_spans(text, {"王宏伟"}), [(0, 3), (8, 11)])
+        self.assertEqual(scanner.saved_spans(text, {"王宏伟"}), [(0, 3), (7, 10)])
 
     def test_no_saved_names_is_empty(self):
         self.assertEqual(scanner.saved_spans("王宏伟", set()), [])

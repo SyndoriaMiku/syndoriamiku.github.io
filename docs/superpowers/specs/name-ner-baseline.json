@@ -1,0 +1,19 @@
+{
+  "tp": 1870,
+  "fp": 53416,
+  "fn": 190,
+  "precision": 0.033824114604058896,
+  "recall": 0.9077669902912622,
+  "f1": 0.06521814947860358,
+  "eval_names": 217,
+  "test_chapters": 200,
+  "gold": 2060,
+  "predicted": 55286,
+  "model_dir": "base",
+  "settings": {
+    "holdout": 0.1,
+    "name_seed": 0,
+    "split_seed": 0,
+    "max_chapters": 200
+  }
+}
