@@ -70,6 +70,25 @@ also appears on its own is still reported. Overlapping spans of different
 types are kept; same-type overlaps keep the longer span. Use the "Điểm" filter
 in the dialog to trade recall for precision.
 
+### Name dictionary (names.json)
+
+`names.json` next to the app is a mined name dictionary that **snaps spans to
+whole phrases**: every dictionary name found in the text is added at its exact
+span, and overlaps are resolved longest-span-first (a whole name always beats a
+fragment). It only supplements — never removes — NER output, and it never
+contains names already in `name.cfg`.
+
+- Build/renew it (GPU, one pass over the corpus):
+  `python tools/name_ner/mine.py --out names.json` (defaults: count ≥ 3,
+  confidence ≥ 0.85). Only multi-character, name-shaped phrases from ≥ 3
+  characters are kept; two-character mining was dominated by common words.
+- Delete or rename `names.json` to disable the dictionary; Scan Names still
+  works with NER alone.
+- Known limits: mining is NER-based, so it adds names the model already finds
+  somewhere (good for whole-phrase consistency) but not transliterated foreign
+  names; occasional idioms can slip in — raise `--min-count` / `--min-confidence`
+  and rebuild for a cleaner, smaller list.
+
 CUDA runs FP16 with small batches. VRAM exhaustion reduces batch size, then
 falls back to the same model on CPU. Progress displays the active device.
 The GUI and API suggestion rules remain independent of CUDA.

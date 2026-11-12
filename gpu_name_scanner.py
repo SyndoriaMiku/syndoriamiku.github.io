@@ -82,6 +82,47 @@ def resolve_spans(found, text, saved=()):
     merged = [tuple(span) for spans in accepted.values() for span in spans]
     merged.sort(key=lambda span: span[0])
     return merged
+
+
+def _dictionary_spans(text, dictionary):
+    """Non-overlapping longest-match spans for every dictionary name in text."""
+    by_first = {}
+    for name, kind in (dictionary or {}).items():
+        if name:
+            by_first.setdefault(name[0], []).append((name, kind))
+    for group in by_first.values():
+        group.sort(key=lambda item: -len(item[0]))
+    spans = set()
+    index = 0
+    while index < len(text):
+        for name, kind in by_first.get(text[index], ()):
+            if text.startswith(name, index):
+                spans.add((index, index + len(name), kind))
+                index += len(name)
+                break
+        else:
+            index += 1
+    return spans
+
+
+def snap_spans(text, dictionary, predicted):
+    """Snap predictions to whole name phrases.
+
+    Dictionary spans and predictions are merged and overlaps resolved by
+    **longest span first**, so a whole name (from either side) always beats a
+    shorter fragment. Dictionary spans win ties at equal length and position.
+    """
+    candidates = list(_dictionary_spans(text, dictionary))
+    candidates.extend(tuple(span) for span in predicted)
+    candidates.sort(key=lambda span: (-(span[1] - span[0]), span[0]))
+    chosen = []
+    for span in candidates:
+        if any(span[0] < other[1] and other[0] < span[1] for other in chosen):
+            continue
+        chosen.append(span)
+    return set(chosen)
+
+
 _SESSION = None
 
 MANIFEST = 'stv_model.json'
@@ -298,15 +339,15 @@ def _decode(offsets, ids, scores):
 
 
 class NameScanner:
-    def scan(self, text, existing_glossary=None, max_results=250, on_progress=None):
+    def scan(self, text, existing_glossary=None, max_results=250, on_progress=None, dictionary=None):
         progress = on_progress or (lambda message: None)
         if not text.strip() or max_results <= 0:
             return []
         # Serialize access to the cached model, including device fallback.
         with _LOCK:
-            return self._scan(text, existing_glossary or (), max_results, progress)
+            return self._scan(text, existing_glossary or (), max_results, progress, dictionary or {})
 
-    def _scan(self, text, glossary, limit, progress):
+    def _scan(self, text, glossary, limit, progress, dictionary=None):
         global _SESSION
         torch, tokenizer, model, device = _load(progress)
         saved = saved_spans(text, glossary)
@@ -363,8 +404,14 @@ class NameScanner:
                     found[key] = max(score, found.get(key, 0))
             cursor += len(batch_starts)
             progress(f'NER {device.upper()} — {min(100, cursor * 100 // len(starts))}%')
+        resolved = resolve_spans(found, text, saved)
+        scores = {(start, end, kind): score for start, end, kind, score in resolved}
+        if dictionary:
+            snapped = snap_spans(text, dictionary, set(scores))
+            resolved = [(start, end, kind, scores.get((start, end, kind), 0.95))
+                        for start, end, kind in sorted(snapped)]
         entities = {}
-        for start, end, kind, score in resolve_spans(found, text, saved):
+        for start, end, kind, score in resolved:
             name = text[start:end]
             entry = entities.setdefault((name, kind), dict(
                 cn=name, type=TYPES[kind], confidence=0, count=0, contexts=[],

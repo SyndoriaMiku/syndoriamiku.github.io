@@ -1519,12 +1519,25 @@ class TranslatorGUI:
         # Minimal inline fallback (empty if no table)
         return cn
 
+    def scan_dictionary(self):
+        """Mined name dictionary (names.json) so known phrases are snapped whole."""
+        if not hasattr(self, "_scan_dictionary_cache"):
+            self._scan_dictionary_cache = {}
+            path = os.path.join(BASE_DIR, "names.json")
+            try:
+                with open(path, "r", encoding="utf-8") as stream:
+                    self._scan_dictionary_cache = json.load(stream).get("entries", {})
+            except (OSError, ValueError):
+                self._scan_dictionary_cache = {}
+        return self._scan_dictionary_cache
+
     def scan_name_candidates(self, text: str, max_results: int = 250, on_progress=None, temp_names=()) -> list:
         """Recognize Chinese entities locally with CUDA/CPU NER."""
         if not _NAME_SCANNER_OK:
             raise RuntimeError("Không tải được gpu_name_scanner.py. Xem SCAN_NAMES.md để cài đặt.")
         results = _NameScanner().scan(
-            text, existing_glossary=set(self.load_name_config()) | set(temp_names), max_results=max_results, on_progress=on_progress,
+            text, existing_glossary=set(self.load_name_config()) | set(temp_names), max_results=max_results,
+            on_progress=on_progress, dictionary=self.scan_dictionary(),
         )
         # The legacy API provides a normal Vietnamese translation, filled below
         # after all candidates have been collected into one request.
