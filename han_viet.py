@@ -94,17 +94,78 @@ HAN_VIET: dict[str, str] = {
 }
 
 
-def han_viet_name(cn_text: str) -> str:
-    """Convert a Chinese term to Hán-Việt; return empty if any reading is unknown."""
-    parts = []
+def learn_readings(pairs) -> dict:
+    """Học âm Hán-Việt từng chữ từ các cặp tên (chữ Hán, tên Việt) đã dịch.
+
+    Chỉ dùng cặp thẳng hàng: số chữ Hán == số âm tiết, toàn chữ Hán. Mỗi chữ
+    lấy âm được dùng nhiều nhất (đúng thói quen dịch tên của người dùng).
+    """
+    import re
+    from collections import Counter, defaultdict
+    votes = defaultdict(Counter)
+    syllable = re.compile(r'^[A-Za-zÀ-ỹĐđ]+$')
+    for cn, vi in pairs:
+        cn = (cn or '').strip()
+        syllables = (vi or '').split()
+        if (not cn or len(syllables) != len(cn) or not all(is_cjk(ch) for ch in cn)
+                or not all(syllable.match(s) for s in syllables)):
+            continue
+        for ch, s in zip(cn, syllables):
+            votes[ch][s.capitalize()] += 1
+    return {ch: counter.most_common(1)[0][0] for ch, counter in votes.items()}
+
+
+def load_name_cfg_pairs(path) -> list:
+    """Các cặp Trung=Việt trong name.cfg (bỏ dòng chú thích)."""
+    import unicodedata
+    pairs = []
+    try:
+        with open(path, encoding='utf-8-sig') as stream:
+            for line in stream:
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    cn, vi = line.split('=', 1)
+                    pairs.append((unicodedata.normalize('NFC', cn.strip()), unicodedata.normalize('NFC', vi.strip())))
+    except OSError:
+        pass
+    return pairs
+
+
+def build_table(name_cfg_path=None) -> dict:
+    """Bảng Hán-Việt: bảng có sẵn + âm học từ name.cfg (âm của người dùng thắng)."""
+    table = dict(HAN_VIET)
+    if name_cfg_path:
+        table.update(learn_readings(load_name_cfg_pairs(name_cfg_path)))
+    return table
+
+
+def is_cjk(ch: str) -> bool:
+    return '\u3400' <= ch <= '\u9fff'
+
+
+def han_viet_name(cn_text: str, table=None) -> str:
+    """Convert a Chinese term to Hán-Việt; return empty if any reading is unknown.
+
+    Chữ Latin/số trong tên (tên ngoại) giữ nguyên; dấu · thành khoảng trắng.
+    """
+    table = HAN_VIET if table is None else table
+    parts, latin = [], ''
     for ch in cn_text:
-        if ch in HAN_VIET:
-            parts.append(HAN_VIET[ch])
-        elif '\u4e00' <= ch <= '\u9fff':
-            return ''
-    if not parts:
-        return ''
-    return ' '.join(p.capitalize() for p in parts)
+        if is_cjk(ch):
+            if latin:
+                parts.append(latin)
+                latin = ''
+            if ch not in table:
+                return ''
+            parts.append(table[ch].capitalize())
+        elif ch.isalnum():
+            latin += ch
+        elif latin:
+            parts.append(latin)
+            latin = ''
+    if latin:
+        parts.append(latin)
+    return ' '.join(parts)
 
 
 # ---------------------------------------------------------------------------

@@ -1512,12 +1512,23 @@ class TranslatorGUI:
     def _is_cjk(self, ch: str) -> bool:
         return '\u4e00' <= ch <= '\u9fff'
 
+    def _han_viet_table(self):
+        """Bảng Hán-Việt = bảng có sẵn + âm học từ name.cfg; tính lại khi name.cfg đổi."""
+        path = name_cfg_path()
+        try:
+            stamp = os.path.getmtime(path)
+        except OSError:
+            stamp = None
+        cached = getattr(self, "_han_viet_cache", None)
+        if cached is None or cached[0] != stamp:
+            self._han_viet_cache = (stamp, _hv.build_table(path))
+        return self._han_viet_cache[1]
+
     def _suggest_vi(self, cn: str) -> str:
-        """Best-effort Hán-Việt suggestion: table lookup → fallback raw."""
-        if _HAN_VIET_OK:
-            return _hv.han_viet_name(cn)
-        # Minimal inline fallback (empty if no table)
-        return cn
+        """Gợi ý Hán-Việt cho tên; rỗng nếu còn chữ chưa biết âm."""
+        if not _HAN_VIET_OK:
+            return ""
+        return _hv.han_viet_name(cn, self._han_viet_table())
 
     def scan_dictionary(self):
         """Mined name dictionary (names.json) so known phrases are snapped whole."""
@@ -1531,7 +1542,7 @@ class TranslatorGUI:
                 self._scan_dictionary_cache = {}
         return self._scan_dictionary_cache
 
-    def scan_name_candidates(self, text: str, max_results: int = 250, on_progress=None, temp_names=()) -> list:
+    def scan_name_candidates(self, text: str, max_results: int = 2000, on_progress=None, temp_names=()) -> list:
         """Recognize Chinese entities locally with CUDA/CPU NER."""
         if not _NAME_SCANNER_OK:
             raise RuntimeError("Không tải được gpu_name_scanner.py. Xem SCAN_NAMES.md để cài đặt.")
@@ -1581,6 +1592,12 @@ class TranslatorGUI:
                     candidates = self._fill_name_suggestions_from_api(candidates)
                 except Exception as error:
                     api_warning = str(error)
+                for c in candidates:
+                    c['api_vi'] = c.get('suggested_vi', '')
+                    c['hanviet'] = self._suggest_vi(c['cn'])
+                    # Tên người: mặc định Hán-Việt (đúng thói quen trong name.cfg); còn lại dùng API.
+                    if c['hanviet'] and (c['type'] == 'PERSON' or not c['api_vi']):
+                        c['suggested_vi'] = c['hanviet']
                 results.put((candidates, api_warning, None))
             except Exception as error:
                 results.put((None, None, error))
@@ -1604,7 +1621,7 @@ class TranslatorGUI:
             if api_warning:
                 messagebox.showwarning(
                     "Không tự dịch được tên",
-                    f"Bạn vẫn có thể dùng nút Copy Hán để tra bên ngoài.\n\n{api_warning}",
+                    f"Tên người vẫn có gợi ý Hán-Việt; mục còn trống có thể dùng nút Copy Hán để tra.\n\n{api_warning}",
                     parent=self.root,
                 )
             self._show_scan_names_dialog(candidates)
@@ -1656,6 +1673,28 @@ class TranslatorGUI:
                       relief="flat", borderwidth=0, padx=16, pady=6).pack()
             return
 
+        # Chia 2 nhóm thay cho cắt cứng: "Chắc chắn" (lặp lại nhiều / điểm cao / có trong từ điển)
+        # xem trước, "Cần xem" chứa phần nhiễu nhiều nhưng vẫn giữ để không bỏ sót tên.
+        def is_sure(c):
+            return (c['count'] >= 3 or (c['count'] >= 2 and c['confidence'] >= 0.85)
+                    or any('từ điển' in s or 'dictionary' in s.lower() for s in c.get('signals', [])))
+
+        def rank(c):
+            import math
+            return c['confidence'] * (1 + math.log2(c['count']))
+
+        tier_bar = tk.Frame(dlg, bg=PANEL, padx=16, pady=(0))
+        tier_bar.pack(fill=tk.X)
+        tier_var = tk.StringVar(value="sure" if any(is_sure(c) for c in candidates) else "review")
+        tier_buttons = {}
+        for key, label in (("sure", "Chắc chắn"), ("review", "Cần xem"), ("all", "Tất cả")):
+            b = tk.Button(tier_bar, text=label, relief="flat", borderwidth=0, padx=14, pady=5,
+                          font=("Segoe UI", 10), cursor="hand2", command=lambda k=key: (tier_var.set(k), rebuild()))
+            b.pack(side=tk.LEFT, padx=(0, 4), pady=(0, 6))
+            tier_buttons[key] = (b, label)
+        tk.Label(tier_bar, text="Chắc chắn = xuất hiện ≥3 lần, hoặc ≥2 lần với điểm ≥85%",
+                 fg="#6b6255", bg=PANEL, font=("Segoe UI", 9)).pack(side=tk.RIGHT)
+
         # Filter bar
         filter_frame = tk.Frame(dlg, bg=PANEL, padx=16, pady=6)
         filter_frame.pack(fill=tk.X)
@@ -1675,13 +1714,13 @@ class TranslatorGUI:
         search_entry = tk.Entry(filter_frame, textvariable=search_var, width=20, bg=FIELD, fg="white",
                                 insertbackground="white", relief="flat", font=("Segoe UI", 9))
         search_entry.pack(side=tk.LEFT, padx=(4, 0), ipady=2)
-        tk.Label(filter_frame, text="Space: chọn · Del: bỏ qua · Enter: sửa bản dịch",
+        tk.Label(filter_frame, text="Space: chọn · Del: bỏ qua · Enter: sửa · F2: đổi Hán-Việt/API",
                  fg="#6b6255", bg=PANEL, font=("Segoe UI", 9)).pack(side=tk.RIGHT)
 
         # Bảng
         table = tk.Frame(dlg, bg=BG)
         table.pack(fill=tk.BOTH, expand=True, padx=12, pady=(6, 0))
-        columns = ("sel", "cn", "type", "count", "conf", "vi")
+        columns = ("sel", "cn", "type", "count", "conf", "vi", "alt")
         tree = ttk.Treeview(table, columns=columns, show="headings", style="Scan.Treeview", selectmode="extended")
         scrollbar = ttk.Scrollbar(table, orient="vertical", command=tree.yview)
         tree.configure(yscrollcommand=scrollbar.set)
@@ -1690,7 +1729,8 @@ class TranslatorGUI:
         for col, text, width, anchor, stretch in (
                 ("sel", "✓", 34, "center", False), ("cn", "Tiếng Trung", 130, "w", False),
                 ("type", "Loại", 80, "center", False), ("count", "Xuất hiện", 80, "center", False),
-                ("conf", "Điểm", 64, "center", False), ("vi", "Bản dịch đề xuất", 300, "w", True)):
+                ("conf", "Điểm", 64, "center", False), ("vi", "Bản dịch sẽ lưu", 220, "w", True),
+                ("alt", "Gợi ý còn lại", 180, "w", True)):
             tree.heading(col, text=text, command=lambda c=col: sort_by(c))
             tree.column(col, width=width, minwidth=width if not stretch else 120, anchor=anchor, stretch=stretch)
         tree.tag_configure("odd", background="#221e19")
@@ -1718,6 +1758,15 @@ class TranslatorGUI:
         tk.Button(vi_row, text="Copy Hán", bg="#9c6a28", command=lambda: copy_chinese(), **small).pack(side=tk.LEFT, padx=2)
         tk.Button(vi_row, text="Thêm", bg="#46734f", command=lambda: add_current(), **small).pack(side=tk.LEFT, padx=2)
         tk.Button(vi_row, text="Bỏ qua", bg="#3a332c", command=lambda: ignore_rows(tree.selection()), **small).pack(side=tk.LEFT, padx=2)
+        pick_row = tk.Frame(detail, bg=PANEL)
+        pick_row.pack(fill=tk.X, pady=(0, 4))
+        tk.Label(pick_row, text="Gợi ý:", fg=MUTED, bg=PANEL, font=("Segoe UI", 9)).pack(side=tk.LEFT)
+        hv_btn = tk.Button(pick_row, text="Hán-Việt: —", bg=FIELD, fg="#f0d9a8", relief="flat", borderwidth=0,
+                           padx=10, pady=3, font=("Segoe UI", 9), cursor="hand2", command=lambda: use_source("hanviet"))
+        hv_btn.pack(side=tk.LEFT, padx=(6, 4))
+        api_btn = tk.Button(pick_row, text="API: —", bg=FIELD, fg="#ddd5c7", relief="flat", borderwidth=0,
+                            padx=10, pady=3, font=("Segoe UI", 9), cursor="hand2", command=lambda: use_source("api_vi"))
+        api_btn.pack(side=tk.LEFT)
         context_box = tk.Text(detail, height=4, wrap=tk.WORD, bg=BG, fg="#a39887", font=("Microsoft YaHei UI", 10),
                               borderwidth=0, padx=8, pady=4)
         context_box.pack(fill=tk.X)
@@ -1735,10 +1784,19 @@ class TranslatorGUI:
         sort_state = {"col": None, "reverse": False}
         current = {"cn": None}
 
+        def alternative(c):
+            """Gợi ý không đang dùng (Hán-Việt hoặc API) để so nhanh."""
+            current_value = edited_values[c['cn']].strip()
+            for key, label in (("hanviet", "HV"), ("api_vi", "API")):
+                value = (c.get(key) or "").strip()
+                if value and value != current_value:
+                    return f"{label}: {value}"
+            return ""
+
         def row_values(c):
             cn = c['cn']
             return ("☑" if cn in selected else "☐", cn, c['type'], c['count'],
-                    f"{int(c['confidence'] * 100)}%", edited_values[cn])
+                    f"{int(c['confidence'] * 100)}%", edited_values[cn], alternative(c))
 
         def row_tags(c, index):
             tags = ["odd"] if index % 2 else []
@@ -1755,8 +1813,10 @@ class TranslatorGUI:
                 min_conf = 0
             filter_type = type_filter_var.get()
             query = search_var.get().strip().casefold()
+            tier = tier_var.get()
             rows = [c for c in candidates
                     if c['cn'] not in ignored
+                    and (tier == "all" or is_sure(c) == (tier == "sure"))
                     and (filter_type == "TẤT CẢ" or c['type'] == filter_type)
                     and c['confidence'] * 100 >= min_conf
                     and (not query or query in c['cn'].casefold() or query in edited_values[c['cn']].casefold())]
@@ -1764,8 +1824,10 @@ class TranslatorGUI:
             if col:
                 keys = {"sel": lambda c: c['cn'] in selected, "cn": lambda c: c['cn'], "type": lambda c: c['type'],
                         "count": lambda c: c['count'], "conf": lambda c: c['confidence'],
-                        "vi": lambda c: edited_values[c['cn']].casefold()}
+                        "vi": lambda c: edited_values[c['cn']].casefold(), "alt": alternative}
                 rows.sort(key=keys[col], reverse=sort_state["reverse"])
+            else:
+                rows.sort(key=rank, reverse=True)
             return rows
 
         def rebuild(event=None):
@@ -1778,6 +1840,7 @@ class TranslatorGUI:
                 tree.insert("", tk.END, iid=c['cn'], values=row_values(c), tags=row_tags(c, index))
             remaining = len([c for c in candidates if c['cn'] not in ignored])
             hdr_count_lbl.config(text=f"{remaining} ứng viên · đang hiện {len(rows)} · đã chọn {len(selected)}")
+            update_tier_buttons()
             if focus and tree.exists(focus):
                 tree.focus(focus)
                 tree.selection_set(focus)
@@ -1787,6 +1850,15 @@ class TranslatorGUI:
                 tree.selection_set(rows[0]['cn'])
             else:
                 show_detail(None)
+
+        def update_tier_buttons():
+            left = [c for c in candidates if c['cn'] not in ignored]
+            counts = {"sure": sum(1 for c in left if is_sure(c)), "all": len(left)}
+            counts["review"] = counts["all"] - counts["sure"]
+            for key, (button, label) in tier_buttons.items():
+                active = tier_var.get() == key
+                button.config(text=f"{label} ({counts[key]})", bg="#6a5683" if active else FIELD,
+                              fg="white" if active else MUTED)
 
         def refresh_row(cn):
             if cn in by_cn and tree.exists(cn):
@@ -1820,6 +1892,8 @@ class TranslatorGUI:
                 detail_cn.config(text="—")
                 detail_meta.config(text="")
                 vi_var.set("")
+                hv_btn.config(text="Hán-Việt: —", state=tk.DISABLED)
+                api_btn.config(text="API: —", state=tk.DISABLED)
             else:
                 c = by_cn[cn]
                 detail_cn.config(text=cn)
@@ -1827,6 +1901,10 @@ class TranslatorGUI:
                 detail_meta.config(text=f"{c['type']} · {c['count']} lần · điểm {int(c['confidence'] * 100)}%"
                                         + (f" · căn cứ: {signals}" if signals else ""))
                 vi_var.set(edited_values[cn])
+                hv_btn.config(text=f"Hán-Việt: {c.get('hanviet') or '— (chưa đủ âm)'}",
+                              state=tk.NORMAL if c.get('hanviet') else tk.DISABLED)
+                api_btn.config(text=f"API: {c.get('api_vi') or '—'}",
+                               state=tk.NORMAL if c.get('api_vi') else tk.DISABLED)
                 for ctx in c.get('contexts', []) or ["(không có ngữ cảnh mẫu)"]:
                     start = context_box.index("end-1c")
                     context_box.insert(tk.END, "… " + ctx.replace("\n", " ") + " …\n")
@@ -1846,6 +1924,29 @@ class TranslatorGUI:
                 edited_values[cn] = vi_var.get()
                 refresh_row(cn)
         vi_var.trace_add("write", on_vi_change)
+
+        def use_source(key, cns=None):
+            """Dùng Hán-Việt hoặc API làm bản dịch cho dòng đang xem (hoặc các dòng cns)."""
+            cns = [cn for cn in (cns or [current["cn"]]) if cn in by_cn]
+            changed = 0
+            for cn in cns:
+                value = (by_cn[cn].get(key) or "").strip()
+                if value:
+                    edited_values[cn] = value
+                    changed += 1
+                    refresh_row(cn)
+            if current["cn"] in cns:
+                vi_var.set(edited_values[current["cn"]])
+            return changed
+
+        def swap_sources(event=None):
+            """F2: dòng đang dùng Hán-Việt thì đổi sang API và ngược lại."""
+            cns = [cn for cn in tree.selection() if cn in by_cn]
+            for cn in cns:
+                c = by_cn[cn]
+                use_hv = edited_values[cn].strip() != (c.get('hanviet') or '').strip()
+                use_source("hanviet" if use_hv and c.get('hanviet') else "api_vi", [cn])
+            return "break"
 
         def toggle(cns):
             cns = [cn for cn in cns if cn in by_cn]
@@ -1931,6 +2032,8 @@ class TranslatorGUI:
         tree.bind("<Button-1>", on_click)
         tree.bind("<space>", lambda e: (toggle(tree.selection()), "break")[1])
         tree.bind("<Delete>", lambda e: (ignore_rows(tree.selection()), "break")[1])
+        tree.bind("<F2>", swap_sources)
+        vi_entry.bind("<F2>", swap_sources)
         tree.bind("<Return>", focus_vi)
         tree.bind("<Double-Button-1>", focus_vi)
         vi_entry.bind("<Return>", add_current)

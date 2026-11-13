@@ -34334,8 +34334,8 @@
     {
         "title": "Đoan trang ôn uyển tài trí thục mẫu vậy mà trở thành khế ước của ta thú",
         "slug": "000285",
-        "date": "10/11/2026",
-        "timestamp": 1794289308.638934,
+        "date": "13/11/2026",
+        "timestamp": 1794573959.789835,
         "chapters": [
             {
                 "id": "0001",
@@ -34466,6 +34466,26 @@
                 "id": "0026",
                 "name": "Chương 26: Mẫu tỷ cùng bay",
                 "date": "10/11/2026"
+            },
+            {
+                "id": "0027",
+                "name": "Chương 27: Ngày tốt cảnh đẹp",
+                "date": "13/11/2026"
+            },
+            {
+                "id": "0028",
+                "name": "Chương 28: Thần gian mùi sữa",
+                "date": "13/11/2026"
+            },
+            {
+                "id": "0029",
+                "name": "Chương 29: 3 người tắm rửa",
+                "date": "13/11/2026"
+            },
+            {
+                "id": "0030",
+                "name": "Chương 30: Tương lai kế hoạch",
+                "date": "13/11/2026"
             }
         ]
     },
@@ -36349,6 +36369,52 @@
                 "id": "0003",
                 "name": "Chương 03:: Miêu nương xảo thi liên hoàn kế, Alice ngộ nhập phòng tối",
                 "date": "11/11/2026"
+            }
+        ]
+    },
+    {
+        "title": "Cường đại nhất nữ thần lại trở thành ta thanh thuần nữ nô kiều thê",
+        "slug": "000312",
+        "date": "13/11/2026",
+        "timestamp": 1794573869.21435,
+        "chapters": [
+            {
+                "id": "0001",
+                "name": "Chương 1: Phong hồi lộ chuyển",
+                "date": "13/11/2026"
+            },
+            {
+                "id": "0002",
+                "name": "Chương 02: Vô sỉ báo phục:",
+                "date": "13/11/2026"
+            },
+            {
+                "id": "0003",
+                "name": "Chương 04: Cùng nữ thần khoái hoạt ngày mai đàm luận",
+                "date": "13/11/2026"
+            }
+        ]
+    },
+    {
+        "title": "Đem hoàn mỹ giáo hoa thao thành chỉ có thể gọi lão công mẫu khuyển",
+        "slug": "000313",
+        "date": "13/11/2026",
+        "timestamp": 1794574850.707453,
+        "chapters": [
+            {
+                "id": "0001",
+                "name": "Một Ở bên ngoài cao lãnh thanh thuần giáo hoa cũng chỉ là ta muộn tao bạn gái thôi, mãnh liệt mãnh liệt ăn bám",
+                "date": "13/11/2026"
+            },
+            {
+                "id": "0002",
+                "name": "Hai Khánh điển sau khi kết thúc cùng giáo hoa bạn gái dã chiến, bị chọc giận sau đem giáo hoa thao đến như chó mẹ giống như bại trận",
+                "date": "13/11/2026"
+            },
+            {
+                "id": "0003",
+                "name": "Ba Bị bạn gái cực phẩm cự nhũ khuê mật câu dẫn, từ vừa mới bắt đầu an ủi biến thành phản bội bạn gái tội ác",
+                "date": "13/11/2026"
             }
         ]
     }

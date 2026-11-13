@@ -406,8 +406,10 @@ class NameScanner:
             progress(f'NER {device.upper()} — {min(100, cursor * 100 // len(starts))}%')
         resolved = resolve_spans(found, text, saved)
         scores = {(start, end, kind): score for start, end, kind, score in resolved}
+        from_dictionary = set()
         if dictionary:
             snapped = snap_spans(text, dictionary, set(scores))
+            from_dictionary = {span for span in snapped if span not in scores}
             resolved = [(start, end, kind, scores.get((start, end, kind), 0.95))
                         for start, end, kind in sorted(snapped)]
         entities = {}
@@ -418,6 +420,8 @@ class NameScanner:
                 signals=[f'BERT NER / {device.upper()}'], suggested_vi=''))
             entry['count'] += 1
             entry['confidence'] = max(entry['confidence'], score)
+            if (start, end, kind) in from_dictionary and 'Từ điển tên' not in entry['signals']:
+                entry['signals'].append('Từ điển tên')
             if len(entry['contexts']) < 3:
                 entry['contexts'].append(text[max(0, start-45):min(len(text), end+45)])
         progress(f'NER {device.upper()} hoàn tất — đang lấy gợi ý tên từ API…')
