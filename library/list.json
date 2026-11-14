@@ -6844,8 +6844,8 @@
     {
         "title": "Tổng hợp truyện ngắn",
         "slug": "000130",
-        "date": "11/11/2026",
-        "timestamp": 1794400335.083081,
+        "date": "14/11/2026",
+        "timestamp": 1794648797.867708,
         "chapters": [
             {
                 "id": "0001",
@@ -7536,6 +7536,11 @@
                 "id": "0138",
                 "name": "Tuyệt sắc nữ sát thủ buộc chặt chi chiến",
                 "date": "11/11/2026"
+            },
+            {
+                "id": "0139",
+                "name": "Ác đức lãnh chúa lợi dụng thôi miên giới chỉ đem Kazuma mạo hiểm đồng bạn toàn bộ tẩy não",
+                "date": "14/11/2026"
             }
         ]
     },
@@ -33187,8 +33192,8 @@
     {
         "title": "Cửu Châu yêu vật phong nguyệt đánh giá ghi chép",
         "slug": "000271",
-        "date": "09/11/2026",
-        "timestamp": 1794212330.034551,
+        "date": "14/11/2026",
+        "timestamp": 1794649025.320846,
         "chapters": [
             {
                 "id": "0001",
@@ -33249,6 +33254,16 @@
                 "id": "0012",
                 "name": "Thứ 12 chương Đối thủ một mất một còn",
                 "date": "09/11/2026"
+            },
+            {
+                "id": "0013",
+                "name": "Thứ 13 chương Đình chiến",
+                "date": "14/11/2026"
+            },
+            {
+                "id": "0014",
+                "name": "Thứ 14 chương Thao cho ngươi xem",
+                "date": "14/11/2026"
             }
         ]
     },
@@ -36645,6 +36660,54 @@
             {
                 "id": "0001",
                 "name": "Chương 1: Thỏ khôn phòng ba con ký \" Hoàn toàn phối hợp \", bị đặt tại chợ sáng trong đám người thao mở, toàn bộ sáu phần đường phố làm như không nhìn thấy",
+                "date": "14/11/2026"
+            }
+        ]
+    },
+    {
+        "title": "Thanh thuần mẫu nữ hai người bị ta thôi miên dạy dỗ thành tiểu mẫu cẩu",
+        "slug": "000316",
+        "date": "14/11/2026",
+        "timestamp": 1794648927.860817,
+        "chapters": [
+            {
+                "id": "0001",
+                "name": "Thứ 1 chương Thôi miên nếm thử",
+                "date": "14/11/2026"
+            },
+            {
+                "id": "0002",
+                "name": "Thứ 2 chương Ở trước mặt ta tự an ủi, lộ ra H",
+                "date": "14/11/2026"
+            },
+            {
+                "id": "0003",
+                "name": "Thứ 3 chương Bắt đầu thôi miên dạy dỗ nữ nhi H",
+                "date": "14/11/2026"
+            },
+            {
+                "id": "0004",
+                "name": "Thứ 4 chương Mẫu nữ dạy dỗ, xấu hổ vấn đáp, nơi riêng tư xoa bóp H",
+                "date": "14/11/2026"
+            },
+            {
+                "id": "0005",
+                "name": "Thứ 5 chương Ăn cơm dã ngoại bại lộ, mẫu nữ dạy dỗ phun nãi H",
+                "date": "14/11/2026"
+            },
+            {
+                "id": "0006",
+                "name": "Thứ 6 chương Nhiều người dạy dỗ",
+                "date": "14/11/2026"
+            },
+            {
+                "id": "0007",
+                "name": "Thứ 7 chương Nhiều người dạy dỗ, liếm côn thịt, ở trước mặt chụp huyệt Cao H",
+                "date": "14/11/2026"
+            },
+            {
+                "id": "0008",
+                "name": "Thứ 8 chương Dạy dỗ nữ cảnh sát Cao H",
                 "date": "14/11/2026"
             }
         ]
