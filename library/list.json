@@ -33197,8 +33197,8 @@
     {
         "title": "Cửu Châu yêu vật phong nguyệt đánh giá ghi chép",
         "slug": "000271",
-        "date": "16/11/2026",
-        "timestamp": 1794765909.209625,
+        "date": "17/11/2026",
+        "timestamp": 1794924232.672063,
         "chapters": [
             {
                 "id": "0001",
@@ -33274,6 +33274,16 @@
                 "id": "0015",
                 "name": "Thứ 15 chương Thỉnh điện hạ dùng miệng quét sạch sẽ",
                 "date": "16/11/2026"
+            },
+            {
+                "id": "0016",
+                "name": "Thứ 16 chương Giúp vi phu phục thị một chút tam nương tử",
+                "date": "17/11/2026"
+            },
+            {
+                "id": "0017",
+                "name": "Thứ 17 chương Khai bao Thương Minh",
+                "date": "17/11/2026"
             }
         ]
     },
@@ -37023,6 +37033,29 @@
             {
                 "id": "0005",
                 "name": "Chương 05: · Tùy ý ngồi cưỡi mỹ phụ Hắc Quỷ",
+                "date": "17/11/2026"
+            }
+        ]
+    },
+    {
+        "title": "Thấp nghèo tọa đại kê ba loại giao thịnh yến",
+        "slug": "000322",
+        "date": "17/11/2026",
+        "timestamp": 1794924501.661968,
+        "chapters": [
+            {
+                "id": "0001",
+                "name": "Chương 1: Liêu Tiểu Phàm dã vọng",
+                "date": "17/11/2026"
+            },
+            {
+                "id": "0002",
+                "name": "Chương 02: Leo cây",
+                "date": "17/11/2026"
+            },
+            {
+                "id": "0003",
+                "name": "Chương 03: Party",
                 "date": "17/11/2026"
             }
         ]
