@@ -6,6 +6,9 @@ Everything here is Tk-free so it can be tested on its own:
 - chapter encoding/saving for library/<story>/<chapter>/data.json,
 - text-file decoding for Chinese sources (UTF-8 / GB18030 / Big5 / UTF-16),
 - splitting paragraphs into chapters and bulk replace across a story.
+
+write_catalog() còn gọi git_sync.autocommit_async(): mỗi lần lưu truyện xong thì
+commit "`feat` add new stories" và push lên origin ở luồng nền.
 """
 from __future__ import annotations
 
@@ -17,6 +20,8 @@ import re
 import shutil
 import tempfile
 import unicodedata
+
+import git_sync
 
 DEFAULT_SPLIT_PATTERNS = [
     ("Chương X (mặc định)", r"^chương\s+[\d]+"),
@@ -139,6 +144,9 @@ def write_catalog(path, catalog):
     index = stories_index(catalog)
     if index:  # stories/list.json (truyện ngắn) không có chương: không tạo
         write_text_atomic(os.path.join(library_dir, 'stories.json'), json.dumps(index, ensure_ascii=False))
+    # Mọi thao tác lưu (chương mới, sửa, xoá, thay hàng loạt) đều dừng ở đây:
+    # commit + push nội dung truyện lên origin ở luồng nền.
+    git_sync.autocommit_async(os.path.dirname(library_dir))
 
 
 # ─────────────────────────── text decoding ───────────────────────────
