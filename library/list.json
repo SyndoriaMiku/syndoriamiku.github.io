@@ -37315,8 +37315,8 @@
     {
         "title": "Thấp nghèo tọa đại kê ba loại giao thịnh yến",
         "slug": "000322",
-        "date": "17/11/2026",
-        "timestamp": 1794924501.661968,
+        "date": "23/11/2026",
+        "timestamp": 1795427550.156823,
         "chapters": [
             {
                 "id": "0001",
@@ -37332,6 +37332,11 @@
                 "id": "0003",
                 "name": "Chương 03: Party",
                 "date": "17/11/2026"
+            },
+            {
+                "id": "0004",
+                "name": "Chương 04: Đệ nhất phát",
+                "date": "23/11/2026"
             }
         ]
     },
