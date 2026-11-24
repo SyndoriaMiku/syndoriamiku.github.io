@@ -37749,5 +37749,88 @@
                 "date": "24/11/2026"
             }
         ]
+    },
+    {
+        "title": "Tri Hạ xã hội tính tử vong trò chơi",
+        "slug": "000328",
+        "date": "24/11/2026",
+        "timestamp": 1795529666.233258,
+        "chapters": [
+            {
+                "id": "0001",
+                "name": "Chương 1: Khuê mật thăm dò trò chơi",
+                "date": "24/11/2026"
+            },
+            {
+                "id": "0002",
+                "name": "Chương 02: Bạn trai bí mật giá sách",
+                "date": "24/11/2026"
+            },
+            {
+                "id": "0003",
+                "name": "Chương 04: Vân bàn bên trong ảnh chụp",
+                "date": "24/11/2026"
+            },
+            {
+                "id": "0004",
+                "name": "Chương 05: Kẻ lang thang đại gia",
+                "date": "24/11/2026"
+            },
+            {
+                "id": "0005",
+                "name": "Chương 06: Bạn trai câu lạc bộ tụ hội",
+                "date": "24/11/2026"
+            },
+            {
+                "id": "0006",
+                "name": "Chương 7: Dân công ký túc xá",
+                "date": "24/11/2026"
+            },
+            {
+                "id": "0007",
+                "name": "Chương 08: Thư Nhiên trực tiếp",
+                "date": "24/11/2026"
+            },
+            {
+                "id": "0008",
+                "name": "Chương 09: Bạn trai sinh nhật",
+                "date": "24/11/2026"
+            },
+            {
+                "id": "0009",
+                "name": "Chương 10:",
+                "date": "24/11/2026"
+            },
+            {
+                "id": "0010",
+                "name": "Chương 11:",
+                "date": "24/11/2026"
+            },
+            {
+                "id": "0011",
+                "name": "Chương 12: Du lịch thiên",
+                "date": "24/11/2026"
+            },
+            {
+                "id": "0012",
+                "name": "Chương 14: Lãng mạn du lịch - Phân biệt",
+                "date": "24/11/2026"
+            },
+            {
+                "id": "0013",
+                "name": "Chương 15:",
+                "date": "24/11/2026"
+            },
+            {
+                "id": "0014",
+                "name": "Chương 16:",
+                "date": "24/11/2026"
+            },
+            {
+                "id": "0015",
+                "name": "Chương 17:",
+                "date": "24/11/2026"
+            }
+        ]
     }
 ]
