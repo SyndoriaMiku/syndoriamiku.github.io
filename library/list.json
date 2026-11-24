@@ -37736,5 +37736,18 @@
                 "date": "23/11/2026"
             }
         ]
+    },
+    {
+        "title": "Hào môn chủ mẫu khuất nhục",
+        "slug": "000327",
+        "date": "24/11/2026",
+        "timestamp": 1795527777.480092,
+        "chapters": [
+            {
+                "id": "0001",
+                "name": "Chương 1: Bảo mẫu nghịch tập",
+                "date": "24/11/2026"
+            }
+        ]
     }
 ]
