@@ -59,14 +59,26 @@ jobs:
           RCLONE_CONFIG_R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
           RCLONE_CONFIG_R2_NO_CHECK_BUCKET: 'true'
           PRUNE: ${{ github.event.inputs.prune }}
+          RCLONE_VERSION: v1.68.2   # rclone của apt Ubuntu (1.60) quá cũ: R2 trả 501 NotImplemented
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq rclone
+          set -euo pipefail
+          curl -fsSL -o rclone.zip "https://github.com/rclone/rclone/releases/download/${RCLONE_VERSION}/rclone-${RCLONE_VERSION}-linux-amd64.zip"
+          unzip -q rclone.zip && sudo install -m 0755 "rclone-${RCLONE_VERSION}-linux-amd64/rclone" /usr/local/bin/rclone
+          rm -rf rclone.zip "rclone-${RCLONE_VERSION}-linux-amd64"
+          rclone version | head -1
+          FLAGS="--checksum --no-update-modtime --s3-no-check-bucket"
+          # Thử một file trước: cấu hình sai thì dừng ngay, không in hàng nghìn dòng lỗi.
+          probe=$(cd _data && find . -name 'data.json.gz' | head -1 | sed 's#^\./##')
+          if ! rclone copyto "_data/$probe" "r2:$R2_BUCKET/$probe" $FLAGS --retries 1 --low-level-retries 2 -v; then
+            echo "::error::Không ghi được lên R2 (bucket '$R2_BUCKET'). Kiểm tra R2_ACCOUNT_ID, khoá API (quyền Object Read & Write cho đúng bucket) và R2_BUCKET."
+            exit 1
+          fi
           # Mặc định chỉ thêm/ghi đè (copy). Xoá file thừa (sync) chỉ khi chạy tay với tuỳ chọn prune.
           mode=copy
-          if [ "$PRUNE" = "true" ]; then mode=sync; fi
+          if [ "${PRUNE:-}" = "true" ]; then mode=sync; fi
           echo "rclone $mode → r2:$R2_BUCKET"
-          rclone "$mode" _data "r2:$R2_BUCKET" --checksum --fast-list --transfers 32 --checkers 64 \
-            --retries 5 --stats 20s --stats-one-line --stats-log-level NOTICE
+          rclone "$mode" _data "r2:$R2_BUCKET" $FLAGS --fast-list --transfers 32 --checkers 64 \
+            --retries 3 --stats 20s --stats-one-line --stats-log-level NOTICE
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
