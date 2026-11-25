@@ -6845,7 +6845,7 @@
         "title": "Tổng hợp truyện ngắn",
         "slug": "000130",
         "date": "25/11/2026",
-        "timestamp": 1795586496.38552,
+        "timestamp": 1795593629.536864,
         "chapters": [
             {
                 "id": "0001",
@@ -7550,6 +7550,11 @@
             {
                 "id": "0141",
                 "name": "Khôi hài cầm thú cùng trong nhà ba vị mỹ nhân mẫu di tỷ",
+                "date": "25/11/2026"
+            },
+            {
+                "id": "0142",
+                "name": "Ngọc Khiết trang nghiêm phật môn thục nữ nhóm làm sao lại nghiêng đổ tại Man Hoang dâm đồ cự căn phía dưới",
                 "date": "25/11/2026"
             }
         ]
