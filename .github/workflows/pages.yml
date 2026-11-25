@@ -3,8 +3,12 @@ name: Deploy GitHub Pages
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      prune:
+        description: 'Xoá trên R2 các file chương không còn trong repo'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -21,16 +25,53 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+    env:
+      # Kho dữ liệu ngoài (docs/STORAGE.md). Chưa đặt các giá trị này thì mọi thứ nằm trên Pages như cũ.
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_BUCKET: ${{ vars.R2_BUCKET }}
+      DATA_BASE: ${{ vars.DATA_BASE }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Setup Pages
         uses: actions/configure-pages@v4
+      - name: Check storage settings
+        run: |
+          if [ -n "$DATA_BASE" ] && { [ -z "$R2_ACCOUNT_ID" ] || [ -z "$R2_BUCKET" ]; }; then
+            echo "::error::Đã đặt DATA_BASE nhưng thiếu secret R2_ACCOUNT_ID hoặc biến R2_BUCKET — dữ liệu chương sẽ không có chỗ nào phục vụ."
+            exit 1
+          fi
+          if [ -n "$R2_ACCOUNT_ID" ]; then echo "R2: bật đồng bộ vào bucket $R2_BUCKET"; else echo "R2: chưa cấu hình"; fi
+          if [ -n "$DATA_BASE" ]; then echo "Đọc chương từ: $DATA_BASE"; else echo "Đọc chương từ: GitHub Pages"; fi
+      - name: Build compact site (Pages limit 1 GB)
+        run: |
+          args=""
+          if [ -n "$R2_ACCOUNT_ID" ]; then args="--data-dir _data"; fi
+          python3 tools/build_site.py _site $args --data-base "$DATA_BASE"
+      # Đồng bộ TRƯỚC khi deploy, để trang mới không trỏ tới chương chưa có trên R2.
+      - name: Sync chapter data to R2
+        if: env.R2_ACCOUNT_ID != ''
+        env:
+          RCLONE_CONFIG_R2_TYPE: s3
+          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          RCLONE_CONFIG_R2_NO_CHECK_BUCKET: 'true'
+          PRUNE: ${{ github.event.inputs.prune }}
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq rclone
+          # Mặc định chỉ thêm/ghi đè (copy). Xoá file thừa (sync) chỉ khi chạy tay với tuỳ chọn prune.
+          mode=copy
+          if [ "$PRUNE" = "true" ]; then mode=sync; fi
+          echo "rclone $mode → r2:$R2_BUCKET"
+          rclone "$mode" _data "r2:$R2_BUCKET" --checksum --fast-list --transfers 32 --checkers 64 \
+            --retries 5 --stats 20s --stats-one-line --stats-log-level NOTICE
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
           name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
-          path: '.'
+          path: '_site'
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

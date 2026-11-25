@@ -47,3 +47,6 @@ packages/react-devtools-timeline/dist
 /.backups/
 *.json.bak
 /.archify
+
+_site/
+_data/

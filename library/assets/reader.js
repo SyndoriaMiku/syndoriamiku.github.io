@@ -39,7 +39,7 @@
         } catch (e) { return ''; }
     }
     Promise.all([
-        L.fetchJSON('./data.json'),
+        window.ChapterData ? ChapterData.load('./data.json') : L.fetchJSON('./data.json'),
         L.fetchStory(slug, '../', '../../').catch(function () { return null; }),
     ]).then(function (res) {
         render(res[0], res[1]);
@@ -98,9 +98,14 @@
             el.addEventListener('click', function () { L.progress.markRead(slug, chapterId); });
         });
         if (next) {  // tải sẵn chương sau để bấm là hiện ngay
-            var pre = document.createElement('link');
-            pre.rel = 'prefetch'; pre.href = '../' + encodeURIComponent(next.id) + '/data.json';
-            document.head.appendChild(pre);
+            var nextData = '../' + encodeURIComponent(next.id) + '/data.json';
+            if (window.ChapterData) {
+                ChapterData.prefetch(nextData);
+            } else {
+                var pre = document.createElement('link');
+                pre.rel = 'prefetch'; pre.href = nextData;
+                document.head.appendChild(pre);
+            }
         }
         document.addEventListener('keydown', function (e) {
             if (e.altKey || e.ctrlKey || e.metaKey || /input|select|textarea/i.test(e.target.tagName) || listSheet.isOpen() || settingsSheet.isOpen()) return;
