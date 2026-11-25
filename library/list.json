@@ -6844,8 +6844,8 @@
     {
         "title": "Tổng hợp truyện ngắn",
         "slug": "000130",
-        "date": "25/11/2026",
-        "timestamp": 1795593690.276526,
+        "date": "26/11/2026",
+        "timestamp": 1795627817.192094,
         "chapters": [
             {
                 "id": "0001",
@@ -7561,6 +7561,11 @@
                 "id": "0143",
                 "name": "Hải ngoại du học bồi đọc mẫu nữ bị người da đen cầm xuống",
                 "date": "25/11/2026"
+            },
+            {
+                "id": "0144",
+                "name": "Ta đại học giáo sư mỹ mẫu cùng giản dị nông thôn nhạc phụ",
+                "date": "26/11/2026"
             }
         ]
     },
