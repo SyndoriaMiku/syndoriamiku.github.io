@@ -23,7 +23,7 @@ jobs:
   deploy:
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url || steps.deployment_retry.outputs.page_url }}
     runs-on: ubuntu-latest
     env:
       # Kho dữ liệu ngoài (docs/STORAGE.md). Chưa đặt các giá trị này thì mọi thứ nằm trên Pages như cũ.
@@ -72,8 +72,22 @@ jobs:
         with:
           name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
           path: '_site'
+      # API artifact của GitHub đôi khi chưa thấy artifact vừa upload ("No artifacts named …",
+      # "try again later"): chờ một chút rồi deploy, lỗi thì chờ lâu hơn và thử lại một lần.
+      - name: Wait for artifact to register
+        run: sleep 15
       - name: Deploy to GitHub Pages
         id: deployment
+        continue-on-error: true
+        uses: actions/deploy-pages@v4
+        with:
+          artifact_name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Wait before retry
+        if: steps.deployment.outcome == 'failure'
+        run: sleep 60
+      - name: Deploy to GitHub Pages (retry)
+        id: deployment_retry
+        if: steps.deployment.outcome == 'failure'
         uses: actions/deploy-pages@v4
         with:
           artifact_name: github-pages-${{ github.run_id }}-${{ github.run_attempt }}
