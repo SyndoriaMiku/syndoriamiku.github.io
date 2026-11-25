@@ -33312,8 +33312,8 @@
     {
         "title": "Cửu Châu yêu vật phong nguyệt đánh giá ghi chép",
         "slug": "000271",
-        "date": "17/11/2026",
-        "timestamp": 1794924232.672063,
+        "date": "25/11/2026",
+        "timestamp": 1795586623.006445,
         "chapters": [
             {
                 "id": "0001",
@@ -33399,6 +33399,21 @@
                 "id": "0017",
                 "name": "Thứ 17 chương Khai bao Thương Minh",
                 "date": "17/11/2026"
+            },
+            {
+                "id": "0018",
+                "name": "Thứ 18 chương Thương Minh cái rắm huyệt",
+                "date": "25/11/2026"
+            },
+            {
+                "id": "0019",
+                "name": "Thứ 19 chương Ta có tốt biện pháp",
+                "date": "25/11/2026"
+            },
+            {
+                "id": "0020",
+                "name": "Thứ 20 chương Thủy Tộc toàn bộ nữ yến",
+                "date": "25/11/2026"
             }
         ]
     },
