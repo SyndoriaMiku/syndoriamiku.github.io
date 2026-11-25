@@ -59,12 +59,12 @@ jobs:
           RCLONE_CONFIG_R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
           RCLONE_CONFIG_R2_NO_CHECK_BUCKET: 'true'
           PRUNE: ${{ github.event.inputs.prune }}
-          RCLONE_VERSION: v1.68.2   # rclone của apt Ubuntu (1.60) quá cũ: R2 trả 501 NotImplemented
+          RCL_RELEASE: v1.68.2   # apt Ubuntu (1.60) quá cũ: R2 trả 501. Không đặt tên RCLONE_*: rclone đọc thành tuỳ chọn
         run: |
           set -euo pipefail
-          curl -fsSL -o rclone.zip "https://github.com/rclone/rclone/releases/download/${RCLONE_VERSION}/rclone-${RCLONE_VERSION}-linux-amd64.zip"
-          unzip -q rclone.zip && sudo install -m 0755 "rclone-${RCLONE_VERSION}-linux-amd64/rclone" /usr/local/bin/rclone
-          rm -rf rclone.zip "rclone-${RCLONE_VERSION}-linux-amd64"
+          curl -fsSL -o rclone.zip "https://github.com/rclone/rclone/releases/download/${RCL_RELEASE}/rclone-${RCL_RELEASE}-linux-amd64.zip"
+          unzip -q rclone.zip && sudo install -m 0755 "rclone-${RCL_RELEASE}-linux-amd64/rclone" /usr/local/bin/rclone
+          rm -rf rclone.zip "rclone-${RCL_RELEASE}-linux-amd64"
           rclone version
           FLAGS="--checksum --no-update-modtime --s3-no-check-bucket"
           # Thử một file trước: cấu hình sai thì dừng ngay, không in hàng nghìn dòng lỗi.
