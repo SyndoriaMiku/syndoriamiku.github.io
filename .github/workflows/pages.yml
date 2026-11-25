@@ -65,10 +65,12 @@ jobs:
           curl -fsSL -o rclone.zip "https://github.com/rclone/rclone/releases/download/${RCLONE_VERSION}/rclone-${RCLONE_VERSION}-linux-amd64.zip"
           unzip -q rclone.zip && sudo install -m 0755 "rclone-${RCLONE_VERSION}-linux-amd64/rclone" /usr/local/bin/rclone
           rm -rf rclone.zip "rclone-${RCLONE_VERSION}-linux-amd64"
-          rclone version | head -1
+          rclone version
           FLAGS="--checksum --no-update-modtime --s3-no-check-bucket"
           # Thử một file trước: cấu hình sai thì dừng ngay, không in hàng nghìn dòng lỗi.
-          probe=$(cd _data && find . -name 'data.json.gz' | head -1 | sed 's#^\./##')
+          # (Không dùng "| head": với pipefail, lệnh trước bị SIGPIPE làm cả bước thất bại.)
+          probe=$(cd _data && find . -name 'data.json.gz' -print -quit)
+          probe=${probe#./}
           if ! rclone copyto "_data/$probe" "r2:$R2_BUCKET/$probe" $FLAGS --retries 1 --low-level-retries 2 -v; then
             echo "::error::Không ghi được lên R2 (bucket '$R2_BUCKET'). Kiểm tra R2_ACCOUNT_ID, khoá API (quyền Object Read & Write cho đúng bucket) và R2_BUCKET."
             exit 1
