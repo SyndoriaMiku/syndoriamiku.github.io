@@ -1667,17 +1667,18 @@ class TranslatorGUI:
                   padx=10, pady=4, font=("Segoe UI", 9), cursor="hand2", command=rerun).pack(side=tk.RIGHT, padx=16)
 
         if not candidates:
-            tk.Label(dlg, text="Không tìm thấy tên nào mới trong văn bản.\n(Tất cả các tên có thể đã có trong name.cfg).",
-                     fg="#e8857b", bg=BG, font=("Segoe UI", 10)).pack(pady=40)
-            tk.Button(dlg, text="Đóng", command=on_close, bg=FIELD, fg="white",
-                      relief="flat", borderwidth=0, padx=16, pady=6).pack()
-            return
+            tk.Label(dlg, text="Bộ quét không tìm thấy tên mới. Có thể thêm thủ công ở phía dưới.",
+                     fg="#e0b25c", bg=BG, font=("Segoe UI", 10)).pack(pady=(10, 0))
 
         # Chia 2 nhóm thay cho cắt cứng: "Chắc chắn" (lặp lại nhiều / điểm cao / có trong từ điển)
         # xem trước, "Cần xem" chứa phần nhiễu nhiều nhưng vẫn giữ để không bỏ sót tên.
         def is_sure(c):
-            return (c['count'] >= 3 or (c['count'] >= 2 and c['confidence'] >= 0.85)
-                    or any('từ điển' in s or 'dictionary' in s.lower() for s in c.get('signals', [])))
+            # Tên ≥2 chữ điểm rất cao là tên thật dù chỉ xuất hiện 1 lần (nhân vật phụ);
+            # nhiễu thường là họ 1 chữ đứng riêng hoặc từ thường điểm thấp.
+            multi = len(c['cn']) >= 2
+            return (c['count'] >= 3
+                    or (multi and (c['confidence'] >= 0.95 or (c['count'] >= 2 and c['confidence'] >= 0.85)))
+                    or any('Từ điển' in s for s in c.get('signals', [])))
 
         def rank(c):
             import math
@@ -1692,7 +1693,7 @@ class TranslatorGUI:
                           font=("Segoe UI", 10), cursor="hand2", command=lambda k=key: (tier_var.set(k), rebuild()))
             b.pack(side=tk.LEFT, padx=(0, 4), pady=(0, 6))
             tier_buttons[key] = (b, label)
-        tk.Label(tier_bar, text="Chắc chắn = xuất hiện ≥3 lần, hoặc ≥2 lần với điểm ≥85%",
+        tk.Label(tier_bar, text="Chắc chắn = tên ≥2 chữ điểm ≥95%, hoặc lặp lại nhiều lần · Cần xem: họ 1 chữ, điểm thấp",
                  fg="#6b6255", bg=PANEL, font=("Segoe UI", 9)).pack(side=tk.RIGHT)
 
         # Filter bar
@@ -2044,6 +2045,75 @@ class TranslatorGUI:
         min_conf_var.trace_add("write", schedule_filter)
         search_var.trace_add("write", schedule_filter)
         dlg.bind("<Escape>", lambda e: on_close() if e.widget is not vi_entry else None)
+
+        # ── Thêm tên thủ công: cho tên bộ quét bỏ sót (bôi đen trong ngữ cảnh để điền nhanh) ──
+        source_text = self.txt_area.get("1.0", "end-1c")
+        manual = tk.Frame(dlg, bg=PANEL, padx=12, pady=8)
+        manual.pack(fill=tk.X, padx=12, pady=(4, 0))
+        tk.Label(manual, text="Thêm tên thủ công:", fg="#e0b25c", bg=PANEL,
+                 font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT)
+        manual_cn = tk.StringVar()
+        manual_vi = tk.StringVar()
+        manual_cn_entry = tk.Entry(manual, textvariable=manual_cn, width=14, bg=FIELD, fg="white",
+                                   insertbackground="white", relief="flat", font=("Microsoft YaHei UI", 11))
+        manual_cn_entry.pack(side=tk.LEFT, padx=(8, 4), ipady=2)
+        tk.Label(manual, text="=", fg=MUTED, bg=PANEL).pack(side=tk.LEFT)
+        manual_vi_entry = tk.Entry(manual, textvariable=manual_vi, bg=FIELD, fg="white",
+                                   insertbackground="white", relief="flat", font=("Segoe UI", 11))
+        manual_vi_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(4, 6), ipady=2)
+        manual_info = tk.Label(manual, text="", fg=MUTED, bg=PANEL, font=("Segoe UI", 9), width=16, anchor="w")
+        manual_info.pack(side=tk.LEFT)
+        manual_state = {"auto_vi": ""}   # gợi ý đã tự điền; người dùng gõ khác thì không ghi đè
+
+        def on_manual_cn(*_args):
+            cn = unicodedata.normalize("NFC", manual_cn.get().strip())
+            if not cn:
+                manual_info.config(text="")
+                return
+            hits = source_text.count(cn)
+            known = cn in self.load_name_config() or cn in self.temp_names
+            manual_info.config(text=("đã có trong name · " if known else "") + f"{hits} lần trong bài",
+                               fg="#e0b25c" if known else (MUTED if hits else "#e8857b"))
+            suggestion = self._suggest_vi(cn)
+            if manual_vi.get().strip() in ("", manual_state["auto_vi"]):
+                manual_vi.set(suggestion)
+                manual_state["auto_vi"] = suggestion
+
+        def add_manual(event=None):
+            cn = unicodedata.normalize("NFC", manual_cn.get().strip())
+            vi = manual_vi.get().strip()
+            if not cn or not vi:
+                messagebox.showwarning("Chú ý", "Nhập cả chữ Hán và tên tiếng Việt.", parent=dlg)
+                return "break"
+            if self.add_names([(cn, vi)], scan_temp_var.get(), parent=dlg):
+                if cn in by_cn and cn not in ignored:
+                    remove_rows([cn])
+                status_var.set(f"✅ Đã thêm{' name tạm' if scan_temp_var.get() else ''} (thủ công): {cn} = {vi}")
+                manual_cn.set("")
+                manual_vi.set("")
+                manual_state["auto_vi"] = ""
+                manual_cn_entry.focus_set()
+            return "break"
+
+        def take_selection(event=None):
+            """Bôi đen chữ Hán trong khung ngữ cảnh → điền vào ô thêm thủ công."""
+            try:
+                picked = context_box.get("sel.first", "sel.last").strip()
+            except tk.TclError:
+                return
+            if picked and len(picked) <= 12 and all("\u3400" <= ch <= "\u9fff" or ch == "·" for ch in picked):
+                manual_cn.set(picked)
+                manual_vi_entry.focus_set()
+                manual_vi_entry.selection_range(0, tk.END)
+
+        manual_cn.trace_add("write", on_manual_cn)
+        tk.Button(manual, text="Thêm", bg="#46734f", fg="white", relief="flat", borderwidth=0, padx=12, pady=3,
+                  font=("Segoe UI", 9, "bold"), cursor="hand2", command=add_manual).pack(side=tk.LEFT)
+        manual_cn_entry.bind("<Return>", lambda e: (manual_vi_entry.focus_set(), "break")[1])
+        manual_vi_entry.bind("<Return>", add_manual)
+        context_box.bind("<ButtonRelease-1>", take_selection, add="+")
+        tk.Label(dlg, text="Mẹo: bôi đen một tên trong khung ngữ cảnh ở trên để điền nhanh vào ô thêm thủ công.",
+                 fg="#6b6255", bg=BG, font=("Segoe UI", 9)).pack(anchor="w", padx=16)
 
         # Bottom bar: select and add in one batch (one name.cfg write).
         tk.Frame(dlg, bg=FIELD, height=1).pack(fill=tk.X, padx=12)
