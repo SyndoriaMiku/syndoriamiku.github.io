@@ -19,6 +19,10 @@ LABELS = ['I-ORG', 'B-LOC', 'O', 'B-ORG', 'I-LOC', 'I-PER',
           'B-TIME', 'I-TIME', 'B-PER']
 TYPES = {'PER': 'PERSON', 'LOC': 'PLACE', 'ORG': 'ORG'}
 _LOCK = threading.Lock()
+# transformers.from_pretrained không an toàn khi hai model nạp cùng lúc ở hai luồng (khởi tạo trên
+# thiết bị "meta" dùng chung trạng thái toàn cục): model nạp sau có thể còn trọng số rỗng → lỗi
+# "Cannot copy out of meta tensor". Mọi lần import/nạp model (BERT lẫn Moxhi) đi qua khoá này.
+LOAD_LOCK = threading.RLock()
 
 # ── Bộ lọc ứng viên (ưu tiên không bỏ sót) ──
 # Tên có thể chứa chữ số/chữ Latin (tên ngoại quốc) và dấu chấm giữa, nhưng phải
@@ -250,6 +254,11 @@ def install_model(progress=None, force=False):
 
 
 def _load(progress):
+    with LOAD_LOCK:
+        return _load_model(progress)
+
+
+def _load_model(progress):
     global _SESSION
     if _SESSION is not None:
         return _SESSION

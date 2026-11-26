@@ -23,7 +23,7 @@ import threading
 import unicodedata
 from collections import Counter, defaultdict
 
-from gpu_name_scanner import keep_candidate, resolve_spans, saved_spans, snap_spans
+from gpu_name_scanner import LOAD_LOCK, keep_candidate, resolve_spans, saved_spans, snap_spans
 
 MODEL = 'DanVP/MoxhiMT-30-Tag'
 REVISION = 'c761ea549aa78a7819bd7ba1ace85b3d35b7ee16'
@@ -99,6 +99,11 @@ def install_model(progress=None, force=False):
 
 
 def _load(progress):
+    with LOAD_LOCK:     # không nạp cùng lúc với BERT (xem gpu_name_scanner.LOAD_LOCK)
+        return _load_model(progress)
+
+
+def _load_model(progress):
     global _SESSION
     if _SESSION is not None:
         return _SESSION
