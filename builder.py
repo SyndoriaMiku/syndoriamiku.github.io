@@ -1149,13 +1149,13 @@ class TranslatorGUI:
 
     def _scan_engines(self):
         """Bộ quét tên đang dùng: biến môi trường STV_SCAN_ENGINE hoặc "scan_engine" trong
-        editor_config.json — "both" (mặc định), "moxhi" hoặc "bert". Đọc cấu hình một lần.
+        editor_config.json — "moxhi" (mặc định), "both" hoặc "bert". Đọc cấu hình một lần.
 
         Bộ được chọn mà không nạp được thì dùng bộ còn lại và ghi lý do vào self._scan_note
         (hiện trên thanh trạng thái sau khi quét) thay vì lặng lẽ đổi."""
         if not hasattr(self, '_scan_choice'):
             self._scan_choice = (os.environ.get('STV_SCAN_ENGINE') or load_config().get('scan_engine')
-                                 or 'both').strip().lower()
+                                 or 'moxhi').strip().lower()
         wanted = {'both': ('moxhi', 'bert'), 'moxhi': ('moxhi',), 'bert': ('bert',)}.get(self._scan_choice)
         self._scan_note = ''
         if wanted is None:

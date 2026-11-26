@@ -31,8 +31,8 @@ CPU-only users can install `requirements-scanner.txt` instead.
   (`和小龙`, `太浩宗内`) được cắt theo bản dịch tiếng Việt hoặc theo tên lõi đã thấy ở chỗ khác.
 - **Đo trên 80 chương thử** (tìm lại tên bị giấu khỏi name.cfg): BERT 82%, Moxhi 75%, **gộp 89%**.
   Tên Việt Moxhi khớp name.cfg 90%.
-- **Chọn bộ quét:** `"scan_engine": "both" | "moxhi" | "bert"` trong `editor_config.json`, hoặc biến môi trường
-  `STV_SCAN_ENGINE`.
+- **Chọn bộ quét:** `"scan_engine": "moxhi"` (mặc định) `| "both" | "bert"` trong `editor_config.json` (file cài
+  đặt trên máy, không nằm trong git), hoặc biến môi trường `STV_SCAN_ENGINE`.
 - Model Moxhi (≈150 MB, pin revision `c761ea549aa78a7819bd7ba1ace85b3d35b7ee16`) nằm ở `models/MoxhiMT-30-Tag`,
   tự tải lần quét đầu; tải trước bằng `python moxhi_scanner.py`, thử bằng `python moxhi_scanner.py --test`.
   Đổi thư mục bằng `STV_MOXHI_MODEL_DIR`.
