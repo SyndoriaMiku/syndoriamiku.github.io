@@ -76,6 +76,64 @@ class AutocommitTest(unittest.TestCase):
     def test_nothing_to_commit_returns_none(self):
         self.assertIsNone(git_sync.commit_and_push(self.repo))
 
+    def _push_from_other_clone(self, name="web.txt"):
+        """Giả lập trình sửa trên web: một commit khác lên origin trước."""
+        other = os.path.join(self.base, "other")
+        git(self.base, "clone", "-q", self.remote, other)
+        git(other, "config", "user.name", "Web")
+        git(other, "config", "user.email", "w@example.com")
+        with open(os.path.join(other, "stories", name), "w", encoding="utf-8") as stream:
+            stream.write("from web")
+        git(other, "add", ".")
+        git(other, "commit", "-q", "-m", "web edit")
+        git(other, "push", "-q", "origin", "HEAD")
+
+    def test_rejected_push_rebases_and_retries(self):
+        self._push_from_other_clone()
+        with open(os.path.join(self.repo, "library", "list.json"), "w", encoding="utf-8") as stream:
+            stream.write('[{"slug": "000002"}]')
+        with open(os.path.join(self.repo, "README.md"), "w", encoding="utf-8") as stream:
+            stream.write("dirty, not a story")   # thay đổi khác của người dùng: autostash giữ nguyên
+
+        self.assertTrue(git_sync.commit_and_push(self.repo))
+
+        log = git(self.remote, "log", "--pretty=%s", "main").stdout.split("\n")
+        self.assertEqual(log[:2], ["`feat` add new stories", "web edit"])
+        with open(os.path.join(self.repo, "README.md"), encoding="utf-8") as stream:
+            self.assertEqual(stream.read(), "dirty, not a story")
+
+    def test_stuck_commit_is_pushed_on_next_save(self):
+        with open(os.path.join(self.repo, "library", "list.json"), "w", encoding="utf-8") as stream:
+            stream.write('[{"slug": "000003"}]')
+        git(self.repo, "commit", "-q", "-am", "saved while offline")   # commit đã có, push chưa
+        self.assertTrue(git_sync.commit_and_push(self.repo))
+        pushed = git(self.remote, "log", "-1", "--pretty=%s", "main").stdout.strip()
+        self.assertEqual(pushed, "saved while offline")
+
+    def test_waits_for_index_lock(self):
+        import threading
+        lock = os.path.join(self.repo, ".git", "index.lock")
+        open(lock, "w").close()
+        threading.Timer(1.0, os.remove, args=(lock,)).start()
+        with open(os.path.join(self.repo, "library", "list.json"), "w", encoding="utf-8") as stream:
+            stream.write('[{"slug": "000004"}]')
+        self.assertTrue(git_sync.commit_and_push(self.repo))
+
+    def test_async_failure_reaches_listener(self):
+        messages = []
+        listener = lambda message, ok: messages.append((ok, message))
+        git_sync.add_listener(listener)
+        try:
+            git(self.repo, "remote", "set-url", "origin", os.path.join(self.base, "missing.git"))
+            with open(os.path.join(self.repo, "library", "list.json"), "w", encoding="utf-8") as stream:
+                stream.write('[{"slug": "000005"}]')
+            git_sync.autocommit_async(self.repo).join(60)
+        finally:
+            git_sync.remove_listener(listener)
+        self.assertEqual(len(messages), 1)
+        self.assertFalse(messages[0][0])
+        self.assertIn("chưa đẩy được", messages[0][1])
+
     def test_non_repo_directory_returns_none(self):
         outside = os.path.join(self.base, "plain")
         os.makedirs(outside)

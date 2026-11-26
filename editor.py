@@ -5,6 +5,7 @@ import re
 import shutil
 import sys
 import tempfile
+import queue
 import unicodedata
 import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext, simpledialog, ttk
@@ -260,6 +261,7 @@ class ChapterEditorApp:
 		self.setup_ui()
 		self.load_story_list()
 		self.mark_clean()
+		self._watch_git_sync()
 
 		if not embedded:
 			# Save geometry on resize (debounced)
@@ -269,6 +271,28 @@ class ChapterEditorApp:
 				("<Control-o>", self.pick_json), ("<Control-O>", self.pick_json),
 				("<Control-h>", self.show_replace_dialog), ("<Control-H>", self.show_replace_dialog)):
 			self.root.bind_all(sequence, lambda event, h=handler: self._main_shortcut(event, h))
+
+	def _watch_git_sync(self):
+		"""Kết quả commit/push nền (git_sync) hiện ở chân trang; lỗi không còn chỉ nằm trong studio.log."""
+		try:
+			import git_sync
+		except ImportError:
+			return
+		self._git_events = queue.Queue()
+		git_sync.add_listener(lambda message, ok: self._git_events.put((message, ok)))
+		self._poll_git_events()
+
+	def _poll_git_events(self):
+		try:
+			while True:
+				message, ok = self._git_events.get_nowait()
+				self.flash(message, "info" if ok else "error")
+		except queue.Empty:
+			pass
+		try:
+			self.root.after(500, self._poll_git_events)
+		except tk.TclError:
+			pass  # cửa sổ đã đóng
 
 	def _main_shortcut(self, event, handler):
 		# Shortcuts belong to the main window, not to open dialogs
