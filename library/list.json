@@ -6845,7 +6845,7 @@
         "title": "Tổng hợp truyện ngắn",
         "slug": "000130",
         "date": "26/11/2026",
-        "timestamp": 1795671257.273458,
+        "timestamp": 1795671364.513612,
         "chapters": [
             {
                 "id": "0001",
@@ -7570,6 +7570,11 @@
             {
                 "id": "0145",
                 "name": "Mỹ lệ trinh tiết lão sư ngoài ý muốn Thành nhi tử tính nô",
+                "date": "26/11/2026"
+            },
+            {
+                "id": "0146",
+                "name": "Thần tình yêu cùng sắc đẹp Aphrodite bị người lùn luân gian",
                 "date": "26/11/2026"
             }
         ]
