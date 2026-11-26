@@ -449,6 +449,11 @@ _state_lock = threading.Lock()
 _warned_unconfigured = [False]
 
 
+def reset_unconfigured_warning():
+    """Gọi sau khi lưu khoá: lần sau thiếu khoá (vd. xoá file cấu hình) sẽ được nhắc lại."""
+    _warned_unconfigured[0] = False
+
+
 def add_listener(callback):
     """callback(message: str, ok: bool) — gọi từ luồng nền; app tự chuyển về luồng Tk."""
     if callback not in _listeners:
@@ -542,6 +547,10 @@ def _worker_loop():
             _notify(f'⚠ R2: lỗi không mong đợi — {exc}', False)
         with _state_lock:
             if not _state['again']:
+                # Bỏ đánh dấu luồng ngay trong khoá: yêu cầu đến sau đó sẽ mở luồng mới, không bị
+                # gộp vào luồng sắp thoát rồi mất (review Lần 5, B2).
+                if _state['thread'] is threading.current_thread():
+                    _state['thread'] = None
                 return
 
 

@@ -993,7 +993,7 @@ class ChapterEditorApp:
 			messagebox.showwarning("Chú ý", f"ID/Slug tự động '{slug}' đã tồn tại!")
 			return
 
-		store.copy_templates(LIBRARY_DIR, BASE_DIR, slug)
+		store.ensure_story_dir(LIBRARY_DIR, slug)
 		import datetime
 		now = datetime.datetime.now()
 		catalog.append({

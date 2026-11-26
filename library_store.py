@@ -214,34 +214,16 @@ def chapter_payload(story_title, chapter_title, pairs):
     }
 
 
-def copy_templates(library_dir, base_dir, story_slug, chapter_id=None):
-    story_dir = os.path.join(library_dir, story_slug)
-    os.makedirs(story_dir, exist_ok=True)
-    story_template = os.path.join(library_dir, 'story.html')
-    story_index = os.path.join(story_dir, 'index.html')
-    if os.path.exists(story_template) and not os.path.exists(story_index):
-        try:
-            shutil.copy2(story_template, story_index)
-        except OSError:
-            pass
-    if chapter_id:
-        # Khung trang đọc của thư viện (giao diện nằm ở library/assets/).
-        # reader.html ở gốc chỉ dành cho truyện ngắn trong stories/.
-        reader = os.path.join(library_dir, 'chapter.html')
-        if not os.path.exists(reader):
-            reader = os.path.join(base_dir, 'reader.html')
-        if os.path.exists(reader):
-            try:
-                shutil.copy2(reader, os.path.join(story_dir, chapter_id, 'index.html'))
-            except OSError:
-                pass
+def ensure_story_dir(library_dir, story_slug):
+    """Tạo thư mục truyện. Không còn chép khung index.html cho từng truyện/chương: trên web,
+    404.html dựng mọi trang từ library/story.html và library/chapter.html."""
+    os.makedirs(os.path.join(library_dir, story_slug), exist_ok=True)
 
 
 def write_chapter(library_dir, base_dir, story_slug, chapter_id, payload):
     chapter_dir = os.path.join(library_dir, story_slug, chapter_id)
     os.makedirs(chapter_dir, exist_ok=True)
     write_json_atomic(os.path.join(chapter_dir, 'data.json'), payload)
-    copy_templates(library_dir, base_dir, story_slug, chapter_id)
 
 
 def upsert_chapter(catalog, story_slug, story_title, chapter_id, chapter_name, now=None):
@@ -323,7 +305,7 @@ def save_chapters(library_dir, base_dir, catalog_path, story_slug, story_title, 
         if clashes:
             raise ChapterClashError(clashes)
     now = now or datetime.datetime.now()
-    copy_templates(library_dir, base_dir, story_slug)
+    ensure_story_dir(library_dir, story_slug)
     for chapter_id, chapter_name, pairs in chapters:
         payload = chapter_payload(story_title, chapter_name, pairs)
         write_chapter(library_dir, base_dir, story_slug, chapter_id, payload)

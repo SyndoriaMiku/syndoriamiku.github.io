@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 import requests, json, os, sys, base64, datetime, time, threading, queue
-import unicodedata, re, shutil
+import unicodedata, re
 # Console Windows (cp1252) không in được tiếng Việt: print() sẽ ném UnicodeEncodeError giữa chừng.
 for _stream in (sys.stdout, sys.stderr):
     try:
@@ -47,7 +47,6 @@ else:
 
 # --- CẤU HÌNH API ---
 API_URL = "https://comic.sangtacvietcdn.xyz/tsm.php?cdn=/"
-TEMPLATE_FILE = os.path.join(BASE_DIR, "reader.html")
 CHUNK_LIMIT = 20000
 DELAY = 1.2
 CONFIG_PATH = os.path.join(BASE_DIR, "editor_config.json")
@@ -715,8 +714,6 @@ class ReviewWindow:
         try:
             os.makedirs(output_dir, exist_ok=True)
             store.write_json_atomic(data_path, story_data)
-            if os.path.exists(TEMPLATE_FILE):
-                shutil.copy2(TEMPLATE_FILE, os.path.join(output_dir, "index.html"))
             self.app.update_catalog(self.title, self.slug)
         except Exception as error:
             messagebox.showerror("Lỗi khi lưu", str(error), parent=self.top)
@@ -2352,7 +2349,15 @@ class TranslatorGUI:
                 r2_store.R2Client(values).check()          # thử ghi + xoá một file nhỏ
                 r2_store.save_credentials(**values)
                 return "✅ Kết nối được và đã lưu khoá. Bấm “Đồng bộ ngay” để đẩy truyện lên."
-            run("Đang kiểm tra kết nối…", job, lambda m: creds.update(values) if m.startswith("✅") else None)
+            def saved(message):
+                if not message.startswith("✅"):
+                    return
+                creds.update(values)
+                # Xoá cảnh báo "chưa cấu hình" cũ trên thanh trạng thái và đẩy ngay phần còn chờ.
+                self.set_status("R2: đã lưu khoá — đang đồng bộ truyện lên R2…")
+                r2_store.reset_unconfigured_warning()
+                r2_store.request_sync(BASE_DIR)
+            run("Đang kiểm tra kết nối…", job, saved)
 
         def sync_now(mass=False):
             if not r2_store.load_credentials():
@@ -2368,7 +2373,8 @@ class TranslatorGUI:
                     return (f"⚠ {result.summary()}. Có {len(result.held_deletes)} file trên R2 không còn trên máy "
                             "(vd. {}) — kiểm tra rồi bấm “Xoá file thừa”.".format(result.held_deletes[0]))
                 return f"✅ R2: {result.summary()}."
-            run("Đang đồng bộ… (lần đầu đẩy toàn bộ truyện, có thể mất vài phút)", job, lambda m: None)
+            run("Đang đồng bộ… (lần đầu đẩy toàn bộ truyện, có thể mất vài phút)", job,
+                lambda m: self.set_status(m.replace("✅ ", ""), "#e8857b" if m.startswith("⚠") else None))
 
         def prune():
             if messagebox.askyesno("Xoá file thừa trên R2",

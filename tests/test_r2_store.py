@@ -230,6 +230,59 @@ class NotifyAndRestoreTest(unittest.TestCase):
                          ['library/000001/0002/data.json', 'stories/list.json'])
 
 
+class WorkerExitRaceTest(unittest.TestCase):
+    """Review Lần 5, B2: yêu cầu đến lúc luồng nền vừa quyết định thoát không được mất."""
+
+    def test_request_during_worker_exit_starts_new_thread(self):
+        import threading
+        root = os.path.abspath(os.path.dirname(__file__))
+        runs, exiting = [], threading.Event()
+        saved = {name: getattr(r2_store, name)
+                 for name in ('_sync_once', '_worker_loop', 'DEBOUNCE', 'app_root', 'project_root')}
+        real_loop = r2_store._worker_loop
+
+        def slow_exit_loop():
+            real_loop()
+            exiting.set()       # đã quyết định thoát nhưng luồng còn sống: đúng cửa sổ của lỗi cũ
+            time.sleep(0.2)
+
+        r2_store._sync_once = runs.append
+        r2_store._worker_loop = slow_exit_loop
+        r2_store.DEBOUNCE = 0.01
+        r2_store.app_root = lambda: root
+        r2_store.project_root = lambda path: root
+        try:
+            t1 = r2_store.request_sync(root)
+            self.assertTrue(exiting.wait(2))
+            t2 = r2_store.request_sync(root)
+            t1.join(2)
+            t2.join(2)
+            self.assertIsNot(t1, t2)
+            self.assertEqual(len(runs), 2)
+        finally:
+            for name, value in saved.items():
+                setattr(r2_store, name, value)
+
+
+class EnsureStoryDirTest(unittest.TestCase):
+    """Review Lần 5, B1: lưu chương không còn sinh index.html thừa (404.html dựng trang)."""
+
+    def test_save_writes_data_only(self):
+        import library_store as store
+        with tempfile.TemporaryDirectory() as base:
+            library = os.path.join(base, 'library')
+            os.makedirs(library)
+            for name in ('story.html', 'chapter.html'):
+                with open(os.path.join(library, name), 'w') as fh:
+                    fh.write('<html>')
+            store.save_chapters(library, base, os.path.join(library, 'list.json'), '', 'T',
+                                [('0001', 'C1', [('你', 'bạn')])])
+            made = sorted(os.path.relpath(os.path.join(d, f), library).replace(os.sep, '/')
+                          for d, _, files in os.walk(library) for f in files)
+        self.assertNotIn('index.html', ' '.join(made))
+        self.assertTrue(any(m.endswith('/0001/data.json') for m in made), made)
+
+
 class WriteCatalogHookTest(unittest.TestCase):
     """Mọi lần lưu đi qua write_catalog, nơi phải xin một lần đồng bộ R2."""
 
