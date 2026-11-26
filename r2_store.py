@@ -379,8 +379,10 @@ def restore(root, base_url=DATA_BASE, session=None, progress=None, overwrite=Fal
 
     Không cần khoá API. File đã có trên máy được giữ nguyên trừ khi overwrite=True.
     Một file thiếu/lỗi không làm dừng cả mẻ. Trả về (số file đã ghi, [lỗi])."""
-    import requests
-    http = session or requests.Session()
+    if session is None:
+        import requests          # chỉ khi thật sự gọi mạng (test truyền session giả, CI không có requests)
+        session = requests.Session()
+    http = session
     progress = _safe(progress)
     errors = []
     headers = {'Origin': 'https://syndoriamiku.github.io'}
