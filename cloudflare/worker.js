@@ -4,16 +4,21 @@
  * Triển khai: Cloudflare → Workers & Pages → Worker → Edit code → dán toàn bộ file này → Deploy.
  * Settings → Bindings → R2 bucket, tên biến BUCKET → chọn bucket chứa dữ liệu (vd. stv-library).
  *
- * Chỉ đọc: GET/HEAD tới library/<truyện>/<chương>/data.json.gz và stories/<truyện>/data.json.gz.
- * File trả về nguyên dạng gzip; chapter-data.js trong trình duyệt tự giải nén.
+ * Chỉ đọc. App trên máy (r2_store.py) ghi thẳng vào bucket mỗi lần lưu truyện.
+ *   - Chương: library/<truyện>/<chương>/data.json.gz, stories/<truyện>/data.json.gz — trả nguyên gzip,
+ *     chapter-data.js trong trình duyệt tự giải nén. Cache 10 phút.
+ *   - Danh mục: library/list.json, library/stories.json, library/<truyện>/chapters.json,
+ *     stories/list.json — JSON, cache 1 phút để truyện/chương mới hiện nhanh.
  */
 
 const ALLOWED_ORIGINS = [
   /^https:\/\/syndoriamiku\.github\.io$/,
   /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/, // chạy thử trên máy
 ];
-const KEY_PATTERN = /^(library\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+|stories\/[A-Za-z0-9_.-]+)\/data\.json\.gz$/;
-const CACHE_CONTROL = 'public, max-age=600'; // giống GitHub Pages: sửa chương thì ≤ 10 phút sau thấy
+const CHAPTER_KEY = /^(library\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+|stories\/[A-Za-z0-9_.-]+)\/data\.json\.gz$/;
+const CATALOG_KEY = /^(library\/(list|stories)\.json|library\/[A-Za-z0-9_-]+\/chapters\.json|stories\/list\.json)$/;
+const CHAPTER_CACHE = 'public, max-age=600'; // sửa chương: ≤ 10 phút sau người đọc thấy bản mới
+const CATALOG_CACHE = 'public, max-age=60';  // truyện/chương mới: ≤ 1 phút
 
 function corsHeaders(request) {
   const origin = request.headers.get('Origin') || '';
@@ -39,7 +44,8 @@ export default {
     }
 
     const key = new URL(request.url).pathname.replace(/^\/+/, '');
-    if (!KEY_PATTERN.test(key)) {
+    const isChapter = CHAPTER_KEY.test(key);
+    if (!isChapter && !CATALOG_KEY.test(key)) {
       return reply(404, 'Not found', { ...cors, 'Cache-Control': 'no-store' });
     }
 
@@ -50,8 +56,8 @@ export default {
     }
 
     const headers = new Headers(cors);
-    headers.set('Content-Type', 'application/gzip');
-    headers.set('Cache-Control', CACHE_CONTROL);
+    headers.set('Content-Type', isChapter ? 'application/gzip' : 'application/json; charset=utf-8');
+    headers.set('Cache-Control', isChapter ? CHAPTER_CACHE : CATALOG_CACHE);
     headers.set('ETag', object.httpEtag);
     headers.set('X-Content-Type-Options', 'nosniff');
 

@@ -55,3 +55,14 @@ packages/react-devtools-timeline/dist
 
 _site/
 _data/
+
+# Truyện nằm trên Cloudflare R2 (r2_store.py đẩy lên sau mỗi lần lưu), không nằm trong git.
+# Giữ lại khung trang: library/*.html, library/assets/, library/progress.js, stories/index.html.
+/library/[0-9]*/
+/library/list.json
+/library/stories.json
+/stories/*/
+/stories/list.json
+/.r2_manifest.json
+# Name của riêng máy này
+/name.cfg

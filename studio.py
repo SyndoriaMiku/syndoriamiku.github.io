@@ -13,6 +13,12 @@ if sys.stdout is None or sys.stderr is None:
     _log = open(os.path.join(_here, "studio.log"), "w", encoding="utf-8", buffering=1)
     sys.stdout = sys.stdout or _log
     sys.stderr = sys.stderr or _log
+# Console Windows (cp1252) không in được tiếng Việt: print() sẽ ném UnicodeEncodeError giữa chừng.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 import tkinter as tk
 from tkinter import messagebox

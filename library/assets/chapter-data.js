@@ -1,10 +1,10 @@
 /*
- * Bộ tải dữ liệu chương, dùng chung cho Thư viện (library/) và truyện ngắn (stories/).
+ * Bộ tải dữ liệu truyện, dùng chung cho Thư viện (library/) và truyện ngắn (stories/).
  *
- * Dữ liệu có thể nằm ở ba chỗ, thử lần lượt:
- *   1. Kho dữ liệu ngoài (Cloudflare Worker + R2) — khi tools/build_site.py điền DATA_BASE;
- *   2. data.json.gz cạnh trang (bản deploy GitHub Pages nén gzip);
- *   3. data.json gốc (chạy thẳng từ repo trên máy).
+ * Truyện không nằm trên GitHub Pages: app trên máy đẩy thẳng lên Cloudflare R2 (r2_store.py),
+ * trang đọc qua Worker (cloudflare/worker.js). Mỗi file thử lần lượt:
+ *   1. Worker (DATA_BASE) — chương: data.json.gz; danh mục: list.json, stories.json, chapters.json;
+ *   2. cùng đường dẫn trên trang hiện tại (chạy repo trên máy: data.json gốc, danh mục gốc).
  * Bản .gz chứa chữ thường có tiền tố "~" (ký tự không có trong base64); data.json gốc là base64.
  *
  * Các trình đọc giải mã bằng atob(...) + TextDecoder; shim atob bên dưới trả về đúng byte
@@ -14,9 +14,11 @@
     'use strict';
     if (window.ChapterData) return;
 
-    // build_site.py thay giá trị này bằng địa chỉ Worker (vd. "https://stv-data.abc.workers.dev").
-    // Rỗng = không dùng kho ngoài. Đặt window.CHAPTER_DATA_BASE trước khi nạp file để thử trên máy.
-    var DATA_BASE = String(window.CHAPTER_DATA_BASE || /*DATA_BASE*/'').replace(/\/+$/, '');
+    // Worker đọc R2 (công khai, chỉ đọc). Đặt window.CHAPTER_DATA_BASE = '' trước khi nạp file
+    // để chỉ đọc dữ liệu trên máy (xem thử truyện chưa đồng bộ).
+    var DATA_BASE = String(window.CHAPTER_DATA_BASE !== undefined ? window.CHAPTER_DATA_BASE
+        : 'https://stv-data.lyralei2001.workers.dev').replace(/\/+$/, '');
+    var DATA_PATH = /^\/(library|stories)\//;
 
     var nativeAtob = window.atob.bind(window);
     window.atob = function (s) {
@@ -71,9 +73,27 @@
     /** Các địa chỉ thử lần lượt cho một data.json (tương đối theo trang hiện tại). */
     function candidates(url) {
         var abs = new URL(url, location.href), list = [];
-        if (DATA_BASE && abs.origin === location.origin) list.push(DATA_BASE + abs.pathname + '.gz');
-        list.push(abs.href + '.gz', abs.href);
+        if (DATA_BASE && abs.origin === location.origin && DATA_PATH.test(abs.pathname)) {
+            list.push(DATA_BASE + abs.pathname + '.gz');
+        }
+        list.push(abs.href);
         return list;
+    }
+
+    function firstOk(urls, read) {
+        var p = get(urls[0]);
+        urls.slice(1).forEach(function (next) { p = p.catch(function () { return get(next); }); });
+        return p.then(read);
+    }
+
+    /** Danh mục (list.json, stories.json, chapters.json…): Worker trước, rồi cùng đường dẫn. */
+    function json(url) {
+        var abs = new URL(url, location.href), urls = [];
+        if (DATA_BASE && abs.origin === location.origin && DATA_PATH.test(abs.pathname)) {
+            urls.push(DATA_BASE + abs.pathname);
+        }
+        urls.push(abs.href);
+        return firstOk(urls, function (buf) { return JSON.parse(new TextDecoder('utf-8').decode(buf)); });
     }
 
     var cache = {};
@@ -81,9 +101,7 @@
     function load(url) {
         var key = new URL(url, location.href).href;
         if (cache[key]) return cache[key];
-        var urls = candidates(url), p = get(urls[0]);
-        urls.slice(1).forEach(function (next) { p = p.catch(function () { return get(next); }); });
-        var result = p.then(parse);
+        var result = firstOk(candidates(url), parse);
         cache[key] = result;
         result.catch(function () { delete cache[key]; });
         return result;
@@ -106,5 +124,17 @@
         return api;
     }
 
-    window.ChapterData = { load: load, prefetch: prefetch, jq: jq, candidates: candidates, base: DATA_BASE };
+    /** Thay cho $.getJSON(url, cb) với danh mục (vd. stories/list.json). */
+    function jqJson(url, cb) {
+        var p = json(url).then(function (data) { cb(data); return data; });
+        var api = {
+            done: function (fn) { p.then(fn); return api; },
+            fail: function (fn) { p.catch(fn); return api; },
+            always: function (fn) { p.then(fn, fn); return api; },
+        };
+        return api;
+    }
+
+    window.ChapterData = { load: load, json: json, prefetch: prefetch, jq: jq, jqJson: jqJson,
+        candidates: candidates, base: DATA_BASE };
 })();

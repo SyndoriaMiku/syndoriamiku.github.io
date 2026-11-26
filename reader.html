@@ -8,6 +8,7 @@
     <script src="https://code.jquery.com/jquery-4.0.0.js"
         integrity="sha256-9fsHeVnKBvqh3FB2HYu7g2xseAZ5MlN6Kz/qnkASV8U=" crossorigin="anonymous"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/library/assets/chapter-data.js"></script>
     <style>
         body {
             background-color: #09090b;
@@ -112,7 +113,7 @@
             };
 
             // Load dữ liệu
-            $.getJSON('./data.json', function (data) {
+            ChapterData.jq('./data.json', function (data) {
                 $('#title').text(data.title);
 
                 let html = data.content.map(item => `
@@ -161,8 +162,8 @@
                     if (storyId && chapterId) {
                         // Danh sách chương riêng của truyện (nhẹ); thiếu file thì dùng list.json chung.
                         (function (done) {
-                            $.getJSON('../chapters.json', done).fail(function () {
-                                $.getJSON('../../list.json', function (list) { done(list.find(s => s.slug === storyId)); });
+                            ChapterData.jqJson('../chapters.json', done).fail(function () {
+                                ChapterData.jqJson('../../list.json', function (list) { done(list.find(s => s.slug === storyId)); });
                             });
                         })(function (story) {
                             if (story && story.chapters) {

@@ -7,8 +7,8 @@ Everything here is Tk-free so it can be tested on its own:
 - text-file decoding for Chinese sources (UTF-8 / GB18030 / Big5 / UTF-16),
 - splitting paragraphs into chapters and bulk replace across a story.
 
-write_catalog() còn gọi git_sync.autocommit_async(): mỗi lần lưu truyện xong thì
-commit "`feat` add new stories" và push lên origin ở luồng nền.
+write_catalog() còn gọi r2_store.request_sync(): mỗi lần lưu truyện xong, phần thay đổi
+được đẩy lên Cloudflare R2 ở luồng nền (truyện không còn nằm trong git).
 """
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ import shutil
 import tempfile
 import unicodedata
 
-import git_sync
+import r2_store
 
 DEFAULT_SPLIT_PATTERNS = [
     ("Chương X (mặc định)", r"^chương\s+[\d]+"),
@@ -145,8 +145,8 @@ def write_catalog(path, catalog):
     if index:  # stories/list.json (truyện ngắn) không có chương: không tạo
         write_text_atomic(os.path.join(library_dir, 'stories.json'), json.dumps(index, ensure_ascii=False))
     # Mọi thao tác lưu (chương mới, sửa, xoá, thay hàng loạt) đều dừng ở đây:
-    # commit + push nội dung truyện lên origin ở luồng nền.
-    git_sync.autocommit_async(os.path.dirname(library_dir))
+    # đẩy phần thay đổi lên R2 ở luồng nền.
+    r2_store.request_sync(os.path.dirname(library_dir))
 
 
 # ─────────────────────────── text decoding ───────────────────────────

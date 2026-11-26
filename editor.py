@@ -4,6 +4,12 @@ import os
 import re
 import shutil
 import sys
+# Console Windows (cp1252) không in được tiếng Việt: print() sẽ ném UnicodeEncodeError giữa chừng.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 import tempfile
 import queue
 import unicodedata
@@ -261,7 +267,7 @@ class ChapterEditorApp:
 		self.setup_ui()
 		self.load_story_list()
 		self.mark_clean()
-		self._watch_git_sync()
+		self._watch_r2_sync()
 
 		if not embedded:
 			# Save geometry on resize (debounced)
@@ -272,25 +278,25 @@ class ChapterEditorApp:
 				("<Control-h>", self.show_replace_dialog), ("<Control-H>", self.show_replace_dialog)):
 			self.root.bind_all(sequence, lambda event, h=handler: self._main_shortcut(event, h))
 
-	def _watch_git_sync(self):
-		"""Kết quả commit/push nền (git_sync) hiện ở chân trang; lỗi không còn chỉ nằm trong studio.log."""
+	def _watch_r2_sync(self):
+		"""Kết quả đồng bộ R2 chạy nền (r2_store) hiện ở chân trang."""
 		try:
-			import git_sync
+			import r2_store
 		except ImportError:
 			return
-		self._git_events = queue.Queue()
-		git_sync.add_listener(lambda message, ok: self._git_events.put((message, ok)))
-		self._poll_git_events()
+		self._r2_events = queue.Queue()
+		r2_store.add_listener(lambda message, ok: self._r2_events.put((message, ok)))
+		self._poll_r2_events()
 
-	def _poll_git_events(self):
+	def _poll_r2_events(self):
 		try:
 			while True:
-				message, ok = self._git_events.get_nowait()
+				message, ok = self._r2_events.get_nowait()
 				self.flash(message, "info" if ok else "error")
 		except queue.Empty:
 			pass
 		try:
-			self.root.after(500, self._poll_git_events)
+			self.root.after(500, self._poll_r2_events)
 		except tk.TclError:
 			pass  # cửa sổ đã đóng
 

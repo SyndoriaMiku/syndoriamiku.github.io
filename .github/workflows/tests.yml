@@ -13,6 +13,6 @@ jobs:
         with:
           python-version: '3.x'
       - name: Check syntax of desktop modules
-        run: python -m py_compile builder.py editor.py studio.py library_store.py editor_widgets.py git_sync.py moxhi_scanner.py gpu_name_scanner.py han_viet.py
+        run: python -m py_compile builder.py editor.py studio.py library_store.py editor_widgets.py r2_store.py moxhi_scanner.py gpu_name_scanner.py han_viet.py
       - name: Run tests
         run: python -m unittest discover -s tests -v

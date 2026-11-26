@@ -8,8 +8,7 @@
 
     document.body.innerHTML =
         '<main class="wrap">'
-        + '<header class="lib-head"><h1>Thư viện</h1>'
-        + '<a class="icon-btn" href="editor.html" aria-label="Biên tập truyện" title="Biên tập truyện">' + icon('edit') + '</a></header>'
+        + '<header class="lib-head"><h1>Thư viện</h1></header>'
         + '<div id="continue"></div>'
         + '<div class="lib-tools">'
         + '<label class="search">' + icon('search') + '<input type="search" id="q" placeholder="Tìm truyện (không cần dấu)…" aria-label="Tìm truyện"></label>'

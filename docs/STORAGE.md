@@ -1,70 +1,51 @@
-# Dung lượng truyện và nơi lưu dữ liệu chương
+# Nơi lưu truyện
 
-GitHub Pages giới hạn **1 GB** cho mỗi trang. Vượt mức này thì bước deploy báo
-`Deployment failed, try again later` (không nói rõ nguyên nhân).
+**Code ở GitHub, truyện ở Cloudflare R2.** Thêm truyện hay chương mới không cần commit, push hay deploy.
 
-## Tổng quan
-
-Repo git luôn là **bản gốc đầy đủ** (`data.json` base64). Builder, editor, studio và trình sửa trên web
-chỉ làm việc với repo. Mỗi lần push, workflow `pages.yml` chạy `tools/build_site.py` để dựng bản deploy:
-
-| | Repo | Bản deploy |
+| | Ở đâu | Ai ghi |
 |---|---|---|
-| Dữ liệu chương | `data.json`, base64 | `data.json.gz`: chữ thường có tiền tố `~`, nén gzip (≈ 1/3) |
-| File dev (exe, `.py`, test, `name.cfg`…) | có | không |
+| Code, giao diện trang (HTML/JS/CSS), builder, tools | Git → GitHub Pages | bạn commit/push khi sửa code |
+| Truyện: `library/<truyện>/<chương>/data.json`, `stories/<truyện>/data.json`, các danh mục | Thư mục trên máy (bản chính) → R2 | app tự đẩy sau mỗi lần lưu |
+| `name.cfg` | Chỉ trên máy | builder |
 
-Dữ liệu chương nằm ở **một trong hai nơi**, chọn bằng biến `DATA_BASE` trên GitHub:
-
-- **Chưa đặt `DATA_BASE`:** `data.json.gz` nằm luôn trên GitHub Pages (khoảng 280 MB, tháng 11/2026).
-- **Đã đặt `DATA_BASE`:** `data.json.gz` nằm trên Cloudflare R2 và được phục vụ qua Worker
-  `cloudflare/worker.js`. Pages chỉ còn HTML, JS và danh mục (khoảng 31 MB). R2 miễn phí tới 10 GB.
-
-Trong trình duyệt, `library/assets/chapter-data.js` lần lượt thử Worker → `.gz` trên Pages → `data.json`.
-Nhờ vậy trang không hỏng trong lúc chuyển đổi và vẫn đọc được khi chạy thẳng từ repo. Bộ tải cũng giải
-nén (dùng `DecompressionStream`, trình duyệt cũ thì nạp pako), tải trước chương sau, và shim `atob`
-để mọi trình đọc cũ hiểu chuỗi `~chữ`.
-
-Log Actions in dung lượng mỗi lần deploy, cảnh báo từ 800 MB và dừng hẳn nếu vượt 1000 MB.
-
-## Thiết lập R2 + Worker (làm một lần)
-
-> Không dán khoá API vào chat, issue hay file trong repo — chỉ dán vào GitHub Secrets.
-
-**Cloudflare** (dash.cloudflare.com)
-1. **Storage & databases → R2 Object Storage**, bật R2 (cần thêm thẻ hoặc PayPal; miễn phí trong hạn mức).
-2. **Create bucket**, ví dụ `stv-library`. **Không** bật Public access / r2.dev.
-3. Ở trang R2 Object Storage, **Manage API tokens → Create API token**:
-   - quyền **Object Read & Write**, phạm vi **chỉ bucket này**;
-   - lưu lại Access Key ID, Secret Access Key và Account ID.
-4. **Compute → Workers & Pages → Create → Worker**, đặt tên ví dụ `stv-data` → Deploy, rồi:
-   - **Edit code**: dán toàn bộ `cloudflare/worker.js` → Deploy;
-   - **Settings → Bindings → Add → R2 bucket**: tên biến `BUCKET`, chọn bucket ở bước 2.
-5. Ghi lại địa chỉ Worker: `https://stv-data.<tên>.workers.dev`.
-
-**GitHub** (repo → Settings → Secrets and variables → Actions)
-1. **Secrets:** `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`.
-2. **Variables:** `R2_BUCKET` (ví dụ `stv-library`).
-3. Chạy workflow **Deploy GitHub Pages** (tab Actions → Run workflow). Bước "Sync chapter data to R2"
-   tải toàn bộ dữ liệu lên R2; lúc này trang vẫn đọc từ Pages.
-4. Kiểm tra `https://stv-data.<tên>.workers.dev/library/<truyện>/<chương>/data.json.gz` trả về file.
-5. **Bật:** thêm biến `DATA_BASE` = địa chỉ Worker (không có `/` ở cuối), rồi chạy lại workflow.
-
-**Quay lại cách cũ:** xoá biến `DATA_BASE` rồi chạy lại workflow; dữ liệu lại nằm trên Pages.
-
-## Vận hành
-
-- Mỗi lần push chỉ những chương thay đổi được tải lên R2 (`rclone copy --checksum`).
-- Chương bị xoá hoặc chuyển khỏi repo vẫn còn trên R2. Muốn dọn thì chạy tay workflow và tích
-  **prune** (`rclone sync`).
-- Worker miễn phí 100.000 lượt mỗi ngày; mỗi lần mở chương tốn khoảng 2 lượt (chương đó và chương sau).
-- Worker chỉ cho đọc `library/*/*/data.json.gz` và `stories/*/data.json.gz`, và chỉ trả CORS cho
-  `syndoriamiku.github.io` cùng localhost.
-- Lộ khoá API: xoá khoá trên Cloudflare, tạo khoá mới, rồi cập nhật GitHub Secrets.
-
-Chạy thử trên máy:
+## Luồng dữ liệu
 
 ```
-python tools/build_site.py                      # dữ liệu nằm trong _site
-python tools/build_site.py _site --data-dir _data --data-base https://stv-data.<tên>.workers.dev
-python -m http.server -d _site
+builder/editor lưu truyện ──► library_store.write_catalog() ──► r2_store.request_sync()  (luồng nền)
+                                                                     │  so thư mục với .r2_manifest.json
+                                                                     ▼  chỉ đẩy/xoá phần chênh lệch
+người đọc ──► GitHub Pages (khung trang) ──► Worker stv-data.lyralei2001.workers.dev ──► R2 (bucket stv-library)
 ```
+
+- **App (`r2_store.py`)**: chương được nén (`data.json.gz`, chữ thường + gzip, ≈ 1/3), danh mục giữ nguyên JSON.
+  Chương được đẩy trước, danh mục sau, để trang không trỏ tới chương chưa có. Lỗi mạng: lần đồng bộ sau (hoặc
+  lần mở app sau) tự gửi nốt. Xoá hàng loạt (> 50 file và > 5%) bị giữ lại chờ bấm **Xoá file thừa**.
+- **Chỉ thư mục của app được đồng bộ**: test hay bản sao repo ở chỗ khác không bao giờ đẩy lên bucket thật.
+- **Worker (`cloudflare/worker.js`)**: chỉ đọc. Chương cache 10 phút, danh mục cache 1 phút: truyện/chương mới
+  hiện trên web sau ~1 phút; sửa chương cũ thì ≤ 10 phút.
+- **Trang web**: không còn file riêng cho từng truyện/chương. `404.html` nạp khung `library/story.html`,
+  `library/chapter.html` hoặc `reader.html` ngay tại đường dẫn gốc, nên link, bookmark, tiến độ đọc giữ nguyên.
+  `library/assets/chapter-data.js` đọc dữ liệu từ Worker (rồi tới cùng đường dẫn khi chạy trên máy), giải nén.
+
+## Khoá API
+
+App cần một R2 API token (R2 → Manage API tokens → Create: **Object Read & Write**, chỉ bucket `stv-library`).
+Dán vào builder → nút **☁ R2** → **Lưu & kiểm tra**. Khoá lưu ở `%APPDATA%\StoryStudio\r2.json`, không nằm
+trong repo. Lộ khoá: xoá token trên Cloudflare, tạo token mới, dán lại.
+
+## Việc thường gặp
+
+| Muốn | Làm |
+|---|---|
+| Đẩy ngay / xem lỗi | ☁ R2 → **Đồng bộ ngay** (hoặc `python r2_store.py`) |
+| Đã xoá/chuyển nhiều chương, R2 còn bản cũ | ☁ R2 → **Xoá file thừa** (hoặc `python r2_store.py --allow-delete`) |
+| Mất thư mục truyện trên máy | ☁ R2 → **Tải truyện từ R2 về** (hoặc `python r2_store.py --restore`), không cần khoá |
+| Xem thử dữ liệu trên máy chưa đồng bộ | chạy `python -m http.server`, đặt `window.CHAPTER_DATA_BASE = ''` trước khi nạp `chapter-data.js` |
+
+## Giới hạn miễn phí
+
+- R2: 10 GB lưu trữ (truyện nén hiện ≈ 250 MB), không tính phí băng thông.
+- Worker: 100.000 lượt/ngày. Mỗi lần đọc một chương ≈ 2–3 lượt (chương, danh sách chương, chương sau tải trước).
+  Hết lượt thì tới hết ngày không tải được chương, không mất tiền. Đừng nâng lên gói Workers Paid nếu không muốn
+  bỏ trần này.
+- GitHub Pages: 1 GB — giờ chỉ còn code (≈ 30 MB).

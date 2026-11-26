@@ -144,7 +144,9 @@
     };
 
     // ───────── dữ liệu ─────────
+    // Danh mục nằm trên R2 (qua Worker); chapter-data.js lo việc chọn nguồn.
     function fetchJSON(url) {
+        if (window.ChapterData) return window.ChapterData.json(url);
         return fetch(url).then(function (res) {
             if (!res.ok) throw new Error(res.status + ' ' + url);
             return res.json();

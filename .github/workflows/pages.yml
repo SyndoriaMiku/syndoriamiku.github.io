@@ -1,14 +1,11 @@
 name: Deploy GitHub Pages
 
+# Chỉ code và giao diện của trang. Truyện nằm trên Cloudflare R2: app trên máy (r2_store.py) đẩy
+# thẳng lên mỗi lần lưu, trang đọc qua Worker (cloudflare/worker.js) — xem docs/STORAGE.md.
 on:
   push:
     branches: [ main ]
   workflow_dispatch:
-    inputs:
-      prune:
-        description: 'Xoá trên R2 các file chương không còn trong repo'
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -25,62 +22,13 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url || steps.deployment_retry.outputs.page_url }}
     runs-on: ubuntu-latest
-    env:
-      # Kho dữ liệu ngoài (docs/STORAGE.md). Chưa đặt các giá trị này thì mọi thứ nằm trên Pages như cũ.
-      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
-      R2_BUCKET: ${{ vars.R2_BUCKET }}
-      DATA_BASE: ${{ vars.DATA_BASE }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Setup Pages
         uses: actions/configure-pages@v4
-      - name: Check storage settings
-        run: |
-          if [ -n "$DATA_BASE" ] && { [ -z "$R2_ACCOUNT_ID" ] || [ -z "$R2_BUCKET" ]; }; then
-            echo "::error::Đã đặt DATA_BASE nhưng thiếu secret R2_ACCOUNT_ID hoặc biến R2_BUCKET — dữ liệu chương sẽ không có chỗ nào phục vụ."
-            exit 1
-          fi
-          if [ -n "$R2_ACCOUNT_ID" ]; then echo "R2: bật đồng bộ vào bucket $R2_BUCKET"; else echo "R2: chưa cấu hình"; fi
-          if [ -n "$DATA_BASE" ]; then echo "Đọc chương từ: $DATA_BASE"; else echo "Đọc chương từ: GitHub Pages"; fi
-      - name: Build compact site (Pages limit 1 GB)
-        run: |
-          args=""
-          if [ -n "$R2_ACCOUNT_ID" ]; then args="--data-dir _data"; fi
-          python3 tools/build_site.py _site $args --data-base "$DATA_BASE"
-      # Đồng bộ TRƯỚC khi deploy, để trang mới không trỏ tới chương chưa có trên R2.
-      - name: Sync chapter data to R2
-        if: env.R2_ACCOUNT_ID != ''
-        env:
-          RCLONE_CONFIG_R2_TYPE: s3
-          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
-          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          RCLONE_CONFIG_R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
-          RCLONE_CONFIG_R2_NO_CHECK_BUCKET: 'true'
-          PRUNE: ${{ github.event.inputs.prune }}
-          RCL_RELEASE: v1.68.2   # apt Ubuntu (1.60) quá cũ: R2 trả 501. Không đặt tên RCLONE_*: rclone đọc thành tuỳ chọn
-        run: |
-          set -euo pipefail
-          curl -fsSL -o rclone.zip "https://github.com/rclone/rclone/releases/download/${RCL_RELEASE}/rclone-${RCL_RELEASE}-linux-amd64.zip"
-          unzip -q rclone.zip && sudo install -m 0755 "rclone-${RCL_RELEASE}-linux-amd64/rclone" /usr/local/bin/rclone
-          rm -rf rclone.zip "rclone-${RCL_RELEASE}-linux-amd64"
-          rclone version
-          FLAGS="--checksum --no-update-modtime --s3-no-check-bucket"
-          # Thử một file trước: cấu hình sai thì dừng ngay, không in hàng nghìn dòng lỗi.
-          # (Không dùng "| head": với pipefail, lệnh trước bị SIGPIPE làm cả bước thất bại.)
-          probe=$(cd _data && find . -name 'data.json.gz' -print -quit)
-          probe=${probe#./}
-          if ! rclone copyto "_data/$probe" "r2:$R2_BUCKET/$probe" $FLAGS --retries 1 --low-level-retries 2 -v; then
-            echo "::error::Không ghi được lên R2 (bucket '$R2_BUCKET'). Kiểm tra R2_ACCOUNT_ID, khoá API (quyền Object Read & Write cho đúng bucket) và R2_BUCKET."
-            exit 1
-          fi
-          # Mặc định chỉ thêm/ghi đè (copy). Xoá file thừa (sync) chỉ khi chạy tay với tuỳ chọn prune.
-          mode=copy
-          if [ "${PRUNE:-}" = "true" ]; then mode=sync; fi
-          echo "rclone $mode → r2:$R2_BUCKET"
-          rclone "$mode" _data "r2:$R2_BUCKET" $FLAGS --fast-list --transfers 32 --checkers 64 \
-            --retries 3 --stats 20s --stats-one-line --stats-log-level NOTICE
+      - name: Build site
+        run: python3 tools/build_site.py _site
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:

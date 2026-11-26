@@ -2,11 +2,17 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 import requests, json, os, sys, base64, datetime, time, threading, queue
 import unicodedata, re, shutil
+# Console Windows (cp1252) không in được tiếng Việt: print() sẽ ném UnicodeEncodeError giữa chừng.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 from tkinterdnd2 import TkinterDnD, DND_FILES
 from name_glossary import (update_name_cfg, normalize_entries, compile_name_source_pattern, compile_name_loose_pattern,
                            substitute_names, fix_name_spacing)
 import library_store as store
-import git_sync
+import r2_store
 from library_store import CatalogError, read_catalog, write_catalog
 from editor_widgets import search_key, apply_tk_defaults, StyledScrolledText
 try:
@@ -1071,8 +1077,10 @@ class TranslatorGUI:
 
         # Nạp sẵn mô hình NER đã có trên máy để lần Scan Names đầu tiên không phải chờ.
         # Tắt bằng biến môi trường STV_NER_PRELOAD=0.
-        # Kết quả commit/push nền của git_sync hiện trên thanh trạng thái (lỗi màu đỏ).
-        git_sync.add_listener(lambda message, ok: self.call_ui(self.set_status, message, None if ok else "#e8857b"))
+        # Kết quả đồng bộ R2 chạy nền hiện trên thanh trạng thái (lỗi màu đỏ); mở app thì đẩy nốt
+        # phần lần trước chưa lên được (mất mạng, tắt app giữa chừng…).
+        r2_store.add_listener(lambda message, ok: self.call_ui(self.set_status, message, None if ok else "#e8857b"))
+        r2_store.request_sync(BASE_DIR)   # gọi nhiều lần (studio, builder) vẫn chỉ chạy một luồng
 
         if (_NAME_SCANNER_OK or _MOXHI_OK) and os.environ.get('STV_NER_PRELOAD', '1') != '0':
             self.root.after(1500, self._preload_name_model)
@@ -1229,6 +1237,10 @@ class TranslatorGUI:
         self.btn_temp_names = tk.Button(btn_frame, text="🏷 Name tạm", command=self.open_temp_names_dialog,
                                         bg=FIELD, fg="white", borderwidth=0, padx=15)
         self.btn_temp_names.pack(side="left", padx=5)
+
+        self.btn_r2 = tk.Button(btn_frame, text="☁ R2", command=self.open_r2_dialog,
+                                bg=FIELD, fg="white", borderwidth=0, padx=15)
+        self.btn_r2.pack(side="left", padx=5)
 
         self.btn_run = tk.Button(btn_frame, text="🚀 Bắt đầu dịch", command=self.start_thread, bg="#9c6a28", fg="white", borderwidth=0, padx=25)
         self.btn_run.pack(side="right", padx=5)
@@ -2281,6 +2293,106 @@ class TranslatorGUI:
             self.temp_names.pop(unicodedata.normalize('NFC', cn.strip()), None)
         self._refresh_temp_names_button()
         return True
+
+    def open_r2_dialog(self):
+        """Khoá API R2 (lưu ngoài repo) + đồng bộ / khôi phục truyện bằng tay."""
+        dlg = tk.Toplevel(self.root)
+        dlg.title("☁ Cloudflare R2 — nơi lưu truyện cho trang web")
+        dlg.configure(bg=PANEL)
+        dlg.transient(self.root)
+        dlg.resizable(False, False)
+        creds = r2_store.load_credentials() or {}
+        tk.Label(dlg, text="Truyện lưu xong được tự đẩy lên R2 (không commit/push). Khoá API: R2 → Manage API tokens,\n"
+                           "quyền Object Read & Write, chỉ bucket của trang. Khoá chỉ lưu trên máy này.",
+                 fg=MUTED, bg=PANEL, justify="left", font=("Segoe UI", 9)).grid(row=0, column=0, columnspan=2,
+                                                                               sticky="w", padx=14, pady=(12, 8))
+        fields = {}
+        rows = (("account_id", "Account ID", False), ("access_key_id", "Access Key ID", False),
+                ("secret_access_key", "Secret Access Key", True), ("bucket", "Bucket", False))
+        for i, (key, label, secret) in enumerate(rows, start=1):
+            tk.Label(dlg, text=label, fg="#e0d6c6", bg=PANEL, font=("Segoe UI", 9)).grid(row=i, column=0, sticky="w", padx=14, pady=3)
+            var = tk.StringVar(value="" if secret else creds.get(key, "stv-library" if key == "bucket" else ""))
+            entry = tk.Entry(dlg, textvariable=var, width=52, bg=FIELD, fg="white", insertbackground="white",
+                             relief="flat", font=("Consolas", 10), show="•" if secret else "")
+            entry.grid(row=i, column=1, sticky="we", padx=(0, 14), pady=3, ipady=2)
+            fields[key] = var
+        if creds.get("secret_access_key"):
+            tk.Label(dlg, text="(để trống ô Secret = giữ khoá đã lưu)", fg="#6b6255", bg=PANEL,
+                     font=("Segoe UI", 8)).grid(row=5, column=1, sticky="w")
+        status = tk.StringVar(value=f"Cấu hình: {r2_store.config_path()}" if creds else "Chưa cấu hình.")
+        tk.Label(dlg, textvariable=status, fg="#8fc29a", bg=PANEL, wraplength=560, justify="left",
+                 font=("Segoe UI", 9)).grid(row=6, column=0, columnspan=2, sticky="w", padx=14, pady=(8, 4))
+        bar = tk.Frame(dlg, bg=PANEL)
+        bar.grid(row=7, column=0, columnspan=2, sticky="we", padx=14, pady=(4, 14))
+        busy = []
+
+        def run(label, job, done):
+            if busy:
+                return
+            busy.append(1)
+            status.set(label)
+
+            def work():
+                try:
+                    message = job()
+                except Exception as exc:
+                    message = f"⚠ {exc}"
+                self.call_ui(lambda: (busy.clear(), status.set(message), done(message)))
+            threading.Thread(target=work, daemon=True).start()
+
+        def save_and_check():
+            values = {k: v.get().strip() for k, v in fields.items()}
+            if not values["secret_access_key"]:
+                values["secret_access_key"] = creds.get("secret_access_key", "")
+            if not all(values.values()):
+                status.set("⚠ Điền đủ 4 ô.")
+                return
+
+            def job():
+                r2_store.R2Client(values).check()          # thử ghi + xoá một file nhỏ
+                r2_store.save_credentials(**values)
+                return "✅ Kết nối được và đã lưu khoá. Bấm “Đồng bộ ngay” để đẩy truyện lên."
+            run("Đang kiểm tra kết nối…", job, lambda m: creds.update(values) if m.startswith("✅") else None)
+
+        def sync_now(mass=False):
+            if not r2_store.load_credentials():
+                status.set("⚠ Chưa có khoá: lưu khoá trước.")
+                return
+
+            def job():
+                client = r2_store.R2Client(r2_store.load_credentials())
+                result = r2_store.sync(BASE_DIR, client, lambda m: self.call_ui(status.set, m), allow_mass_delete=mass)
+                if result.errors:
+                    return f"⚠ {result.summary()} — {result.errors[0]}"
+                if result.held_deletes:
+                    return (f"⚠ {result.summary()}. Có {len(result.held_deletes)} file trên R2 không còn trên máy "
+                            "(vd. {}) — kiểm tra rồi bấm “Xoá file thừa”.".format(result.held_deletes[0]))
+                return f"✅ R2: {result.summary()}."
+            run("Đang đồng bộ… (lần đầu đẩy toàn bộ truyện, có thể mất vài phút)", job, lambda m: None)
+
+        def prune():
+            if messagebox.askyesno("Xoá file thừa trên R2",
+                                   "Xoá trên R2 mọi chương/truyện không còn trong thư mục trên máy?\n"
+                                   "Không hoàn tác được.", parent=dlg):
+                sync_now(mass=True)
+
+        def restore():
+            if not messagebox.askyesno("Tải truyện từ R2 về",
+                                       f"Tải mọi truyện trên R2 về {BASE_DIR}?\nFile đã có trên máy được giữ nguyên.",
+                                       parent=dlg):
+                return
+            def job():
+                count, errors = r2_store.restore(BASE_DIR, progress=lambda m: self.call_ui(status.set, m))
+                if errors:
+                    return f"⚠ Đã ghi {count} file, {len(errors)} lỗi (vd. {errors[0]})."
+                return f"✅ Đã ghi {count} file."
+            run("Đang tải từ R2 về…", job, lambda m: None)
+
+        small = dict(relief="flat", borderwidth=0, padx=12, pady=5, font=("Segoe UI", 9, "bold"), cursor="hand2", fg="white")
+        tk.Button(bar, text="Lưu & kiểm tra", bg="#46734f", command=save_and_check, **small).pack(side="left")
+        tk.Button(bar, text="Đồng bộ ngay", bg="#6a5683", command=sync_now, **small).pack(side="left", padx=6)
+        tk.Button(bar, text="Xoá file thừa", bg="#8a372e", command=prune, **small).pack(side="left")
+        tk.Button(bar, text="Tải truyện từ R2 về", bg=FIELD, command=restore, **small).pack(side="right")
 
     def open_temp_names_dialog(self):
         dlg = tk.Toplevel(self.root)
