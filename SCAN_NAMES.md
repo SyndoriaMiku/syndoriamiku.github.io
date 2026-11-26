@@ -17,6 +17,28 @@ python -c "import torch; print(torch.cuda.is_available())"
 The NVIDIA driver must support CUDA 12.8. No separate CUDA toolkit is needed.
 CPU-only users can install `requirements-scanner.txt` instead.
 
+## Hai bộ quét (mặc định chạy cả hai rồi gộp)
+
+| Bộ quét | File | Model |
+|---|---|---|
+| Moxhi | `moxhi_scanner.py` | [DanVP/MoxhiMT-30-Tag](https://huggingface.co/DanVP/MoxhiMT-30-Tag), cùng model với trang moxhi-tag.pages.dev (CC-BY-NC-4.0, phi thương mại) |
+| BERT | `gpu_name_scanner.py` | shibing624/bert4ner-base-chinese (Apache 2.0) |
+
+- **Moxhi** là model dịch Trung→Việt 37M tham số, đánh thẻ tên trong bản dịch (`PER`, `LOC`, `ORG`, `ITEM`
+  = pháp bảo, đan dược, công pháp…). Một đầu NER nhỏ trên encoder tìm tên trong câu chữ Hán. Mỗi tên được dịch
+  trong ngữ cảnh, nên có sẵn **tên tiếng Việt** (cột/nút "Moxhi" trong hộp thoại, F2 xoay vòng Moxhi → Hán-Việt → API).
+- **Gộp:** tên cả hai cùng thấy có tín hiệu "BERT + Moxhi cùng thấy" và vào tab *Chắc chắn*. Chữ hư dính mép
+  (`和小龙`, `太浩宗内`) được cắt theo bản dịch tiếng Việt hoặc theo tên lõi đã thấy ở chỗ khác.
+- **Đo trên 80 chương thử** (tìm lại tên bị giấu khỏi name.cfg): BERT 82%, Moxhi 75%, **gộp 89%**.
+  Tên Việt Moxhi khớp name.cfg 90%.
+- **Chọn bộ quét:** `"scan_engine": "both" | "moxhi" | "bert"` trong `editor_config.json`, hoặc biến môi trường
+  `STV_SCAN_ENGINE`.
+- Model Moxhi (≈150 MB, pin revision `c761ea549aa78a7819bd7ba1ace85b3d35b7ee16`) nằm ở `models/MoxhiMT-30-Tag`,
+  tự tải lần quét đầu; tải trước bằng `python moxhi_scanner.py`, thử bằng `python moxhi_scanner.py --test`.
+  Đổi thư mục bằng `STV_MOXHI_MODEL_DIR`.
+- Cần `sentencepiece==0.2.0` (bản mới hơn bỏ `immutable_proto` dùng để lấy vị trí chữ). Code hậu xử lý được viết
+  lại theo model card; file `moxhi_tag.py` của repo model không được tải hay chạy.
+
 ## Recognition
 
 Model: https://huggingface.co/shibing624/bert4ner-base-chinese (Apache 2.0).

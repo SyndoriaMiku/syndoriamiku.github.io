@@ -261,9 +261,9 @@ def _load(progress):
     else:
         path = install_model(progress)
         progress('Đang nạp mô hình NER từ máy…')
-    # Model is on disk: forbid any Hugging Face network call. PyTorch backend only.
-    os.environ['HF_HUB_OFFLINE'] = '1'
-    os.environ['TRANSFORMERS_OFFLINE'] = '1'
+    # Model is on disk: from_pretrained(local_files_only=True) below makes no network call.
+    # Do NOT set HF_HUB_OFFLINE globally — it would block moxhi_scanner from downloading its
+    # own model later in the same process. PyTorch backend only.
     os.environ['USE_TF'] = '0'
     os.environ['USE_TORCH'] = '1'
     try:

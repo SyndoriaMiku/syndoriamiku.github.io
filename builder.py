@@ -6,6 +6,7 @@ from tkinterdnd2 import TkinterDnD, DND_FILES
 from name_glossary import (update_name_cfg, normalize_entries, compile_name_source_pattern, compile_name_loose_pattern,
                            substitute_names, fix_name_spacing)
 import library_store as store
+import git_sync
 from library_store import CatalogError, read_catalog, write_catalog
 from editor_widgets import search_key, apply_tk_defaults, StyledScrolledText
 try:
@@ -21,6 +22,13 @@ try:
 except ImportError:
     _NameScanner = None
     _NAME_SCANNER_OK = False
+
+try:  # MoxhiMT-30-Tag: cùng model với trang moxhi-tag.pages.dev (quét tên + cho sẵn tên tiếng Việt)
+    import moxhi_scanner as _moxhi
+    _MOXHI_OK = True
+except ImportError:
+    _moxhi = None
+    _MOXHI_OK = False
 
 
 # --- XÁC ĐỊNH THƯ MỤC GỐC ---
@@ -1063,7 +1071,10 @@ class TranslatorGUI:
 
         # Nạp sẵn mô hình NER đã có trên máy để lần Scan Names đầu tiên không phải chờ.
         # Tắt bằng biến môi trường STV_NER_PRELOAD=0.
-        if _NAME_SCANNER_OK and os.environ.get('STV_NER_PRELOAD', '1') != '0':
+        # Kết quả commit/push nền của git_sync hiện trên thanh trạng thái (lỗi màu đỏ).
+        git_sync.add_listener(lambda message, ok: self.call_ui(self.set_status, message, None if ok else "#e8857b"))
+
+        if (_NAME_SCANNER_OK or _MOXHI_OK) and os.environ.get('STV_NER_PRELOAD', '1') != '0':
             self.root.after(1500, self._preload_name_model)
 
     # ── luồng giao diện ──
@@ -1114,11 +1125,46 @@ class TranslatorGUI:
                         arrowcolor=MUTED, lightcolor="#4a4238", darkcolor="#4a4238")
 
     def _preload_name_model(self):
+        # Chỉ nạp model đã có trên ổ đĩa, không tự tải khi khởi động; lỗi (nếu có) hiện khi bấm Scan Names.
+        engines = self._scan_engines()
         try:
-            if _ner_installed():  # chỉ nạp từ ổ đĩa, không tự tải khi khởi động
+            if 'bert' in engines and _ner_installed():
                 _ner_preload()
         except Exception:
-            pass  # lỗi (nếu có) sẽ hiện khi bấm Scan Names
+            pass
+        if 'moxhi' in engines and _moxhi.is_installed():
+            threading.Thread(target=self._quiet, args=(_moxhi.preload,), name='moxhi-preload', daemon=True).start()
+
+    @staticmethod
+    def _quiet(func):
+        try:
+            func()
+        except Exception:
+            pass
+
+    def _scan_engines(self):
+        """Bộ quét tên đang dùng: biến môi trường STV_SCAN_ENGINE hoặc "scan_engine" trong
+        editor_config.json — "both" (mặc định), "moxhi" hoặc "bert". Đọc cấu hình một lần.
+
+        Bộ được chọn mà không nạp được thì dùng bộ còn lại và ghi lý do vào self._scan_note
+        (hiện trên thanh trạng thái sau khi quét) thay vì lặng lẽ đổi."""
+        if not hasattr(self, '_scan_choice'):
+            self._scan_choice = (os.environ.get('STV_SCAN_ENGINE') or load_config().get('scan_engine')
+                                 or 'both').strip().lower()
+        wanted = {'both': ('moxhi', 'bert'), 'moxhi': ('moxhi',), 'bert': ('bert',)}.get(self._scan_choice)
+        self._scan_note = ''
+        if wanted is None:
+            self._scan_note = f'scan_engine "{self._scan_choice}" không hợp lệ (both/moxhi/bert) — dùng both'
+            wanted = ('moxhi', 'bert')
+        available = {'moxhi': _MOXHI_OK, 'bert': _NAME_SCANNER_OK}
+        engines = [name for name in wanted if available[name]]
+        missing = [name for name in wanted if not available[name]]
+        if not engines:
+            engines = [name for name in ('moxhi', 'bert') if available[name]]
+        if missing and engines:
+            self._scan_note = (f'không nạp được bộ quét {"/".join(missing)} (thiếu file hoặc thư viện) — '
+                               f'đã dùng {"/".join(engines)}')
+        return engines
 
     def _on_root_configure(self, event=None):
         if event and event.widget is not self.root:
@@ -1543,18 +1589,29 @@ class TranslatorGUI:
         return self._scan_dictionary_cache
 
     def scan_name_candidates(self, text: str, max_results: int = 2000, on_progress=None, temp_names=()) -> list:
-        """Recognize Chinese entities locally with CUDA/CPU NER."""
-        if not _NAME_SCANNER_OK:
-            raise RuntimeError("Không tải được gpu_name_scanner.py. Xem SCAN_NAMES.md để cài đặt.")
-        results = _NameScanner().scan(
-            text, existing_glossary=set(self.load_name_config()) | set(temp_names), max_results=max_results,
-            on_progress=on_progress, dictionary=self.scan_dictionary(),
-        )
-        # The legacy API provides a normal Vietnamese translation, filled below
-        # after all candidates have been collected into one request.
+        """Quét tên chữ Hán trên máy (CUDA/CPU): MoxhiMT-30-Tag và/hoặc BERT NER, rồi gộp kết quả."""
+        engines = self._scan_engines()
+        if not engines:
+            raise RuntimeError("Không tải được bộ quét tên (moxhi_scanner.py / gpu_name_scanner.py). "
+                               "Xem SCAN_NAMES.md để cài đặt.")
+        glossary = set(self.load_name_config()) | set(temp_names)
+        common = dict(existing_glossary=glossary, max_results=max_results, on_progress=on_progress,
+                      dictionary=self.scan_dictionary())
+        found = {}
+        for engine in engines:
+            if engine == 'moxhi':
+                found['moxhi'] = _moxhi.MoxhiScanner().scan(text, reading=self._suggest_vi, **common)
+            else:
+                found['bert'] = _NameScanner().scan(text, **common)
+        if len(found) == 2:
+            results = _moxhi.merge_candidates(found['bert'], found['moxhi'])
+        else:
+            results = next(iter(found.values()))
+        # suggested_vi được điền sau (Moxhi → Hán-Việt → API thường) khi đã có đủ ứng viên.
         for item in results:
             item['suggested_vi'] = ''
-        return results
+            item.setdefault('moxhi_vi', '')
+        return results[:max_results]
 
     def _fill_name_suggestions_from_api(self, candidates):
         from name_suggestions import NameSuggestions
@@ -1595,8 +1652,11 @@ class TranslatorGUI:
                 for c in candidates:
                     c['api_vi'] = c.get('suggested_vi', '')
                     c['hanviet'] = self._suggest_vi(c['cn'])
-                    # Tên người: mặc định Hán-Việt (đúng thói quen trong name.cfg); còn lại dùng API.
-                    if c['hanviet'] and (c['type'] == 'PERSON' or not c['api_vi']):
+                    # Ưu tiên tên Moxhi dịch trong ngữ cảnh (khớp name.cfg ~90%); không có thì tên người
+                    # dùng Hán-Việt (đúng thói quen trong name.cfg), còn lại dùng API.
+                    if c.get('moxhi_vi'):
+                        c['suggested_vi'] = c['moxhi_vi']
+                    elif c['hanviet'] and (c['type'] == 'PERSON' or not c['api_vi']):
                         c['suggested_vi'] = c['hanviet']
                 results.put((candidates, api_warning, None))
             except Exception as error:
@@ -1617,7 +1677,9 @@ class TranslatorGUI:
             if error:
                 messagebox.showerror("Lỗi", f"Lỗi khi quét tên:\n{error}")
                 return
-            self.set_status(f"Đã quét xong: tìm thấy {len(candidates)} ứng viên")
+            note = getattr(self, '_scan_note', '')
+            self.set_status(f"Đã quét xong: tìm thấy {len(candidates)} ứng viên" + (f" · ⚠ {note}" if note else ""),
+                            "#e0b25c" if note else None)
             if api_warning:
                 messagebox.showwarning(
                     "Không tự dịch được tên",
@@ -1678,7 +1740,7 @@ class TranslatorGUI:
             multi = len(c['cn']) >= 2
             return (c['count'] >= 3
                     or (multi and (c['confidence'] >= 0.95 or (c['count'] >= 2 and c['confidence'] >= 0.85)))
-                    or any('Từ điển' in s for s in c.get('signals', [])))
+                    or any('Từ điển' in s or 'cùng thấy' in s for s in c.get('signals', [])))
 
         def rank(c):
             import math
@@ -1693,7 +1755,7 @@ class TranslatorGUI:
                           font=("Segoe UI", 10), cursor="hand2", command=lambda k=key: (tier_var.set(k), rebuild()))
             b.pack(side=tk.LEFT, padx=(0, 4), pady=(0, 6))
             tier_buttons[key] = (b, label)
-        tk.Label(tier_bar, text="Chắc chắn = tên ≥2 chữ điểm ≥95%, hoặc lặp lại nhiều lần · Cần xem: họ 1 chữ, điểm thấp",
+        tk.Label(tier_bar, text="Chắc chắn = 2 bộ quét cùng thấy, tên ≥2 chữ điểm ≥95%, hoặc lặp lại nhiều lần · Cần xem: còn lại",
                  fg="#6b6255", bg=PANEL, font=("Segoe UI", 9)).pack(side=tk.RIGHT)
 
         # Filter bar
@@ -1715,7 +1777,7 @@ class TranslatorGUI:
         search_entry = tk.Entry(filter_frame, textvariable=search_var, width=20, bg=FIELD, fg="white",
                                 insertbackground="white", relief="flat", font=("Segoe UI", 9))
         search_entry.pack(side=tk.LEFT, padx=(4, 0), ipady=2)
-        tk.Label(filter_frame, text="Space: chọn · Del: bỏ qua · Enter: sửa · F2: đổi Hán-Việt/API",
+        tk.Label(filter_frame, text="Space: chọn · Del: bỏ qua · Enter: sửa · F2: đổi Moxhi/Hán-Việt/API",
                  fg="#6b6255", bg=PANEL, font=("Segoe UI", 9)).pack(side=tk.RIGHT)
 
         # Bảng
@@ -1762,6 +1824,9 @@ class TranslatorGUI:
         pick_row = tk.Frame(detail, bg=PANEL)
         pick_row.pack(fill=tk.X, pady=(0, 4))
         tk.Label(pick_row, text="Gợi ý:", fg=MUTED, bg=PANEL, font=("Segoe UI", 9)).pack(side=tk.LEFT)
+        moxhi_btn = tk.Button(pick_row, text="Moxhi: —", bg=FIELD, fg="#c9b8e0", relief="flat", borderwidth=0,
+                              padx=10, pady=3, font=("Segoe UI", 9), cursor="hand2", command=lambda: use_source("moxhi_vi"))
+        moxhi_btn.pack(side=tk.LEFT, padx=(6, 0))
         hv_btn = tk.Button(pick_row, text="Hán-Việt: —", bg=FIELD, fg="#f0d9a8", relief="flat", borderwidth=0,
                            padx=10, pady=3, font=("Segoe UI", 9), cursor="hand2", command=lambda: use_source("hanviet"))
         hv_btn.pack(side=tk.LEFT, padx=(6, 4))
@@ -1785,10 +1850,12 @@ class TranslatorGUI:
         sort_state = {"col": None, "reverse": False}
         current = {"cn": None}
 
+        SOURCES = (("moxhi_vi", "Moxhi"), ("hanviet", "HV"), ("api_vi", "API"))
+
         def alternative(c):
-            """Gợi ý không đang dùng (Hán-Việt hoặc API) để so nhanh."""
+            """Gợi ý không đang dùng (Moxhi, Hán-Việt hoặc API) để so nhanh."""
             current_value = edited_values[c['cn']].strip()
-            for key, label in (("hanviet", "HV"), ("api_vi", "API")):
+            for key, label in SOURCES:
                 value = (c.get(key) or "").strip()
                 if value and value != current_value:
                     return f"{label}: {value}"
@@ -1895,6 +1962,7 @@ class TranslatorGUI:
                 vi_var.set("")
                 hv_btn.config(text="Hán-Việt: —", state=tk.DISABLED)
                 api_btn.config(text="API: —", state=tk.DISABLED)
+                moxhi_btn.config(text="Moxhi: —", state=tk.DISABLED)
             else:
                 c = by_cn[cn]
                 detail_cn.config(text=cn)
@@ -1906,6 +1974,8 @@ class TranslatorGUI:
                               state=tk.NORMAL if c.get('hanviet') else tk.DISABLED)
                 api_btn.config(text=f"API: {c.get('api_vi') or '—'}",
                                state=tk.NORMAL if c.get('api_vi') else tk.DISABLED)
+                moxhi_btn.config(text=f"Moxhi: {c.get('moxhi_vi') or '—'}",
+                                 state=tk.NORMAL if c.get('moxhi_vi') else tk.DISABLED)
                 for ctx in c.get('contexts', []) or ["(không có ngữ cảnh mẫu)"]:
                     start = context_box.index("end-1c")
                     context_box.insert(tk.END, "… " + ctx.replace("\n", " ") + " …\n")
@@ -1941,12 +2011,21 @@ class TranslatorGUI:
             return changed
 
         def swap_sources(event=None):
-            """F2: dòng đang dùng Hán-Việt thì đổi sang API và ngược lại."""
+            """F2: xoay vòng sang gợi ý khác (Moxhi → Hán-Việt → API), bỏ qua gợi ý trống/trùng."""
             cns = [cn for cn in tree.selection() if cn in by_cn]
             for cn in cns:
                 c = by_cn[cn]
-                use_hv = edited_values[cn].strip() != (c.get('hanviet') or '').strip()
-                use_source("hanviet" if use_hv and c.get('hanviet') else "api_vi", [cn])
+                options = []
+                for key, _ in SOURCES:
+                    value = (c.get(key) or "").strip()
+                    if value and value not in [v for _, v in options]:
+                        options.append((key, value))
+                if not options:
+                    continue
+                values = [v for _, v in options]
+                now = edited_values[cn].strip()
+                nxt = options[(values.index(now) + 1) % len(options)] if now in values else options[0]
+                use_source(nxt[0], [cn])
             return "break"
 
         def toggle(cns):

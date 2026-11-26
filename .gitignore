@@ -48,5 +48,9 @@ packages/react-devtools-timeline/dist
 *.json.bak
 /.archify
 
+# Ghi chú review/agent cục bộ
+/review.md
+/.claude/
+
 _site/
 _data/
