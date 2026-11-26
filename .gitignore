@@ -51,6 +51,7 @@ packages/react-devtools-timeline/dist
 # Ghi chú review/agent cục bộ
 /review.md
 /.claude/
+/.commandcode/
 
 _site/
 _data/
