@@ -6845,7 +6845,7 @@
         "title": "Tổng hợp truyện ngắn",
         "slug": "000130",
         "date": "26/11/2026",
-        "timestamp": 1795627817.192094,
+        "timestamp": 1795671257.273458,
         "chapters": [
             {
                 "id": "0001",
@@ -7565,6 +7565,11 @@
             {
                 "id": "0144",
                 "name": "Ta đại học giáo sư mỹ mẫu cùng giản dị nông thôn nhạc phụ",
+                "date": "26/11/2026"
+            },
+            {
+                "id": "0145",
+                "name": "Mỹ lệ trinh tiết lão sư ngoài ý muốn Thành nhi tử tính nô",
                 "date": "26/11/2026"
             }
         ]
