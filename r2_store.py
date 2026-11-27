@@ -297,8 +297,20 @@ def _safe(callback):
     return call
 
 
+# Mỗi lúc chỉ một lần đồng bộ: nút "Đồng bộ ngay"/"Xoá file thừa" gọi sync() trực tiếp trong khi
+# luồng nền có thể cũng đang chạy — hai bên cùng đọc/ghi .r2_manifest.json sẽ ghi đè nhau.
+_sync_lock = threading.Lock()
+
+
 def sync(root, client, progress=None, allow_mass_delete=False):
-    """Đẩy phần chênh lệch giữa thư mục truyện và sổ ghi lên R2. Trả về SyncResult."""
+    """Đẩy phần chênh lệch giữa thư mục truyện và sổ ghi lên R2. Trả về SyncResult.
+
+    Các lần gọi đồng thời được xếp hàng (chờ lần trước xong) để không ghi đè sổ ghi của nhau."""
+    with _sync_lock:
+        return _sync(root, client, progress, allow_mass_delete)
+
+
+def _sync(root, client, progress, allow_mass_delete):
     progress = _safe(progress)
     result = SyncResult()
     manifest = load_manifest(root)

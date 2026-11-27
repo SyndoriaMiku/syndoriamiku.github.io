@@ -239,6 +239,7 @@ class WorkerExitRaceTest(unittest.TestCase):
         runs, exiting = [], threading.Event()
         saved = {name: getattr(r2_store, name)
                  for name in ('_sync_once', '_worker_loop', 'DEBOUNCE', 'app_root', 'project_root')}
+        saved_state = dict(r2_store._state)
         real_loop = r2_store._worker_loop
 
         def slow_exit_loop():
@@ -262,6 +263,35 @@ class WorkerExitRaceTest(unittest.TestCase):
         finally:
             for name, value in saved.items():
                 setattr(r2_store, name, value)
+            with r2_store._state_lock:      # không để trạng thái luồng nền rò sang test khác
+                r2_store._state.clear()
+                r2_store._state.update(saved_state)
+
+
+class ConcurrentSyncTest(unittest.TestCase):
+    """Review Lần 6, B4: nút "Đồng bộ ngay" và luồng nền không được chạy sync() chồng nhau."""
+
+    def test_concurrent_syncs_are_serialised(self):
+        import threading
+        with tempfile.TemporaryDirectory() as root:
+            for cid in ('0001', '0002', '0003'):
+                path = os.path.join(root, 'library', '000001', cid, 'data.json')
+                os.makedirs(os.path.dirname(path))
+                with open(path, 'w', encoding='utf-8') as fh:
+                    json.dump({'title': 'T', 'content': []}, fh)
+            class SlowClient(FakeClient):
+                def put(self, key, body, content_type):
+                    time.sleep(0.05)         # đủ lâu để hai lần sync chồng nhau nếu không có khoá
+                    super().put(key, body, content_type)
+
+            client = SlowClient()
+            workers = [threading.Thread(target=r2_store.sync, args=(root, client)) for _ in range(2)]
+            for t in workers:
+                t.start()
+            for t in workers:
+                t.join(10)
+            # Lần thứ hai chờ lần đầu xong và thấy sổ ghi đã cập nhật: không gửi lại gì.
+            self.assertEqual(len([c for c in client.calls if c[0] == 'PUT']), 3)
 
 
 class EnsureStoryDirTest(unittest.TestCase):

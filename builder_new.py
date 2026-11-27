@@ -5,6 +5,7 @@ import unicodedata, re
 from tkinterdnd2 import TkinterDnD, DND_FILES
 from phrase_translation import (PhraseParser, TranslationFormatError, render_translation,
                                 response_by_line, split_source_text)
+from library_store import read_catalog, write_catalog
 from name_glossary import update_name_cfg
 try:
     from curl_cffi import requests as browser_requests, CurlHttpVersion
@@ -44,7 +45,6 @@ API_VERIFY_TLS = False
 API_USE_HTTP3 = False
 API_CONNECT_TIMEOUT = 10
 API_READ_TIMEOUT = 45
-TEMPLATE_FILE = os.path.join(BASE_DIR, "reader.html")
 CHUNK_LIMIT = 15000  # Số ký tự tối đa trong content, tính cả khoảng trắng/xuống dòng.
 DELAY = 1.2
 CONFIG_PATH = os.path.join(BASE_DIR, "editor_config.json")
@@ -452,10 +452,7 @@ class ReviewWindow:
         with open(os.path.join(output_dir, "data.json"), "w", encoding="utf-8") as f:
             json.dump(story_data, f, ensure_ascii=False)
 
-        if os.path.exists(TEMPLATE_FILE):
-            with open(TEMPLATE_FILE, "r", encoding="utf-8") as f_t, open(os.path.join(output_dir, "index.html"), "w", encoding="utf-8") as f_i:
-                f_i.write(f_t.read())
-
+        # Không chép reader.html thành index.html nữa: 404.html dựng trang truyện.
         self.app.update_catalog(self.title, self.slug)
         self.app.lbl_status.config(text="✅ Đã lưu data.json thành công!", fg="#10b981")
         self.app.btn_run.config(state="normal")
@@ -623,12 +620,7 @@ class TranslatorGUI:
         stories_dir = os.path.join(BASE_DIR, "stories")
         catalog_path = os.path.join(stories_dir, "list.json")
         os.makedirs(stories_dir, exist_ok=True)
-        catalog = []
-        if os.path.exists(catalog_path):
-            try:
-                with open(catalog_path, "r", encoding="utf-8") as f:
-                    catalog = json.load(f)
-            except: pass
+        catalog = read_catalog(catalog_path)  # lỗi đọc -> CatalogError, không ghi đè
 
         existing = next((item for item in catalog if item.get('slug') == slug), None)
         now = datetime.datetime.now()
@@ -638,8 +630,7 @@ class TranslatorGUI:
             existing['date'] = now.strftime("%d/%m/%Y")
             existing['timestamp'] = now.timestamp()
 
-        with open(catalog_path, "w", encoding="utf-8") as f:
-            json.dump(catalog, f, ensure_ascii=False, indent=4)
+        write_catalog(catalog_path, catalog)  # ghi nguyên tử + tự đẩy lên R2 như builder.py
 
     def load_name_config(self):
         if getattr(sys, 'frozen', False):

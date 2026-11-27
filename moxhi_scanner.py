@@ -53,7 +53,9 @@ _SESSION = None
 # ───────────────────────── cài đặt model ─────────────────────────
 def _app_dir():
     if getattr(sys, 'frozen', False):
-        return os.path.dirname(sys.executable)
+        # Exe nằm trong dist/ của repo: dùng chung models/ ở thư mục gốc (như BASE_DIR của builder).
+        base = os.path.dirname(sys.executable)
+        return os.path.dirname(base) if os.path.basename(base).lower() == 'dist' else base
     return os.path.dirname(os.path.abspath(__file__))
 
 
@@ -81,14 +83,15 @@ def install_model(progress=None, force=False):
     target = model_dir()
     if not force and is_installed(target):
         return target
-    try:
-        from huggingface_hub import snapshot_download
-    except ImportError as exc:
-        raise RuntimeError('Thiếu huggingface_hub. Xem SCAN_NAMES.md để cài đặt.') from exc
     progress('Đang tải model MoxhiMT-30-Tag (≈150 MB, chỉ lần đầu)…')
     staging = target + '.download'
     shutil.rmtree(staging, ignore_errors=True)
-    snapshot_download(MODEL, revision=REVISION, allow_patterns=ALLOW, local_dir=staging)
+    try:
+        from huggingface_hub import snapshot_download
+    except ImportError:          # bản exe không kèm huggingface_hub: tải thẳng từng file
+        _download_files(staging, progress)
+    else:
+        snapshot_download(MODEL, revision=REVISION, allow_patterns=ALLOW, local_dir=staging)
     with open(os.path.join(staging, MANIFEST), 'w', encoding='utf-8') as fh:
         json.dump({'model': MODEL, 'revision': REVISION, 'license': 'cc-by-nc-4.0'}, fh, indent=2)
     shutil.rmtree(os.path.join(staging, '.cache'), ignore_errors=True)
@@ -96,6 +99,34 @@ def install_model(progress=None, force=False):
         shutil.rmtree(target)
     os.replace(staging, target)
     return target
+
+
+def _download_files(staging, progress):
+    import requests
+    with requests.Session() as http:
+        for i, name in enumerate(ALLOW, 1):
+            url = f'https://huggingface.co/{MODEL}/resolve/{REVISION}/{name}'
+            dest = os.path.join(staging, *name.split('/'))
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            progress(f'Đang tải model Moxhi: {name} ({i}/{len(ALLOW)})…')
+            with http.get(url, stream=True, timeout=60) as res:
+                if res.status_code == 404 and name not in REQUIRED:
+                    continue
+                res.raise_for_status()
+                with open(dest, 'wb') as fh:
+                    for chunk in res.iter_content(1 << 20):
+                        fh.write(chunk)
+
+
+def backend():
+    """'torch' khi có torch + transformers (chạy từ source), ngược lại 'numpy' (bản exe).
+    Ép bằng biến môi trường STV_MOXHI_BACKEND=torch|numpy."""
+    forced = os.environ.get('STV_MOXHI_BACKEND', '').strip().lower()
+    if forced in ('torch', 'numpy'):
+        return forced
+    import importlib.util
+    has = all(importlib.util.find_spec(m) is not None for m in ('torch', 'transformers'))
+    return 'torch' if has else 'numpy'
 
 
 def _load(progress):
@@ -108,6 +139,16 @@ def _load_model(progress):
     if _SESSION is not None:
         return _SESSION
     path = install_model(progress)
+    if backend() == 'numpy':
+        progress('Đang nạp MoxhiMT-30-Tag (CPU, numpy)…')
+        try:
+            _SESSION = NumpySession(path)
+        except ImportError as exc:
+            raise RuntimeError('Thiếu thư viện (numpy, sentencepiece). Xem SCAN_NAMES.md.') from exc
+        except Exception as exc:
+            raise RuntimeError(f'Không nạp được MoxhiMT-30-Tag từ {path}. Xoá thư mục đó để tải lại. '
+                               f'Chi tiết: {exc}') from exc
+        return _SESSION
     progress('Đang nạp MoxhiMT-30-Tag…')
     # from_pretrained(local_files_only=True) đủ để không gọi mạng. Không bật HF_HUB_OFFLINE toàn cục:
     # nó sẽ chặn gpu_name_scanner tải model của nó sau này trong cùng tiến trình.
@@ -199,14 +240,15 @@ def split_sentences(text, limit=MAX_SENTENCE):
     return spans
 
 
-class Session:
-    def __init__(self, torch, tok, model, head, sp, device):
+class _Tagger:
+    """Phần chung của hai bản chạy (torch / numpy): đầu NER, Viterbi, ghép mảnh."""
+
+    def _init_head(self, head, drop):
         import numpy as np
-        self.np, self.torch, self.tok, self.model, self.sp, self.device = np, torch, tok, model, sp, device
+        self.np = np
         self.labels = head['labels']
         self.layer = head['layers'][0]
-        self.W = torch.tensor(head['W'], dtype=torch.float32, device=device) * head['mix'][0]
-        self.b = torch.tensor(head['b'], dtype=torch.float32, device=device)
+        self.drop = set(drop)
         k = len(self.labels)
         allow = np.ones((k, k), dtype=bool)     # I-X chỉ sau B-X hoặc I-X
         start = np.ones(k, dtype=bool)
@@ -216,7 +258,6 @@ class Session:
             allow[:, i] = False
             allow[b, i] = allow[i, i] = True
         self.start, self.trans = start, np.where(allow, 0.0, -1e9)
-        self.drop = {tok.pad_token_id, tok.bos_token_id, tok.eos_token_id, tok.unk_token_id}
 
     def _viterbi(self, logp):
         np = self.np
@@ -230,27 +271,6 @@ class Session:
         for t in range(len(logp) - 1, 0, -1):
             path.append(int(back[t][path[-1]]))
         return path[::-1]
-
-    def source_names(self, sentences, batch=32):
-        """Mỗi câu → [(start, end, type, điểm)] (vị trí trong câu)."""
-        torch, results = self.torch, []
-        for first in range(0, len(sentences), batch):
-            chunk = sentences[first:first + batch]
-            pieces = [self._pieces(s) for s in chunk]
-            ids = [self.tok.convert_tokens_to_ids([p[0] for p in ps]) + [self.tok.eos_token_id] for ps in pieces]
-            width = max(len(x) for x in ids)
-            input_ids = torch.full((len(ids), width), self.tok.pad_token_id, dtype=torch.long)
-            mask = torch.zeros((len(ids), width), dtype=torch.long)
-            for i, x in enumerate(ids):
-                input_ids[i, :len(x)] = torch.tensor(x)
-                mask[i, :len(x)] = 1
-            with torch.inference_mode():
-                hs = self.model.get_encoder()(input_ids=input_ids.to(self.device), attention_mask=mask.to(self.device),
-                                              output_hidden_states=True).hidden_states[self.layer]
-                logp = torch.log_softmax(hs.float() @ self.W.T + self.b, -1).cpu().numpy()
-            for text, ps, lp in zip(chunk, pieces, logp):
-                results.append(self._decode(text, ps, lp[:len(ps)]))
-        return results
 
     def _pieces(self, text):
         """[(mảnh, đầu, cuối)] với vị trí theo ký tự. Chép ra tuple ngay: mảnh immutable_proto
@@ -291,6 +311,38 @@ class Session:
             out.append((a, b, t, sum(probs) / len(probs)))
         return out
 
+
+
+class Session(_Tagger):
+    """Chạy bằng torch + transformers (từ source, có thể dùng GPU)."""
+
+    def __init__(self, torch, tok, model, head, sp, device):
+        self._init_head(head, {tok.pad_token_id, tok.bos_token_id, tok.eos_token_id, tok.unk_token_id})
+        self.torch, self.tok, self.model, self.sp, self.device = torch, tok, model, sp, device
+        self.W = torch.tensor(head['W'], dtype=torch.float32, device=device) * head['mix'][0]
+        self.b = torch.tensor(head['b'], dtype=torch.float32, device=device)
+
+    def source_names(self, sentences, batch=32):
+        """Mỗi câu → [(start, end, type, điểm)] (vị trí trong câu)."""
+        torch, results = self.torch, []
+        for first in range(0, len(sentences), batch):
+            chunk = sentences[first:first + batch]
+            pieces = [self._pieces(s) for s in chunk]
+            ids = [self.tok.convert_tokens_to_ids([p[0] for p in ps]) + [self.tok.eos_token_id] for ps in pieces]
+            width = max(len(x) for x in ids)
+            input_ids = torch.full((len(ids), width), self.tok.pad_token_id, dtype=torch.long)
+            mask = torch.zeros((len(ids), width), dtype=torch.long)
+            for i, x in enumerate(ids):
+                input_ids[i, :len(x)] = torch.tensor(x)
+                mask[i, :len(x)] = 1
+            with torch.inference_mode():
+                hs = self.model.get_encoder()(input_ids=input_ids.to(self.device), attention_mask=mask.to(self.device),
+                                              output_hidden_states=True).hidden_states[self.layer]
+                logp = torch.log_softmax(hs.float() @ self.W.T + self.b, -1).cpu().numpy()
+            for text, ps, lp in zip(chunk, pieces, logp):
+                results.append(self._decode(text, ps, lp[:len(ps)]))
+        return results
+
     def translate(self, sentences, batch=16, beams=4):
         """Dịch có thẻ → [[(type, tên Việt)]] cho từng câu."""
         torch, out = self.torch, []
@@ -302,6 +354,53 @@ class Session:
             for row in gen.tolist():
                 raw = self.tok.decode([i for i in row if i not in self.drop], skip_special_tokens=False)
                 out.append(tagged_entities(raw))
+        return out
+
+
+class NumpySession(_Tagger):
+    """Chạy bằng numpy thuần (moxhi_numpy.py): cho bản exe, không cần torch. Chỉ CPU."""
+
+    device = 'cpu'
+
+    def __init__(self, path):
+        import moxhi_numpy
+        self.model = moxhi_numpy.MarianNumpy(path)
+        self.tokens = moxhi_numpy.MarianTokens(path)
+        self.sp = self.tokens.src
+        self._log_softmax = moxhi_numpy.log_softmax
+        with open(os.path.join(path, HEAD_FILE), encoding='utf-8') as fh:
+            head = json.load(fh)
+        v = self.tokens.vocab
+        self._init_head(head, {v.get('<pad>', 0), v.get('<s>', 1), v.get('</s>', 2), v.get('<unk>', 3)})
+        self.W = self.np.asarray(head['W'], dtype=self.np.float32) * head['mix'][0]
+        self.b = self.np.asarray(head['b'], dtype=self.np.float32)
+
+    def source_names(self, sentences, batch=32):
+        """Mỗi câu → [(start, end, type, điểm)] (vị trí trong câu)."""
+        np, results = self.np, []
+        for first in range(0, len(sentences), batch):
+            chunk = sentences[first:first + batch]
+            pieces = [self._pieces(s) for s in chunk]
+            rows = [self.tokens.ids([p[0] for p in ps]) + [self.tokens.eos] for ps in pieces]
+            width = max(len(x) for x in rows)
+            ids = np.full((len(rows), width), self.tokens.pad, dtype=np.int64)
+            mask = np.zeros((len(rows), width), dtype=np.int64)
+            for i, x in enumerate(rows):
+                ids[i, :len(x)] = x
+                mask[i, :len(x)] = 1
+            hs = self.model.encode(ids, mask, layers=self.layer)
+            logp = self._log_softmax(hs @ self.W.T + self.b)
+            for text, ps, lp in zip(chunk, pieces, logp):
+                results.append(self._decode(text, ps, lp[:len(ps)]))
+        return results
+
+    def translate(self, sentences, batch=16, beams=4):
+        """Dịch có thẻ → [[(type, tên Việt)]] cho từng câu."""
+        out = []
+        for first in range(0, len(sentences), batch):
+            ids, mask = self.tokens.batch(sentences[first:first + batch])
+            for row in self.model.generate(ids, mask, beams=beams):
+                out.append(tagged_entities(self.tokens.decode([i for i in row if i not in self.drop])))
         return out
 
 

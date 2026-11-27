@@ -17,7 +17,21 @@ python -c "import torch; print(torch.cuda.is_available())"
 The NVIDIA driver must support CUDA 12.8. No separate CUDA toolkit is needed.
 CPU-only users can install `requirements-scanner.txt` instead.
 
-## Hai bộ quét (mặc định chạy cả hai rồi gộp)
+## Bản exe: Moxhi chạy bằng numpy
+
+`dist/StoryStudio.exe` và `dist/StoryTranslatorPro.exe` không kèm torch/transformers (vài GB). Trong exe,
+Moxhi chạy bằng `moxhi_numpy.py`: Marian viết lại bằng numpy, đọc thẳng `model.safetensors`, tách từ bằng
+sentencepiece. Chỉ CPU, chỉ Moxhi (BERT cần chạy từ source).
+
+- **Kết quả giống bản torch:** trạng thái encoder lệch < 2e-6; 40/40 câu thật sinh đúng từng token (beam 2 và 4);
+  quét cả chương ra đúng cùng danh sách tên, số lần và tên Việt. Test: `tests/test_moxhi_numpy.py`.
+- **Model:** dùng chung `models/MoxhiMT-30-Tag` ở thư mục gốc repo (exe nằm trong `dist/`). Chưa có thì exe tự
+  tải từng file của revision đã ghim từ Hugging Face (không cần `huggingface_hub`).
+- Chạy từ source vẫn dùng torch (GPU nếu có). Ép bản numpy để thử: `$env:STV_MOXHI_BACKEND = "numpy"`.
+- **Build exe:** `powershell -ExecutionPolicy Bypass -File toolsuild_exe.ps1` (đặt DLL của môi trường lên đầu
+  PATH; nếu không exe có thể báo lỗi Tcl lệch phiên bản khi mở).
+
+## Hai bộ quét (mặc định chỉ Moxhi; "both" chạy cả hai rồi gộp)
 
 | Bộ quét | File | Model |
 |---|---|---|
@@ -148,8 +162,7 @@ python gpu_name_scanner.py --force  # re-download
 https://moxhi.pages.dev/ inspired contextual recognition and separate review
 of suggested readings. Its WebGPU r6b model is not included; this application
 uses PyTorch CUDA BERT. GPU accelerates recognition, not remote API requests
-or Tk text editing. Frozen executable packaging has not been verified; rebuild
-with the updated spec and installed dependencies if distributing an EXE.
+or Tk text editing. The EXE runs Moxhi only, on CPU, through `moxhi_numpy.py` (see above).
 
 ## Local verification
 
