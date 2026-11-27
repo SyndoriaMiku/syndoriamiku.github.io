@@ -57,6 +57,24 @@ class BackendChoiceTest(unittest.TestCase):
                 os.environ['STV_MOXHI_BACKEND'] = old
 
 
+class PiecesFallbackTest(unittest.TestCase):
+    """Review Lần 7, B7: sentencepiece >= 0.2.2 bỏ immutable_proto → dùng offset_mapping."""
+
+    def test_offset_mapping_when_immutable_proto_is_gone(self):
+        import moxhi_scanner as ms
+
+        class NewSp:
+            def encode(self, text, out_type=None, return_type=None):
+                if out_type == 'immutable_proto':
+                    raise ValueError('immutable_proto is deprecated and no longer supported')
+                assert return_type == 'offset_mapping'
+                return {'pieces': ['▁韩', '立'], 'offsets': [(0, 1), (1, 2)]}
+
+        tagger = ms._Tagger.__new__(ms._Tagger)
+        tagger.sp = NewSp()
+        self.assertEqual(tagger._pieces('韩立'), [('▁韩', 0, 1), ('立', 1, 2)])
+
+
 class DownloadWithoutHubTest(unittest.TestCase):
     """Bản exe không có huggingface_hub: tải thẳng từng file của revision đã ghim."""
 

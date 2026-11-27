@@ -275,8 +275,13 @@ class _Tagger:
     def _pieces(self, text):
         """[(mảnh, đầu, cuối)] với vị trí theo ký tự. Chép ra tuple ngay: mảnh immutable_proto
         trỏ vào đối tượng cha, dùng sau khi cha bị thu hồi sẽ lỗi bộ nhớ."""
-        proto = self.sp.encode(text, out_type='immutable_proto')
-        return [(p.piece, p.begin, p.end) for p in proto.pieces][:510]
+        try:
+            proto = self.sp.encode(text, out_type='immutable_proto')
+            return [(p.piece, p.begin, p.end) for p in proto.pieces][:510]
+        except (ValueError, TypeError, AttributeError):
+            # sentencepiece >= 0.2.2 bỏ immutable_proto; offset_mapping cũng trả vị trí theo ký tự.
+            out = self.sp.encode(text, return_type='offset_mapping')
+            return [(piece, start, end) for piece, (start, end) in zip(out['pieces'], out['offsets'])][:510]
 
     def _decode(self, text, pieces, logp):
         keep = [i for i, p in enumerate(pieces) if p[1] != p[2]]
