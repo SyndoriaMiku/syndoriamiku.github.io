@@ -1,7 +1,6 @@
 """Behavior of the editor's paragraph-to-chapter split.
 
-editor.py imports tkinter, so these tests skip on a machine where it is
-not available (for example a headless CI image without python3-tk).
+The split lives in editor_core (no GUI), so these tests run everywhere.
 
 Run from the repository root:
 
@@ -13,20 +12,14 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-try:
-    import editor
-    _EDITOR_IMPORT_ERROR = None
-except Exception as error:  # pragma: no cover - depends on the host
-    editor = None
-    _EDITOR_IMPORT_ERROR = error
+import editor_core  # noqa: E402
 
 
-@unittest.skipIf(editor is None, f"editor import unavailable: {_EDITOR_IMPORT_ERROR}")
 class DetectChaptersTest(unittest.TestCase):
     """detect_chapters(text, regex) -> [{"title", "paragraphs"}]."""
 
     def detect(self, text, regex):
-        return editor.ChapterEditorApp.detect_chapters(None, text, regex)
+        return editor_core.detect_chapters(text, regex)
 
     def test_leading_paragraphs_become_a_titleless_group(self):
         result = self.detect("Mở đầu\n\nChương 1\n\nĐoạn 1", r"^chương\s+\d+")
@@ -56,7 +49,7 @@ class DetectChaptersTest(unittest.TestCase):
     def test_matches_library_store_grouping(self):
         text = "dẫn\n\nChương 1\n\nA\n\nChương 2\n\nB"
         paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
-        groups = editor.store.split_into_chapters(paragraphs, r"^chương\s+\d+")
+        groups = editor_core.store.split_into_chapters(paragraphs, r"^chương\s+\d+")
         self.assertEqual(
             self.detect(text, r"^chương\s+\d+"),
             [{"title": g["title"], "paragraphs": g["items"]} for g in groups])

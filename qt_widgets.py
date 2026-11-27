@@ -1,4 +1,4 @@
-"""Thành phần Qt dùng chung (builder_qt.py, sau này editor): theme tối, ô nhập gõ IME tốt,
+"""Thành phần Qt dùng chung (builder.py, editor.py, studio.py): theme tối, ô nhập gõ IME tốt,
 thanh tìm kiếm, hộp thoại, lưu vị trí cửa sổ, chuyển việc từ luồng nền về luồng giao diện."""
 import re
 
@@ -123,7 +123,7 @@ class UiBridge(QObject):
         try:
             job()
         except Exception as error:  # không để một callback hỏng làm sập app
-            print(f"UI callback error: {error}")
+            core.log(f"UI callback error: {error}")
 
 
 # ───────────────────────── hộp thoại ─────────────────────────
@@ -216,7 +216,7 @@ def save_geometry(widget, key):
 # ───────────────────────── thanh tìm kiếm ─────────────────────────
 
 class FindBar(QWidget):
-    """Tìm trong một QPlainTextEdit: chuỗi thường hoặc regex, Aa, ▲▼, nhớ vị trí như builder Tk:
+    """Tìm trong một QPlainTextEdit: chuỗi thường hoặc regex, Aa, ▲▼, nhớ vị trí:
     mở thì bắt đầu từ chỗ con trỏ/đoạn bôi đen, đóng thì bôi đen kết quả đang xem."""
     LIMIT = 5000
 

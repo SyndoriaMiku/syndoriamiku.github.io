@@ -1,6 +1,6 @@
 """Phần xử lý của trình dịch (không dính giao diện): cấu hình, nháp, gọi API dịch, name, quét tên.
 
-Dùng chung cho builder.py (Tk) và builder_qt.py (Qt). Không import tkinter/Qt ở đây.
+Dùng cho builder.py (giao diện Qt). Không import tkinter/Qt ở đây.
 """
 import base64  # noqa: F401  (giữ cho code cũ import qua builder)
 import datetime
@@ -145,7 +145,15 @@ def split_translation(lines, limit=CHUNK_LIMIT):
     return chunks
 
 
-# editor_config.json dùng chung cho builder, editor, studio (bản Tk và Qt): một bản đọc/ghi duy nhất.
+def log(message):
+    """In ra console/log mà không bao giờ ném lỗi (console Windows cp1252 không in được tiếng Việt)."""
+    try:
+        print(message)
+    except (UnicodeEncodeError, OSError, AttributeError, ValueError):
+        pass
+
+
+# editor_config.json dùng chung cho builder, editor, studio (kể cả khi mở riêng từng app): một bản đọc/ghi duy nhất.
 _config_lock = threading.Lock()
 
 
@@ -232,12 +240,12 @@ def save_config(data):
             except ValueError:
                 broken = f"{CONFIG_PATH}.broken-{time.strftime('%Y%m%d-%H%M%S')}"
                 os.replace(CONFIG_PATH, broken)
-                print(f"editor_config.json hỏng, đã giữ lại ở {broken}")
+                log(f"editor_config.json hỏng, đã giữ lại ở {broken}")
                 existing = {}
             existing.update(data)
             store.write_json_atomic(CONFIG_PATH, existing, indent=2)
         except OSError as error:   # không ghi được cấu hình thì app vẫn chạy tiếp
-            print(f"Không lưu được editor_config.json: {error}")
+            log(f"Không lưu được editor_config.json: {error}")
 
 
 STORY_SLUG_MAX = 80
@@ -343,7 +351,7 @@ def fix_capitalization_after_names(text: str, vi_names: list, name_pattern=None)
 
 
 def prepare_name_updates(vi_lines, wrong, right, vi_names):
-    """Compute changed lines only; safe to run without accessing Tk widgets."""
+    """Compute changed lines only; safe to run off the GUI thread."""
     if not wrong:
         return []
     wrong_pattern = re.compile(re.escape(wrong), re.IGNORECASE)
@@ -440,7 +448,7 @@ class TranslatorCore:
                     f.write("# Thêm tên cần dịch cố định vào đây theo định dạng Trung=Việt, ví dụ:\n")
                     f.write("# 轩辕=Hiên Viên\n")
             except Exception as e:
-                print(f"Lỗi khi tạo file name.cfg: {e}")
+                log(f"Lỗi khi tạo file name.cfg: {e}")
 
         name_dict = {}
         if os.path.exists(cfg_path):
@@ -455,7 +463,7 @@ class TranslatorCore:
                             if cn.strip() and vi.strip():
                                 name_dict[unicodedata.normalize('NFC', cn.strip())] = unicodedata.normalize('NFC', vi.strip())
             except Exception as e:
-                print(f"Lỗi khi đọc file name.cfg: {e}")
+                log(f"Lỗi khi đọc file name.cfg: {e}")
         return name_dict
 
     def effective_names(self, temp_names=None):

@@ -146,7 +146,7 @@ python gpu_name_scanner.py --force  # re-download
 
 ## Suggestions and review
 
-- Builder (`builder_qt.py` / `builder.py`): normal translation API, no login cookie. Suggestions are
+- `builder.py`: normal translation API, no login cookie. Suggestions are
   translations and are not guaranteed to be Sino-Vietnamese readings.
 - At most 40 names and 15,000 characters per suggestion batch; a provider
   may impose a smaller character limit. Mismatched responses are retried in

@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['builder_qt.py'],
+    ['builder.py'],
     pathex=[],
     binaries=[],
     datas=[],

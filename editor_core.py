@@ -1,5 +1,5 @@
-"""Phần xử lý của trình biên tập thư viện (không dính giao diện). Dùng chung cho editor.py (Tk)
-và editor_qt.py (Qt). Không import tkinter/Qt ở đây."""
+"""Phần xử lý của trình biên tập thư viện (không dính giao diện).
+Giao diện Qt ở editor.py. Không import Qt ở đây."""
 import base64
 import datetime
 import json

@@ -1,4 +1,4 @@
-"""translator_core: phần xử lý dùng chung của builder.py (Tk) và builder_qt.py (Qt)."""
+"""translator_core: phần xử lý của builder.py."""
 import base64
 import os
 import sys

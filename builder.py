@@ -1,495 +1,412 @@
-import tkinter as tk
-from tkinter import filedialog, messagebox, scrolledtext, ttk
-import requests, json, os, sys, base64, datetime, time, threading, queue
-import unicodedata, re
+"""Story Translator (Qt / PySide6): dịch truyện Trung → Việt, Review, Lưu vào thư viện, Scan Names.
+
+Qt hiển thị chữ đang gõ bằng bộ gõ IME (EVKey chế độ IME, Pinyin…) ngay
+trong ô, không bật khung preview riêng. Phần xử lý dùng chung: translator_core.py.
+
+Chạy: python builder.py
+"""
+import os
+import re
+import sys
+import threading
+import time
+import unicodedata
+
 # Console Windows (cp1252) không in được tiếng Việt: print() sẽ ném UnicodeEncodeError giữa chừng.
 for _stream in (sys.stdout, sys.stderr):
     try:
         _stream.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
-from tkinterdnd2 import TkinterDnD, DND_FILES
-from name_glossary import (update_name_cfg, normalize_entries, compile_name_source_pattern, compile_name_loose_pattern,
-                           substitute_names, fix_name_spacing)
+
+from PySide6.QtCore import QEasingCurve, QEvent, QItemSelectionModel, Qt, QTimer, QVariantAnimation
+from PySide6.QtGui import (QColor, QFont, QGuiApplication, QKeySequence, QShortcut, QSyntaxHighlighter,
+                           QTextCharFormat, QTextCursor)
+from PySide6.QtWidgets import (QAbstractItemView, QApplication, QButtonGroup, QCheckBox, QComboBox, QDialog,
+                               QFileDialog, QFrame, QGridLayout, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QListWidget, QMenu,
+                               QProgressBar, QRadioButton, QSpinBox, QTextEdit, QTreeWidget, QTreeWidgetItem,
+                               QVBoxLayout, QWidget)
+
 import library_store as store
 import r2_store
-from library_store import CatalogError, read_catalog, write_catalog
-from editor_widgets import search_key, apply_tk_defaults, StyledScrolledText
-# Phần không dính giao diện nằm ở translator_core (dùng chung với builder_qt.py).
-from translator_core import (  # noqa: F401
-    _hv, _HAN_VIET_OK, _NameScanner, _NAME_SCANNER_OK, _moxhi, _MOXHI_OK,
-    BASE_DIR, API_URL, CHUNK_LIMIT, DELAY, CONFIG_PATH, STORIES_DIR, LIBRARY_DIR, LIBRARY_CATALOG, DRAFT_DIR,
-    BG, PANEL, FIELD, MUTED, TEXT,
-    name_cfg_path, draft_path, write_draft, remove_draft, estimate_chunks, split_translation,
-    load_config, save_config, slugify_vn, story_slug, compile_name_pattern, fix_capitalization_after_names,
-    prepare_name_updates, _ner_installed, _ner_preload)
+import translator_core as core
+from library_store import CatalogError, read_catalog
+from editor_core import search_key
+from qt_widgets import (ACCENT, ERROR, HINT, OK_GREEN, STYLE, WARN, FindBar, LineEdit, PlainTextEdit, UiBridge,
+                        ask_yes_no, ask_yes_no_cancel, button, error, info, label, qt_offsets, raw_text,
+                        restore_geometry, save_geometry, selected_text, set_label, warn)
+from translator_core import BG, FIELD, MUTED, PANEL, TEXT, BASE_DIR, LIBRARY_CATALOG, LIBRARY_DIR, STORIES_DIR
+
+CN_FONT = "Microsoft YaHei UI"
 
 
-# --- CỬA SỔ REVIEW ---
-class ReviewWindow:
-    def __init__(self, parent, title, slug, cn_lines, vi_lines, app_instance, from_draft=False):
-        self.top = tk.Toplevel(parent)
-        self.top.title(f"Review & Edit Name: {title}")
-        self.top.configure(bg=BG)
+def hbox(*items, margins=(0, 0, 0, 0), spacing=6):
+    row = QHBoxLayout()
+    row.setContentsMargins(*margins)
+    row.setSpacing(spacing)
+    for item in items:
+        if item == "stretch":
+            row.addStretch(1)
+        elif isinstance(item, tuple):
+            row.addWidget(item[0], item[1])
+        elif isinstance(item, QWidget):
+            row.addWidget(item)
+        else:
+            row.addLayout(item)
+    return row
 
+
+# ═════════════════════════ Review ═════════════════════════
+
+class _PairHighlighter(QSyntaxHighlighter):
+    """Tô màu theo dòng: 3 dòng một đoạn — Trung (xám), Việt (sáng), dòng trống."""
+
+    def __init__(self, doc):
+        super().__init__(doc)
+        self.cn, self.vi = QTextCharFormat(), QTextCharFormat()
+        self.cn.setForeground(QColor("#8a7f70"))
+        self.cn.setFont(QFont(CN_FONT, 11))
+        self.vi.setForeground(QColor("#f4ede1"))
+
+    def highlightBlock(self, text):
+        offset = self.currentBlock().blockNumber() % 3
+        if offset == 0:
+            self.setFormat(0, len(text), self.cn)
+        elif offset == 1:
+            self.setFormat(0, len(text), self.vi)
+
+
+class ReviewWindow(QWidget):
+    def __init__(self, app, title, slug, cn_lines, vi_lines, from_draft=False):
+        super().__init__(app, Qt.Window)
+        self.setAttribute(Qt.WA_DeleteOnClose)
+        self.setWindowTitle(f"Review & Edit Name: {title}")
+        self.app = app
         self.title = title
         self.slug = slug
         self.cn_lines = cn_lines
         self.vi_lines = vi_lines
-        self.app = app_instance
-        self.saved = False            # đã lưu data.json hoặc vào thư viện
+        self.saved = False             # đã lưu data.json hoặc vào thư viện
         self._saved_data_once = False  # đã ghi stories/<slug>/data.json trong phiên này
-        self._draft_timer = None
-        self._status_timer = None
-        # Đọc lại nội dung trong lúc cửa sổ đang mở: dùng số thế hệ để bỏ
-        # lần chèn theo lô cũ khi load_content được gọi lần nữa.
-        self._paint_generation = 0
-
-        # Restore saved geometry or use default
-        cfg = load_config()
-        geo = cfg.get("builder_review", "900x700")
-        self.top.geometry(geo)
-
-        self.top.protocol("WM_DELETE_WINDOW", self.on_closing)
-
+        self._closing_ok = False
+        self._draft_timer = QTimer(self, singleShot=True, interval=1500)
+        self._draft_timer.timeout.connect(self.save_draft)
+        restore_geometry(self, "builder_review", 900, 700)
         self.setup_ui()
         self.load_content()
+        app.reviews.append(self)
         if from_draft:
-            self.set_status(f"📝 Đã mở nháp: {len(cn_lines)} đoạn — chưa lưu", "#e0b25c")
+            self.set_status(f"📝 Đã mở nháp: {len(cn_lines)} đoạn — chưa lưu", WARN)
         else:
             self.save_draft()
+        self.show()
 
     # ── nháp & trạng thái ──
 
-    def set_status(self, text, color="#8fc29a"):
-        self.status_lbl.config(text=text, fg=color)
+    def set_status(self, text, color=OK_GREEN):
+        set_label(self.status_lbl, text, color)
 
     def mark_changed(self):
         self.saved = False
-        if self._draft_timer:
-            self.top.after_cancel(self._draft_timer)
-        self._draft_timer = self.top.after(1500, self.save_draft)
+        self._draft_timer.start()
 
     def save_draft(self):
-        self._draft_timer = None
+        self._draft_timer.stop()
         try:
-            write_draft(self.title, self.slug, self.cn_lines, self.vi_lines)
+            core.write_draft(self.title, self.slug, self.cn_lines, self.vi_lines)
             self.set_status(f"📝 Nháp tự lưu lúc {time.strftime('%H:%M:%S')} — .drafts/{self.slug}.json",
-                            "#8a7f70" if self.saved else "#e0b25c")
-        except Exception as error:
-            self.set_status(f"⚠ Không lưu được nháp: {error}", "#e8857b")
+                            "#8a7f70" if self.saved else WARN)
+        except Exception as exc:
+            self.set_status(f"⚠ Không lưu được nháp: {exc}", ERROR)
 
-    def _release_app(self):
-        self.app.btn_run.config(state="normal")
-        self.app.set_status("Sẵn sàng", "#8a7f70")
-        self.app.btn_clear.pack(side="right", padx=5)
-
-    def close_window(self):
-        if self._draft_timer:
-            self.top.after_cancel(self._draft_timer)
-            self._draft_timer = None
-        save_config({"builder_review": self.top.geometry()})
+    def _finish_close(self):
+        self._draft_timer.stop()
+        save_geometry(self, "builder_review")
         if self.saved:
-            remove_draft(self.slug)
+            core.remove_draft(self.slug)
         else:
             self.save_draft()
-        self.top.destroy()
+        self._closing_ok = True
 
-    def on_closing(self):
-        if not self.saved:
-            answer = messagebox.askyesnocancel(
-                "Bản dịch chưa lưu",
-                "Bản dịch này chưa được lưu.\n\n"
-                "Có = Lưu vào data.json rồi đóng\n"
-                "Không = Đóng (nháp vẫn giữ, mở lại bằng nút \"Mở nháp\")\n"
-                "Hủy = Quay lại",
-                parent=self.top, icon="warning")
-            if answer is None:
-                return
-            if answer:
-                self.save_data()
-                return
-        self._release_app()
-        self.close_window()
+    def close_window(self):
+        """Đóng không hỏi (đã lưu hoặc người dùng đã chọn)."""
+        self._finish_close()
+        self.close()
+
+    def closeEvent(self, event):
+        if not self._closing_ok:
+            if not self.saved:
+                answer = ask_yes_no_cancel(
+                    self, "Bản dịch chưa lưu",
+                    "Bản dịch này chưa được lưu.\n\n"
+                    "Có = Lưu vào data.json rồi đóng\n"
+                    "Không = Đóng (nháp vẫn giữ, mở lại bằng nút \"Mở nháp\")\n"
+                    "Hủy = Quay lại")
+                if answer is None:
+                    event.ignore()
+                    return
+                if answer:
+                    event.ignore()
+                    QTimer.singleShot(0, self.save_data)   # lưu xong tự đóng
+                    return
+            self._finish_close()
+        if self in self.app.reviews:
+            self.app.reviews.remove(self)
+        self.app.review_closed()
+        super().closeEvent(event)
+
+    # ── giao diện ──
 
     def setup_ui(self):
-        ctrl_frame = tk.Frame(self.top, bg=BG)
-        ctrl_frame.pack(fill="x", padx=10, pady=10)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(10, 10, 10, 6)
+        bar = hbox(button("🔍 Kiểm tra lỗi", self.check_translation_errors),
+                   button("🔄 Dịch lại toàn bộ", self.retranslate_all), "stretch",
+                   button("✎ Thêm Name", self.prompt_add_name, "#6a5683"),
+                   button("📚 Lưu vào thư viện", self.save_to_library, ACCENT),
+                   button("💾 Lưu data.json", self.save_data, "#4f7f58"))
+        root.addLayout(bar)
+        root.addWidget(label("Bôi đen chữ rồi chuột phải để thêm Name  ·  Bấm đúp một dòng để sửa câu",
+                             "#8a7f70", 9))
+        self.text = PlainTextEdit()
+        self.text.setReadOnly(True)
+        self.text.setStyleSheet(f"QPlainTextEdit {{ background: {PANEL}; font-size: 11pt; padding: 8px; }}")
+        self.text.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.text.customContextMenuRequested.connect(self.show_context_menu)
+        self.text.viewport().installEventFilter(self)
+        self._highlighter = _PairHighlighter(self.text.document())
+        root.addWidget(self.text, 1)
+        self.status_lbl = label("", "#8a7f70", 9)
+        root.addWidget(self.status_lbl)
+        QShortcut(QKeySequence("Ctrl+S"), self, self.save_data)
+        self.find_bar = FindBar(self.text, self)
+        root.insertWidget(2, self.find_bar)
+        QShortcut(QKeySequence("Ctrl+F"), self, self.find_bar.open_bar)
+        QShortcut(QKeySequence("F3"), self, lambda: self.find_bar.step(1))
+        QShortcut(QKeySequence("Shift+F3"), self, lambda: self.find_bar.step(-1))
 
-        btn = dict(fg="white", borderwidth=0, padx=14, pady=5, cursor="hand2")
-        tk.Button(ctrl_frame, text="🔍 Kiểm tra lỗi", command=self.check_translation_errors, bg=FIELD, **btn).pack(side="left")
-        tk.Button(ctrl_frame, text="🔄 Dịch lại toàn bộ", command=self.retranslate_all, bg=FIELD, **btn).pack(side="left", padx=(8, 0))
-        tk.Button(ctrl_frame, text="💾 Lưu data.json", command=self.save_data, bg="#4f7f58", **btn).pack(side="right")
-        tk.Button(ctrl_frame, text="📚 Lưu vào thư viện", command=self.save_to_library, bg="#9c6a28", **btn).pack(side="right", padx=(0, 8))
-        tk.Button(ctrl_frame, text="✎ Thêm Name", command=self.prompt_add_name, bg="#6a5683", **btn).pack(side="right", padx=(0, 8))
-        tk.Label(self.top, text="Bôi đen chữ rồi chuột phải để thêm Name  ·  Bấm đúp một dòng để sửa câu",
-                 fg="#8a7f70", bg=BG, font=("Segoe UI", 9), anchor="w").pack(fill="x", padx=12, pady=(0, 6))
+    def eventFilter(self, obj, event):
+        if obj is self.text.viewport() and event.type() == QEvent.Type.MouseButtonDblClick:
+            pair = self._pair_at(self.text.cursorForPosition(event.position().toPoint()))
+            if pair is not None:
+                self.edit_line(pair)
+            return True
+        return super().eventFilter(obj, event)
 
-        self.status_lbl = tk.Label(self.top, text="", fg="#8a7f70", bg=BG, anchor="w", font=("Segoe UI", 9))
-        self.status_lbl.pack(side="bottom", fill="x", padx=12, pady=(0, 6))
-
-        self.text_editor = StyledScrolledText(self.top, wrap=tk.WORD, bg=PANEL, fg=TEXT, font=("Segoe UI", 11), borderwidth=0,
-                                                     padx=12, pady=8, spacing1=2, spacing3=2)
-        self.text_editor.pack(fill="both", expand=True, padx=10, pady=5)
-
-        self.text_editor.tag_config("cn", foreground="#8a7f70")
-        self.text_editor.tag_config("vi", foreground="#f4ede1")
-        self.text_editor.tag_config("line_hover", background="#221e19")
-
-        self.menu = tk.Menu(self.top, tearoff=0, bg=FIELD, fg="white", borderwidth=0)
-        self.menu.add_command(label="Sửa lỗi & Thêm Name (từ đoạn bôi đen)", command=self.prompt_add_name)
-        self.menu.add_command(label="Sửa câu dịch của đoạn này", command=lambda: self.edit_line(self._menu_index))
-        self._menu_index = None
-
-        self.text_editor.bind("<Button-3>", self.show_context_menu)
-        self.text_editor.bind("<Double-Button-1>", self._on_double_click)
-        self.top.bind("<Control-s>", lambda e: (self.save_data(), "break")[1])
-
-    # ── ánh xạ dòng Text <-> đoạn ──
-
-    def _pair_index_at(self, index):
-        line = int(self.text_editor.index(index).split(".")[0])
-        pair, offset = divmod(line - 1, 3)
+    def _pair_at(self, cursor):
+        pair, offset = divmod(cursor.blockNumber(), 3)
         if offset in (0, 1) and 0 <= pair < len(self.vi_lines):
             return pair
         return None
 
-    def _on_double_click(self, event):
-        pair = self._pair_index_at(f"@{event.x},{event.y}")
-        if pair is not None:
-            self.edit_line(pair)
-        return "break"
+    def _vi_block(self, index):
+        return self.text.document().findBlockByNumber(index * 3 + 1)
+
+    def load_content(self):
+        bar = self.text.verticalScrollBar()
+        scroll = bar.value()
+        parts = []
+        for cn, vi in zip(self.cn_lines, self.vi_lines):
+            parts += (cn, vi, "")
+        self.text.setPlainText("\n".join(parts))
+        bar.setValue(scroll)
+
+    def _replace_vi(self, index, new_text):
+        block = self._vi_block(index)
+        cursor = QTextCursor(block)
+        cursor.movePosition(QTextCursor.EndOfBlock, QTextCursor.KeepAnchor)
+        cursor.insertText(new_text)
+        self.vi_lines[index] = new_text
+
+    def show_context_menu(self, pos):
+        pair = self._pair_at(self.text.cursorForPosition(pos))
+        menu = QMenu(self)
+        add = menu.addAction("Sửa lỗi & Thêm Name (từ đoạn bôi đen)", self.prompt_add_name)
+        add.setEnabled(bool(selected_text(self.text).strip()))
+        edit = menu.addAction("Sửa câu dịch của đoạn này", lambda: self.edit_line(pair))
+        edit.setEnabled(pair is not None)
+        menu.addSeparator()
+        menu.addAction("Sao chép", self.text.copy).setEnabled(self.text.textCursor().hasSelection())
+        menu.exec(self.text.viewport().mapToGlobal(pos))
 
     def retranslate_all(self):
-        if messagebox.askyesno("Xác nhận", "Bạn có chắc muốn dịch lại toàn bộ truyện không? (Sẽ tốn thời gian gọi API từ đầu)", parent=self.top):
-            self.app.btn_run.config(state="normal")
+        if ask_yes_no(self, "Xác nhận", "Bạn có chắc muốn dịch lại toàn bộ truyện không? "
+                                        "(Sẽ tốn thời gian gọi API từ đầu)"):
             self.close_window()
             self.app.start_thread()
 
     def check_translation_errors(self):
-        self.text_editor.tag_remove("error_highlight", "1.0", tk.END)
-        self.text_editor.tag_config("error_highlight", background="#9a3f35", foreground="white")
-
-        # Ký tự Hán chưa dịch, ký tự lỗi Unicode � và dòng API lỗi
-        error_pattern = re.compile(r'[㐀-䶿一-鿿�]|\[Lỗi dịch\]')
-        error_count = 0
-
-        self.text_editor.config(state=tk.NORMAL)
-        for i, text in enumerate(self.vi_lines):
-            line_idx = i * 3 + 2
-            for match in error_pattern.finditer(text):
-                start, end = match.span()
-                self.text_editor.tag_add("error_highlight", f"{line_idx}.{start}", f"{line_idx}.{end}")
-                error_count += 1
-        self.text_editor.config(state=tk.DISABLED)
-
-        if error_count > 0:
-            messagebox.showwarning("Phát hiện lỗi", f"Tìm thấy {error_count} chỗ chưa dịch, lỗi font () hoặc [Lỗi dịch].\nĐã bôi đỏ các chỗ này — bấm đúp dòng để sửa.", parent=self.top)
-            first_error = self.text_editor.tag_ranges("error_highlight")
-            if first_error:
-                self.text_editor.see(first_error[0])
+        doc = self.text.document()
+        selections = []
+        first = None
+        for i, line in enumerate(self.vi_lines):
+            block = self._vi_block(i)
+            pos = qt_offsets(line)
+            for match in core.TRANSLATION_ERROR_RE.finditer(line):
+                sel = QTextEdit.ExtraSelection()
+                sel.cursor = QTextCursor(doc)
+                sel.cursor.setPosition(block.position() + pos(match.start()))
+                sel.cursor.setPosition(block.position() + pos(match.end()), QTextCursor.KeepAnchor)
+                sel.format.setBackground(QColor("#9a3f35"))
+                sel.format.setForeground(QColor("white"))
+                selections.append(sel)
+                if first is None:
+                    first = QTextCursor(sel.cursor)
+        self.text.setExtraSelections(selections)
+        if selections:
+            warn(self, "Phát hiện lỗi", f"Tìm thấy {len(selections)} chỗ chưa dịch, lỗi font () hoặc [Lỗi dịch].\n"
+                                        "Đã bôi đỏ các chỗ này — bấm đúp dòng để sửa.")
+            first.clearSelection()
+            self.text.setTextCursor(first)
+            self.text.ensureCursorVisible()
         else:
-            messagebox.showinfo("Hoàn tất", "Không phát hiện ký tự tiếng Trung chưa dịch hay lỗi font.", parent=self.top)
-
-    def load_content(self):
-        """Chèn nội dung Trung/Việt theo lô nhỏ, nhường main loop giữa các lô.
-
-        Chèn một mạch hàng nghìn đoạn làm cửa sổ Review đứng hình; ở đây
-        load_content trả về trước khi chèn xong, phần còn lại tự chạy tiếp.
-        """
-        # Lưu lại vị trí cuộn chuột (scrollbar) và con trỏ hiện tại
-        scroll_pos = self.text_editor.yview()
-        insert_pos = self.text_editor.index("insert")
-        self._paint_generation += 1
-        self._paint_index = 0
-        self._paint_scroll = scroll_pos[0]
-        self._paint_insert = insert_pos
-
-        self.text_editor.config(state=tk.NORMAL)
-        self.text_editor.delete(1.0, tk.END)
-        self._paint_lines(self._paint_generation)
-
-    def _paint_lines(self, generation):
-        try:
-            if generation != self._paint_generation or not self.top.winfo_exists():
-                return
-        except tk.TclError:
-            return
-        deadline = time.perf_counter() + 0.008
-        count = len(self.cn_lines)
-        self.text_editor.config(state=tk.NORMAL)
-        try:
-            while self._paint_index < count and time.perf_counter() < deadline:
-                i = self._paint_index
-                self.text_editor.insert(tk.END, f"{self.cn_lines[i]}\n", "cn")
-                self.text_editor.insert(tk.END, f"{self.vi_lines[i]}\n\n", "vi")
-                self._paint_index += 1
-        finally:
-            if self._paint_index >= count:
-                self.text_editor.config(state=tk.DISABLED)
-                self.text_editor.update_idletasks()
-                self.text_editor.mark_set("insert", self._paint_insert)
-                self.text_editor.yview_moveto(self._paint_scroll)
-                for delay in (10, 50, 100):
-                    self.text_editor.after(delay, lambda: self.text_editor.yview_moveto(self._paint_scroll))
-            else:
-                self.top.after(1, self._paint_lines, generation)
-
-    def show_context_menu(self, event):
-        self._menu_index = self._pair_index_at(f"@{event.x},{event.y}")
-        try:
-            self.text_editor.get(tk.SEL_FIRST, tk.SEL_LAST)
-            has_selection = True
-        except tk.TclError:
-            has_selection = False
-        self.menu.entryconfig(0, state="normal" if has_selection else "disabled")
-        self.menu.entryconfig(1, state="normal" if self._menu_index is not None else "disabled")
-        try:
-            self.menu.tk_popup(event.x_root, event.y_root)
-        finally:
-            self.menu.grab_release()
+            info(self, "Hoàn tất", "Không phát hiện ký tự tiếng Trung chưa dịch hay lỗi font.")
 
     # ── sửa trực tiếp một câu ──
 
     def edit_line(self, index):
         if index is None or not 0 <= index < len(self.vi_lines):
             return
-        dialog = tk.Toplevel(self.top)
-        dialog.title(f"Sửa đoạn {index + 1}/{len(self.vi_lines)}")
-        dialog.configure(bg=PANEL)
-        dialog.transient(self.top)
-        geo = load_config().get("builder_edit_line", "760x360")
-        try:
-            dialog.geometry(geo)
-        except tk.TclError:
-            dialog.geometry("760x360")
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"Sửa đoạn {index + 1}/{len(self.vi_lines)}")
+        restore_geometry(dlg, "builder_edit_line", 760, 360)
+        lay = QVBoxLayout(dlg)
+        lay.addWidget(label("Tiếng Trung gốc:"))
+        cn_box = PlainTextEdit(self.cn_lines[index])
+        cn_box.setReadOnly(True)
+        cn_box.setMaximumHeight(90)
+        cn_box.setStyleSheet(f"QPlainTextEdit {{ background: {BG}; color: {MUTED}; font-family: '{CN_FONT}'; font-size: 11pt; }}")
+        lay.addWidget(cn_box)
+        lay.addWidget(label("Bản dịch (Ctrl+Enter để lưu, Esc để hủy):", OK_GREEN, bold=True))
+        vi_box = PlainTextEdit(self.vi_lines[index])
+        vi_box.setStyleSheet(f"QPlainTextEdit {{ background: {FIELD}; font-size: 11pt; }}")
+        lay.addWidget(vi_box, 1)
+        vi_box.moveCursor(QTextCursor.End)
+        vi_box.setFocus()
 
-        tk.Label(dialog, text="Tiếng Trung gốc:", fg=MUTED, bg=PANEL).pack(anchor="w", padx=14, pady=(10, 2))
-        cn_box = tk.Text(dialog, height=3, wrap=tk.WORD, bg=BG, fg="#a39887", font=("Microsoft YaHei UI", 11),
-                         borderwidth=0, padx=8, pady=6)
-        cn_box.insert("1.0", self.cn_lines[index])
-        cn_box.config(state=tk.DISABLED)
-        cn_box.pack(fill="x", padx=14)
-
-        tk.Label(dialog, text="Bản dịch (Ctrl+Enter để lưu, Esc để hủy):", fg="#8fc29a", bg=PANEL,
-                 font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=14, pady=(10, 2))
-        vi_box = tk.Text(dialog, height=6, wrap=tk.WORD, bg=FIELD, fg="white", insertbackground="white",
-                         font=("Segoe UI", 11), borderwidth=0, padx=8, pady=6, undo=True)
-        vi_box.insert("1.0", self.vi_lines[index])
-        vi_box.pack(fill="both", expand=True, padx=14)
-        vi_box.focus_set()
-        vi_box.mark_set("insert", "end-1c")
-
-        def close(event=None):
-            save_config({"builder_edit_line": dialog.geometry()})
-            dialog.destroy()
-            return "break"
-
-        def apply(event=None):
+        def apply():
             # Mỗi đoạn phải nằm trên một dòng để giữ cặp Trung/Việt.
-            new_text = " ".join(vi_box.get("1.0", "end-1c").split())
-            new_text = unicodedata.normalize('NFC', new_text)
+            new_text = unicodedata.normalize("NFC", " ".join(raw_text(vi_box).split()))
             if new_text != self.vi_lines[index]:
-                line = index * 3 + 2
-                self.text_editor.config(state=tk.NORMAL)
-                self.text_editor.replace(f"{line}.0", f"{line}.end", new_text, "vi")
-                self.text_editor.config(state=tk.DISABLED)
-                self.vi_lines[index] = new_text
+                self._replace_vi(index, new_text)
                 self.mark_changed()
-            return close()
+            dlg.accept()
 
-        buttons = tk.Frame(dialog, bg=PANEL)
-        buttons.pack(fill="x", padx=14, pady=10)
-        tk.Button(buttons, text="Hủy", command=close, bg=FIELD, fg="white", borderwidth=0, padx=14).pack(side="right")
-        tk.Button(buttons, text="💾 Lưu câu", command=apply, bg="#4f7f58", fg="white", borderwidth=0, padx=14).pack(side="right", padx=8)
-        vi_box.bind("<Control-Return>", apply)
-        dialog.bind("<Escape>", close)
-        dialog.protocol("WM_DELETE_WINDOW", close)
+        lay.addLayout(hbox("stretch", button("💾 Lưu câu", apply, "#4f7f58"), button("Hủy", dlg.reject)))
+        QShortcut(QKeySequence("Ctrl+Return"), vi_box, apply, context=Qt.WidgetShortcut)
+        dlg.finished.connect(lambda _r: save_geometry(dlg, "builder_edit_line"))
+        dlg.exec()
 
     # ── thêm / sửa name ──
 
     def prompt_add_name(self):
-        try:
-            selected_text = self.text_editor.get(tk.SEL_FIRST, tk.SEL_LAST).strip()
-        except tk.TclError:
-            selected_text = ""
+        picked = selected_text(self.text).strip()
+        is_cn = any("一" <= ch <= "鿿" for ch in picked)
+        dlg = _GuardedDialog(self)
+        dlg.setWindowTitle("Sửa lỗi & Thêm Name Mới")
+        restore_geometry(dlg, "builder_add_name", 460, 360)
+        lay = QVBoxLayout(dlg)
+        lay.setContentsMargins(20, 12, 20, 12)
+        lay.addWidget(label("1. Tiếng Trung gốc (để lưu Name cho các lần dịch):"))
+        ent_cn = LineEdit(picked if is_cn else "")
+        lay.addWidget(ent_cn)
+        lay.addWidget(label("2. Cụm từ VN bị dịch sai (để thay thế trong bài này):"))
+        ent_wrong = LineEdit(picked if picked and not is_cn else "")
+        lay.addWidget(ent_wrong)
+        lay.addWidget(label("3. Sửa thành (Name đúng):", OK_GREEN, bold=True))
+        ent_right = LineEdit()
+        lay.addWidget(ent_right)
+        temp_box = QCheckBox("🏷 Name tạm — chỉ dùng cho lượt dịch này, không lưu name.cfg")
+        temp_box.setStyleSheet("color: #e8c27a;")
+        lay.addWidget(temp_box)
+        btn_quick = button("🚀 Cập nhật nhanh (Enter)", lambda: apply_name(False), ACCENT)
+        btn_retrans = button("🔄 Dịch Lại Toàn Bộ", lambda: apply_name(True), "#8a5a22")
+        lay.addStretch(1)
+        lay.addLayout(hbox("stretch", btn_quick, btn_retrans, "stretch"))
+        ent_right.setFocus()
+        busy = dlg.state
 
-        # Check xem chuỗi bôi đen có chứa ký tự CJK (Tiếng Trung) không
-        is_cn = any('一' <= char <= '鿿' for char in selected_text)
-
-        dialog = tk.Toplevel(self.top)
-        dialog.title("Sửa lỗi & Thêm Name Mới")
-        dialog.configure(bg=PANEL)
-        dialog.transient(self.top)
-        dialog.grab_set()
-
-        _cfg = load_config()
-        _geo = _cfg.get("builder_add_name", "420x350")
-        try:
-            dialog.geometry(_geo)
-        except Exception:
-            dialog.geometry("420x350")
-        dialog.resizable(True, True)
-
-        entry_opts = dict(bg=FIELD, fg="white", borderwidth=0, insertbackground="white")
-        tk.Label(dialog, text="1. Tiếng Trung gốc (để lưu Name cho các lần dịch):", fg=MUTED, bg=PANEL).pack(pady=(10,0), anchor="w", padx=20)
-        ent_cn = tk.Entry(dialog, **entry_opts)
-        ent_cn.pack(fill="x", padx=20, pady=5, ipady=5)
-        if is_cn and selected_text:
-            ent_cn.insert(0, selected_text)
-
-        tk.Label(dialog, text="2. Cụm từ VN bị dịch sai (để thay thế trong bài này):", fg=MUTED, bg=PANEL).pack(pady=(10,0), anchor="w", padx=20)
-        ent_wrong = tk.Entry(dialog, **entry_opts)
-        ent_wrong.pack(fill="x", padx=20, pady=5, ipady=5)
-        if not is_cn and selected_text:
-            ent_wrong.insert(0, selected_text)
-
-        tk.Label(dialog, text="3. Sửa thành (Name đúng):", fg="#8fc29a", bg=PANEL, font=("Segoe UI", 10, "bold")).pack(pady=(10,0), anchor="w", padx=20)
-        ent_right = tk.Entry(dialog, **entry_opts)
-        ent_right.pack(fill="x", padx=20, pady=5, ipady=5)
-        ent_right.focus_set()
-
-        temp_var = tk.BooleanVar(value=False)
-        tk.Checkbutton(dialog, text="🏷 Name tạm — chỉ dùng cho lượt dịch này, không lưu name.cfg",
-                       variable=temp_var, bg=PANEL, fg="#e8c27a", selectcolor=BG, activebackground=PANEL,
-                       activeforeground="#e8c27a").pack(anchor="w", padx=16, pady=(6, 0))
-
-        if is_cn and selected_text:
-            # Gợi ý Name bằng API dịch; cập nhật ô qua hàng đợi luồng chính.
+        if is_cn and picked:
+            # Gợi ý Name bằng API dịch; điền ô qua luồng giao diện.
             def fetch_suggestion(cn_text):
-                try:
-                    res = self.app.translate_api(cn_text)
-                except Exception:
-                    return
+                res = self.app.translate_api(cn_text)
                 suggestion = res.strip().title() if res else ""
                 if suggestion:
-                    def safe_insert():
-                        if ent_right.winfo_exists() and not ent_right.get():
-                            ent_right.insert(0, suggestion)
-                    self.app.call_ui(safe_insert)
-            threading.Thread(target=fetch_suggestion, args=(selected_text,), daemon=True).start()
+                    self.app.bridge.call(lambda: ent_right.text() or ent_right.setText(suggestion))
+            threading.Thread(target=fetch_suggestion, args=(picked,), daemon=True).start()
 
-        def close_dialog(event=None):
-            save_config({"builder_add_name": dialog.geometry()})
-            dialog.destroy()
+        def set_busy(on):
+            busy["on"] = on
+            for widget in (ent_cn, ent_wrong, ent_right, btn_quick, btn_retrans, temp_box):
+                widget.setEnabled(not on)
+            dlg.setWindowTitle("Đang cập nhật Name..." if on else "Sửa lỗi & Thêm Name Mới")
 
         def apply_name(retranslate=False):
-            cn_val = unicodedata.normalize('NFC', ent_cn.get().strip())
-            wrong_val = unicodedata.normalize('NFC', ent_wrong.get().strip())
-            right_val = unicodedata.normalize('NFC', ent_right.get().strip())
-
-            if not right_val:
-                messagebox.showwarning("Chú ý", "Vui lòng nhập 'Name đúng'!", parent=dialog)
+            if busy["on"]:
                 return
-
+            cn_val = unicodedata.normalize("NFC", ent_cn.text().strip())
+            wrong_val = unicodedata.normalize("NFC", ent_wrong.text().strip())
+            right_val = unicodedata.normalize("NFC", ent_right.text().strip())
+            if not right_val:
+                warn(dlg, "Chú ý", "Vui lòng nhập 'Name đúng'!")
+                return
             if retranslate:
                 if not cn_val:
-                    messagebox.showwarning("Chú ý", "Để dịch lại từ đầu, bắt buộc phải có 'Tiếng Trung gốc'!", parent=dialog)
+                    warn(dlg, "Chú ý", "Để dịch lại từ đầu, bắt buộc phải có 'Tiếng Trung gốc'!")
                     return
-                if not self.app.add_names([(cn_val, right_val)], temp_var.get(), parent=dialog):
+                if not self.app.add_names([(cn_val, right_val)], temp_box.isChecked(), parent=dlg):
                     return
-                self.app.btn_run.config(state="normal")
-                close_dialog()
+                dlg.accept()
                 self.close_window()
                 self.app.start_thread()
                 return
-
             if not wrong_val and not cn_val:
-                messagebox.showwarning("Chú ý", "Vui lòng nhập ít nhất 'Tiếng Trung' hoặc 'Từ sai'!", parent=dialog)
+                warn(dlg, "Chú ý", "Vui lòng nhập ít nhất 'Tiếng Trung' hoặc 'Từ sai'!")
                 return
-
-            def set_busy(busy):
-                for widget in (ent_cn, ent_wrong, ent_right, *btn_frame.winfo_children()):
-                    widget.config(state="disabled" if busy else "normal")
-                dialog.title("Đang cập nhật Name..." if busy else "Sửa lỗi & Thêm Name Mới")
-
             set_busy(True)
             vi_names = list(self.app.effective_names().values()) + [right_val]
-            temporary = temp_var.get()
+            temporary = temp_box.isChecked()
             snapshot = tuple(self.vi_lines)
-            results = queue.Queue()
 
             def compute():
                 try:
                     wrong = wrong_val
                     if not wrong and cn_val:
-                        try:
-                            auto_vi = self.app.translate_api(cn_val)
-                            if auto_vi:
-                                wrong = unicodedata.normalize('NFC', auto_vi.strip())
-                        except Exception:
-                            pass
-                    updates = prepare_name_updates(snapshot, wrong, right_val, vi_names)
-                    results.put((wrong, updates, None))
-                except Exception as error:
-                    results.put(('', [], str(error)))
+                        auto_vi = self.app.translate_api(cn_val)
+                        if auto_vi:
+                            wrong = unicodedata.normalize("NFC", auto_vi.strip())
+                    updates = core.prepare_name_updates(snapshot, wrong, right_val, vi_names)
+                    self.app.bridge.call(finish, wrong, updates, None)
+                except Exception as exc:
+                    self.app.bridge.call(finish, "", [], str(exc))
 
-            def finish(count):
+            def finish(wrong, updates, err):
+                if err:
+                    set_busy(False)
+                    error(dlg, "Lỗi cập nhật Name", err)
+                    return
+                if not wrong and not ask_yes_no(dlg, "Xác nhận", "Không tìm được cụm từ VN cần thay. "
+                                                                 "Chỉ lưu Name để áp dụng khi dịch lại?"):
+                    set_busy(False)
+                    return
+                for index, translated in updates:
+                    self._replace_vi(index, translated)
                 if cn_val:
-                    self.app.add_names([(cn_val, right_val)], temporary, parent=self.top)
-                close_dialog()
-                if count:
+                    self.app.add_names([(cn_val, right_val)], temporary, parent=self)
+                busy["on"] = False
+                dlg.accept()
+                if updates:
                     self.mark_changed()
                 where = " · name tạm" if temporary else " · đã lưu vào name.cfg"
-                self.set_status(f"✅ {cn_val or wrong_val} → {right_val}: đã sửa {count} đoạn"
+                self.set_status(f"✅ {cn_val or wrong_val} → {right_val}: đã sửa {len(updates)} đoạn"
                                 + (where if cn_val else ""))
 
-            def poll():
-                try:
-                    wrong, updates, error = results.get_nowait()
-                except queue.Empty:
-                    dialog.after(25, poll)
-                    return
-                if error:
-                    set_busy(False)
-                    messagebox.showerror("Lỗi cập nhật Name", error, parent=dialog)
-                    return
-                if not wrong:
-                    if not messagebox.askyesno("Xác nhận", "Không tìm được cụm từ VN cần thay. Chỉ lưu Name để áp dụng khi dịch lại?", parent=dialog):
-                        set_busy(False)
-                        return
-                # Prevent closing midway through a multi-batch UI update.
-                dialog.protocol("WM_DELETE_WINDOW", lambda: None)
-                self.apply_name_updates(updates, lambda: finish(len(updates)))
-
             threading.Thread(target=compute, daemon=True).start()
-            dialog.after(25, poll)
 
-        btn_frame = tk.Frame(dialog, bg=PANEL)
-        btn_frame.pack(pady=20)
-
-        tk.Button(btn_frame, text="🚀 Cập nhật nhanh (Enter)", command=lambda: apply_name(False), bg="#9c6a28", fg="white", borderwidth=0).pack(side="left", padx=10, ipadx=10, ipady=5)
-        tk.Button(btn_frame, text="🔄 Dịch Lại Toàn Bộ", command=lambda: apply_name(True), bg="#8a5a22", fg="white", borderwidth=0).pack(side="left", padx=10, ipadx=10, ipady=5)
-        dialog.bind("<Return>", lambda e: apply_name(False))
-        dialog.bind("<Escape>", close_dialog)
-        dialog.protocol("WM_DELETE_WINDOW", close_dialog)
-
-    def apply_name_updates(self, updates, on_done):
-        """Write changed VI rows in short batches, leaving CN rows untouched."""
-        pending = iter(updates)
-
-        def paint():
-            deadline = time.perf_counter() + 0.008
-            complete = False
-            self.text_editor.config(state=tk.NORMAL)
-            try:
-                while time.perf_counter() < deadline:
-                    try:
-                        index, translated = next(pending)
-                    except StopIteration:
-                        complete = True
-                        break
-                    line = index * 3 + 2
-                    self.text_editor.replace(f"{line}.0", f"{line}.end", translated, "vi")
-                    self.vi_lines[index] = translated
-            finally:
-                self.text_editor.config(state=tk.DISABLED)
-            if complete:
-                on_done()
-            else:
-                self.top.after(1, paint)
-
-        paint()
+        for entry in (ent_cn, ent_wrong, ent_right):
+            entry.returnPressed.connect(lambda: apply_name(False))
+        dlg.finished.connect(lambda _r: save_geometry(dlg, "builder_add_name"))
+        dlg.exec()
 
     # ── lưu ──
 
@@ -497,1880 +414,1333 @@ class ReviewWindow:
         output_dir = os.path.join(STORIES_DIR, self.slug)
         data_path = os.path.join(output_dir, "data.json")
         if os.path.exists(data_path) and not self._saved_data_once:
-            if not messagebox.askyesno(
-                    "Ghi đè truyện?",
-                    f"stories/{self.slug}/data.json đã tồn tại (có thể là truyện khác trùng tên).\n\nGhi đè?",
-                    parent=self.top, icon="warning", default="no"):
+            if not ask_yes_no(self, "Ghi đè truyện?",
+                              f"stories/{self.slug}/data.json đã tồn tại (có thể là truyện khác trùng tên).\n\nGhi đè?",
+                              default_no=True, warning=True):
                 return
-
-        story_data = {"title": self.title, "content": []}
-        for cn_line, vi_line in zip(self.cn_lines, self.vi_lines):
-            cn_nfc = unicodedata.normalize('NFC', cn_line)
-            # Loại bỏ dấu cách kép, rồi chuẩn hoá NFC lại
-            vi_clean = unicodedata.normalize('NFC', re.sub(r'  +', ' ', unicodedata.normalize('NFC', vi_line)).strip())
-            story_data["content"].append({"cn": store.b64(cn_nfc), "vi": store.b64(vi_clean)})
-
         try:
             os.makedirs(output_dir, exist_ok=True)
-            store.write_json_atomic(data_path, story_data)
-            self.app.update_catalog(self.title, self.slug)
-        except Exception as error:
-            messagebox.showerror("Lỗi khi lưu", str(error), parent=self.top)
+            store.write_json_atomic(data_path, core.story_data(self.title, self.cn_lines, self.vi_lines))
+            core.update_story_catalog(self.title, self.slug)
+        except Exception as exc:
+            error(self, "Lỗi khi lưu", str(exc))
             return
-
         self._saved_data_once = True
         self.saved = True
         cleared = self.app.clear_temp_names()
-        self.app.set_status("✅ Đã lưu data.json thành công!"
-                            + (f" · đã xoá {cleared} name tạm" if cleared else ""), "#8fc29a")
-        self.app.btn_run.config(state="normal")
-        self.app.btn_clear.pack(side="right", padx=5)
-        messagebox.showinfo("Thành công", f"Đã xuất dữ liệu truyện: {self.slug}", parent=self.top)
+        self.app.set_status("✅ Đã lưu data.json thành công!" + (f" · đã xoá {cleared} name tạm" if cleared else ""),
+                            OK_GREEN)
+        info(self, "Thành công", f"Đã xuất dữ liệu truyện: {self.slug}")
         self.close_window()
 
     def save_to_library(self):
-        """Lưu thẳng vào library/<truyện>/<chương> — không cần qua editor."""
         try:
             catalog = read_catalog(LIBRARY_CATALOG)
-        except CatalogError as error:
-            messagebox.showerror("Không đọc được danh mục thư viện", f"{error}\n\nĐã dừng để không ghi đè list.json.", parent=self.top)
+        except CatalogError as exc:
+            error(self, "Không đọc được danh mục thư viện", f"{exc}\n\nĐã dừng để không ghi đè list.json.")
             return
-        options = [f'{item["slug"]} | {item.get("title", "")}' for item in
-                                   sorted(catalog, key=lambda it: float(it.get("timestamp") or 0), reverse=True)
-                                   if item.get("slug")]
-        pairs = list(zip(self.cn_lines, self.vi_lines))
-        patterns = list(store.DEFAULT_SPLIT_PATTERNS)
-        for item in load_config().get("split_patterns", []):
-            if isinstance(item, (list, tuple)) and len(item) == 2 and not any(item[1] == rx for _n, rx in patterns):
-                patterns.append((item[0], item[1]))
+        result = LibraryDialog(self, catalog).exec_plan()
+        if not result:
+            return
+        slug, title, chapters = result
+        self.saved = True
+        first, last = chapters[0][0], chapters[-1][0]
+        span = first if first == last else f"{first}–{last}"
+        self.set_status(f"📚 Đã lưu {len(chapters)} chương vào library/{slug} ({span}) · {title}")
+        cleared = self.app.clear_temp_names()
+        self.app.set_status(f"📚 Đã lưu vào thư viện: {slug} | {title}"
+                            + (f" · đã xoá {cleared} name tạm" if cleared else ""), OK_GREEN)
 
-        dlg = tk.Toplevel(self.top)
-        dlg.title("📚 Lưu vào thư viện")
-        dlg.configure(bg=PANEL)
-        dlg.transient(self.top)
-        dlg.grab_set()
-        geo = load_config().get("builder_library_dialog", "680x680")
-        try:
-            dlg.geometry(geo)
-        except tk.TclError:
-            dlg.geometry("680x680")
-        dlg.minsize(560, 560)
 
-        label = dict(bg=PANEL, fg=MUTED, font=("Segoe UI", 9, "bold"))
-        radio = dict(bg=PANEL, fg="white", selectcolor=BG, activebackground=PANEL, activeforeground="white")
-        entry = dict(bg=FIELD, fg="white", insertbackground="white", borderwidth=0)
+class _GuardedDialog(QDialog):
+    """Hộp thoại không đóng được (Esc, nút X) khi state["on"] — đang cập nhật giữa chừng."""
 
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.state = {"on": False}
+
+    def reject(self):
+        if not self.state["on"]:
+            super().reject()
+
+    def closeEvent(self, event):
+        if self.state["on"]:
+            event.ignore()
+        else:
+            super().closeEvent(event)
+
+
+def chapter_name_key(name):
+    """So tên chương không phân biệt dấu, hoa thường, khoảng trắng."""
+    return re.sub(r"\s+", " ", search_key(name or "")).strip()
+
+
+class LibraryDialog(QDialog):
+    """📚 Lưu vào thư viện: chọn truyện, cách chia chương, chương cần lưu."""
+
+    def __init__(self, review, catalog):
+        super().__init__(review)
+        self.review = review
+        self.catalog = catalog
+        self.result_plan = None
+        self.setWindowTitle("📚 Lưu vào thư viện")
+        restore_geometry(self, "builder_library_dialog", 700, 700)
+        self.setMinimumSize(560, 560)
+        self.options = [f'{item["slug"]} | {item.get("title", "")}' for item in
+                        sorted(catalog, key=lambda it: float(it.get("timestamp") or 0), reverse=True)
+                        if item.get("slug")]
+        self.pairs = list(zip(review.cn_lines, review.vi_lines))
+        self.patterns = list(store.DEFAULT_SPLIT_PATTERNS)
+        for item in core.load_config().get("split_patterns", []):
+            if isinstance(item, (list, tuple)) and len(item) == 2 and not any(item[1] == rx for _n, rx in self.patterns):
+                self.patterns.append((item[0], item[1]))
+        self.plan = {"slug": None, "title": None, "chapters": [], "error": None}
+        self.state = {"key": None, "groups": [], "picked": [], "existing": set(), "start": 1, "is_new": True}
+        self._build()
+        self.refresh_story_list()
+        self.story_filter.setFocus()
+
+    def _build(self):
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(16, 12, 16, 12)
+        head = dict(color=MUTED, size=9, bold=True)
         # 1. Truyện
-        tk.Label(dlg, text="1. TRUYỆN", **label).pack(anchor="w", padx=16, pady=(12, 4))
-        story_mode = tk.StringVar(value="existing" if options else "new")
-        row_new = tk.Frame(dlg, bg=PANEL)
-        row_new.pack(fill="x", padx=16)
-        tk.Radiobutton(row_new, text="Truyện mới:", variable=story_mode, value="new", **radio).pack(side="left")
-        new_title = tk.Entry(row_new, **entry)
-        new_title.insert(0, self.title)
-        new_title.pack(side="left", fill="x", expand=True, ipady=4, padx=(6, 0))
-
-        row_exist = tk.Frame(dlg, bg=PANEL)
-        row_exist.pack(fill="x", padx=16, pady=(6, 0))
-        tk.Radiobutton(row_exist, text="Truyện có sẵn — tìm:", variable=story_mode, value="existing", **radio).pack(side="left")
-        story_filter = tk.Entry(row_exist, **entry)
-        story_filter.pack(side="left", fill="x", expand=True, ipady=4, padx=(6, 0))
-        story_list = tk.Listbox(dlg, height=6, bg=BG, fg=TEXT, selectbackground="#9c6a28", borderwidth=0,
-                                highlightthickness=0, exportselection=False, activestyle="none")
-        story_list.pack(fill="x", padx=16, pady=(4, 0))
-
-        def refresh_story_list(event=None):
-            words = search_key(story_filter.get()).split()
-            current = story_list.get(story_list.curselection()[0]) if story_list.curselection() else None
-            story_list.delete(0, tk.END)
-            for option in options:
-                if all(w in search_key(option) for w in words):
-                    story_list.insert(tk.END, option)
-            items = story_list.get(0, tk.END)
-            if current in items:
-                story_list.selection_set(items.index(current))
-            elif items:
-                story_list.selection_set(0)
-            if event is not None:
-                story_mode.set("existing")
-            update_preview()
-        story_filter.bind("<KeyRelease>", refresh_story_list)
-        story_list.bind("<<ListboxSelect>>", lambda e: (story_mode.set("existing"), update_preview()))
-        new_title.bind("<KeyRelease>", lambda e: (story_mode.set("new"), update_preview()))
-
+        lay.addWidget(label("1. TRUYỆN", **head))
+        self.r_new, self.r_exist = QRadioButton("Truyện mới:"), QRadioButton("Truyện có sẵn — tìm:")
+        group = QButtonGroup(self)
+        group.addButton(self.r_new)
+        group.addButton(self.r_exist)
+        (self.r_exist if self.options else self.r_new).setChecked(True)
+        self.new_title = LineEdit(self.review.title)
+        self.story_filter = LineEdit()
+        lay.addLayout(hbox(self.r_new, (self.new_title, 1)))
+        lay.addLayout(hbox(self.r_exist, (self.story_filter, 1)))
+        self.story_list = QListWidget()
+        self.story_list.setMaximumHeight(130)
+        lay.addWidget(self.story_list)
         # 2. Chương
-        tk.Label(dlg, text="2. CHIA CHƯƠNG", **label).pack(anchor="w", padx=16, pady=(14, 4))
-        split_mode = tk.StringVar(value="one")
-        row_one = tk.Frame(dlg, bg=PANEL)
-        row_one.pack(fill="x", padx=16)
-        tk.Radiobutton(row_one, text="Một chương, tên:", variable=split_mode, value="one", **radio).pack(side="left")
-        one_title = tk.Entry(row_one, **entry)
-        one_title.insert(0, self.title)
-        one_title.pack(side="left", fill="x", expand=True, ipady=4, padx=(6, 0))
+        lay.addWidget(label("2. CHIA CHƯƠNG", **head))
+        self.r_one, self.r_split = QRadioButton("Một chương, tên:"), QRadioButton("Tách theo mẫu:")
+        group2 = QButtonGroup(self)
+        group2.addButton(self.r_one)
+        group2.addButton(self.r_split)
+        self.r_one.setChecked(True)
+        self.one_title = LineEdit(self.review.title)
+        self.pattern = QComboBox()
+        self.pattern.setEditable(True)
+        self.pattern.addItems([rx for _n, rx in self.patterns])
+        self.pattern.setStyleSheet("font-family: Consolas; font-size: 9pt;")
+        lay.addLayout(hbox(self.r_one, (self.one_title, 1)))
+        lay.addLayout(hbox(self.r_split, (self.pattern, 1)))
+        lay.addWidget(label(" · ".join(n for n, _ in self.patterns), HINT, 9, wrap=True))
+        # 3. Chọn chương
+        lay.addWidget(label("3. CHỌN CHƯƠNG ĐỂ LƯU", **head))
+        self.range_entry = LineEdit()
+        self.range_entry.setFixedWidth(140)
+        lay.addLayout(hbox(self.range_entry, button("Chọn khoảng", self.pick_range, small=True),
+                           button("Tất cả", lambda: self.pick_all(True), small=True),
+                           button("Bỏ hết", lambda: self.pick_all(False), small=True),
+                           button("Bỏ chương đã có", self.pick_missing, small=True), "stretch"))
+        lay.addWidget(label("Bấm vào dòng hoặc phím Space để tick/bỏ · Khoảng: 41-60 hoặc 1-5, 8 (theo cột #)", HINT, 9))
+        self.tree = _KeyTree({Qt.Key_Space: lambda: self.toggle(self.selected_rows())})
+        self.tree.setColumnCount(5)
+        self.tree.setHeaderLabels(["✓", "#", "Mã", "Tên chương", "Đoạn"])
+        self.tree.setRootIsDecorated(False)
+        self.tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        for col, width in enumerate((34, 46, 60, 300, 60)):
+            self.tree.setColumnWidth(col, width)
+        self.tree.header().setStretchLastSection(False)
+        self.tree.header().setSectionResizeMode(3, QHeaderView.Stretch)
+        self.tree.itemClicked.connect(lambda item, _col: self.toggle([int(item.data(0, Qt.UserRole))]))
+        lay.addWidget(self.tree, 1)
+        self.summary = label("", MUTED, 9, wrap=True)
+        lay.addWidget(self.summary)
+        self.save_btn = button("📚 Lưu vào thư viện", self.do_save, ACCENT, bold=True)
+        lay.addLayout(hbox("stretch", self.save_btn, button("Hủy", self.reject)))
 
-        row_split = tk.Frame(dlg, bg=PANEL)
-        row_split.pack(fill="x", padx=16, pady=(6, 0))
-        tk.Radiobutton(row_split, text="Tách theo mẫu:", variable=split_mode, value="split", **radio).pack(side="left")
-        pattern_var = tk.StringVar(value=patterns[0][1])
-        pattern_combo = ttk.Combobox(row_split, textvariable=pattern_var,
-                                     values=[rx for _n, rx in patterns], font=("Consolas", 9))
-        pattern_combo.pack(side="left", fill="x", expand=True, padx=(6, 0))
-        pattern_hint = tk.Label(dlg, text=" · ".join(n for n, _ in patterns), fg="#6b6255", bg=PANEL,
-                                font=("Segoe UI", 9), wraplength=560, justify="left")
-        pattern_hint.pack(anchor="w", padx=16, pady=(2, 0))
-        one_title.bind("<KeyRelease>", lambda e: (split_mode.set("one"), update_preview()))
-        pattern_combo.bind("<<ComboboxSelected>>", lambda e: (split_mode.set("split"), update_preview()))
-        pattern_combo.bind("<KeyRelease>", lambda e: (split_mode.set("split"), update_preview()))
-        split_mode.trace_add("write", lambda *_: update_preview())
-        story_mode.trace_add("write", lambda *_: update_preview())
+        self.story_filter.textEdited.connect(lambda _t: (self.r_exist.setChecked(True), self.refresh_story_list()))
+        self.story_list.currentRowChanged.connect(lambda _r: self.update_preview())
+        self.story_list.itemClicked.connect(lambda _i: (self.r_exist.setChecked(True), self.update_preview()))
+        self.new_title.textEdited.connect(lambda _t: (self.r_new.setChecked(True), self.update_preview()))
+        self.one_title.textEdited.connect(lambda _t: (self.r_one.setChecked(True), self.update_preview()))
+        self.pattern.currentTextChanged.connect(lambda _t: (self.r_split.setChecked(True), self.update_preview()))
+        for radio in (self.r_new, self.r_exist, self.r_one, self.r_split):
+            radio.toggled.connect(lambda on: on and self.update_preview())
+        self.range_entry.returnPressed.connect(self.pick_range)
 
-        # 3. Chọn chương lưu (bản dịch mới có thể trùng các chương đã có trong truyện)
-        tk.Label(dlg, text="3. CHỌN CHƯƠNG ĐỂ LƯU", **label).pack(anchor="w", padx=16, pady=(14, 4))
-        pick_row = tk.Frame(dlg, bg=PANEL)
-        pick_row.pack(fill="x", padx=16)
-        small = dict(bg=FIELD, fg="white", borderwidth=0, padx=8, pady=2, cursor="hand2", font=("Segoe UI", 9))
-        range_var = tk.StringVar()
-        range_entry = tk.Entry(pick_row, textvariable=range_var, width=16, **entry)
-        range_entry.pack(side="left", ipady=3)
-        tk.Button(pick_row, text="Chọn khoảng", command=lambda: pick_range(), **small).pack(side="left", padx=(4, 0))
-        tk.Button(pick_row, text="Tất cả", command=lambda: pick_all(True), **small).pack(side="left", padx=(8, 0))
-        tk.Button(pick_row, text="Bỏ hết", command=lambda: pick_all(False), **small).pack(side="left", padx=(4, 0))
-        tk.Button(pick_row, text="Bỏ chương đã có", command=lambda: pick_missing(), **small).pack(side="left", padx=(4, 0))
-        tk.Label(dlg, text="Bấm vào dòng hoặc phím Space để tick/bỏ · Khoảng: 41-60 hoặc 1-5, 8 (theo cột #)",
-                 fg="#6b6255", bg=PANEL, font=("Segoe UI", 9)).pack(anchor="w", padx=16, pady=(2, 4))
+    def exec_plan(self):
+        """Mở hộp thoại; trả (slug, title, chapters) khi đã lưu, ngược lại None."""
+        self.exec()
+        return self.result_plan
 
-        tree_box = tk.Frame(dlg, bg=BG)
-        tree_box.pack(fill="both", expand=True, padx=16)
-        tree = ttk.Treeview(tree_box, columns=("pick", "no", "id", "name", "count"), show="headings",
-                            style="Scan.Treeview", selectmode="extended", height=8)
-        for col, text, width, anchor in (("pick", "✓", 34, "center"), ("no", "#", 46, "e"), ("id", "Mã", 60, "center"),
-                                         ("name", "Tên chương", 300, "w"), ("count", "Đoạn", 60, "e")):
-            tree.heading(col, text=text)
-            tree.column(col, width=width, anchor=anchor, stretch=(col == "name"))
-        tree_scroll = ttk.Scrollbar(tree_box, orient="vertical", command=tree.yview)
-        tree.configure(yscrollcommand=tree_scroll.set)
-        tree_scroll.pack(side="right", fill="y")
-        tree.pack(side="left", fill="both", expand=True)
-        tree.tag_configure("off", foreground="#6b6255")
-        tree.tag_configure("dup", foreground="#c9a063")
-        summary = tk.Label(dlg, text="", fg=MUTED, bg=PANEL, anchor="w", justify="left", font=("Segoe UI", 9))
-        summary.pack(fill="x", padx=16, pady=(4, 0))
+    def done(self, code):
+        save_geometry(self, "builder_library_dialog")
+        super().done(code)
 
-        plan = {"slug": None, "title": None, "chapters": [], "error": None}
-        state = {"key": None, "groups": [], "picked": [], "existing": set(), "start": 1, "is_new": True}
+    def refresh_story_list(self):
+        words = search_key(self.story_filter.text()).split()
+        current = self.story_list.currentItem().text() if self.story_list.currentItem() else None
+        self.story_list.blockSignals(True)
+        self.story_list.clear()
+        items = [o for o in self.options if all(w in search_key(o) for w in words)]
+        self.story_list.addItems(items)
+        if current in items:
+            self.story_list.setCurrentRow(items.index(current))
+        elif items:
+            self.story_list.setCurrentRow(0)
+        self.story_list.blockSignals(False)
+        self.update_preview()
 
-        def name_key(name):
-            """So tên chương không phân biệt dấu, hoa thường, khoảng trắng."""
-            return re.sub(r"\s+", " ", search_key(name or "")).strip()
+    def selected_story(self):
+        if self.r_new.isChecked():
+            title = self.new_title.text().strip()
+            return (store.next_story_id(self.catalog), title, True) if title else (None, None, True)
+        item = self.story_list.currentItem()
+        if item:
+            slug, title = (p.strip() for p in item.text().split("|", 1))
+            return slug, title, False
+        return None, None, False
 
-        def selected_story():
-            if story_mode.get() == "new":
-                title = new_title.get().strip()
-                return (store.next_story_id(catalog), title, True) if title else (None, None, True)
-            if story_list.curselection():
-                slug, title = (p.strip() for p in story_list.get(story_list.curselection()[0]).split("|", 1))
-                return slug, title, False
-            return None, None, False
-
-        def update_preview(*_args):
-            """Chia lại chương khi đổi truyện/mẫu; giữ lựa chọn nếu cách chia không đổi."""
-            slug, title, is_new = selected_story()
-            plan.update(slug=slug, title=title, error=None)
-            groups = []
-            if not slug:
-                plan["error"] = "Chọn truyện có sẵn hoặc nhập tên truyện mới."
-            elif split_mode.get() == "one":
-                groups = [(one_title.get().strip() or "Oneshot", pairs)]
-            else:
-                try:
-                    found = store.split_into_chapters(pairs, pattern_var.get().strip() or "^$", text_of=lambda p: p[1])
-                    groups = [(g["title"], g["items"]) for g in found if g["items"]]
-                except re.error as error:
-                    plan["error"] = f"Regex lỗi: {error}"
-            story = next((s for s in catalog if s.get("slug") == slug), None) if slug and not is_new else None
-            existing = {name_key(c.get("name")) for c in (story or {}).get("chapters", [])} - {""}
-            key = (slug, split_mode.get(), tuple(name for name, _ in groups), tuple(len(i) for _, i in groups))
-            if key != state["key"]:
-                # Đổi truyện đích hoặc cách chia: tick sẵn những chương chưa có trong truyện.
-                picked = [name_key(name) not in existing for name, _ in groups]
-                if groups and not any(picked):
-                    picked = [True] * len(groups)
-                state.update(key=key, picked=picked)
-            state.update(groups=groups, existing=existing, is_new=is_new,
-                         start=int(store.next_chapter_id(catalog, slug)) if slug else 1)
-            draw()
-
-        def draw():
-            """Vẽ bảng + lập kế hoạch lưu: chỉ chương được tick, mã nối tiếp truyện."""
-            groups, picked = state["groups"], state["picked"]
-            plan["chapters"] = []
-            next_no = state["start"]
-            tree.delete(*tree.get_children())
-            for i, (name, items) in enumerate(groups):
-                name = name or f"Chương {i + 1}"
-                dup = name_key(name) in state["existing"]
-                chap_id = ""
-                if picked[i]:
-                    chap_id = store.format_chapter_id(next_no)
-                    plan["chapters"].append((chap_id, name, items))
-                    next_no += 1
-                tags = () if picked[i] else ("off",)
-                if dup:
-                    tags += ("dup",)
-                tree.insert("", "end", iid=str(i), tags=tags,
-                            values=("☑" if picked[i] else "☐", i + 1, chap_id, name[:120] + ("  · đã có" if dup else ""), len(items)))
-            if plan["error"]:
-                summary.config(text=plan["error"], fg="#e8857b")
-            else:
-                n = len(plan["chapters"])
-                span = ""
-                if n:
-                    first, last = plan["chapters"][0][0], plan["chapters"][-1][0]
-                    span = f" → mã {first}" + (f"–{last}" if first != last else "")
-                head = "TRUYỆN MỚI" if state["is_new"] else "Truyện"
-                dups = sum(1 for name, _ in groups if name_key(name) in state["existing"])
-                summary.config(text=f"{head} {plan['slug']} | {plan['title']} — lưu {n}/{len(groups)} chương{span}"
-                               + (f" · {dups} chương trùng tên với chương đã có" if dups else ""), fg=MUTED)
-            save_btn.config(state=tk.NORMAL if plan["chapters"] and not plan["error"] else tk.DISABLED,
-                            text=f"📚 Lưu {len(plan['chapters'])} chương vào thư viện" if plan["chapters"] else "📚 Lưu vào thư viện")
-
-        def toggle(indexes):
-            if not indexes:
-                return
-            value = not all(state["picked"][i] for i in indexes)
-            for i in indexes:
-                state["picked"][i] = value
-            keep = tree.yview()[0]
-            draw()
-            tree.yview_moveto(keep)
-            tree.selection_set([str(i) for i in indexes])
-
-        def on_click(event):
-            row = tree.identify_row(event.y)
-            if row and tree.identify_region(event.x, event.y) == "cell":
-                toggle([int(row)])
-                return "break"
-
-        def pick_all(value):
-            state["picked"] = [value] * len(state["groups"])
-            draw()
-
-        def pick_missing():
-            state["picked"] = [name_key(name) not in state["existing"] for name, _ in state["groups"]]
-            draw()
-
-        def pick_range(event=None):
-            """'41-60', '1-5, 8' theo số thứ tự sau khi chia (cột #)."""
-            chosen = set()
-            for part in re.split(r"[,;\s]+", range_var.get().strip()):
-                match = re.fullmatch(r"(\d+)(?:-(\d+))?", part)
-                if not match:
-                    if part:
-                        messagebox.showwarning("Khoảng không hợp lệ", f"Không hiểu “{part}”. Ví dụ: 41-60 hoặc 1-5, 8", parent=dlg)
-                        return "break"
-                    continue
-                a, b = int(match.group(1)), int(match.group(2) or match.group(1))
-                chosen.update(range(min(a, b), max(a, b) + 1))
-            if chosen:
-                state["picked"] = [(i + 1) in chosen for i in range(len(state["groups"]))]
-                draw()
-            return "break"
-
-        tree.bind("<Button-1>", on_click)
-        tree.bind("<space>", lambda e: (toggle([int(i) for i in tree.selection()]), "break")[1])
-        range_entry.bind("<Return>", pick_range)
-
-        def close(event=None):
-            save_config({"builder_library_dialog": dlg.geometry()})
-            dlg.destroy()
-
-        def do_save():
-            if not plan["chapters"]:
-                return
-            # Truyện mới: để save_chapters tự cấp mã từ catalog đọc mới nhất,
-            # tránh dùng mã đã xem trước khi có người khác thêm truyện.
-            slug = None if story_mode.get() == "new" else plan["slug"]
+    def update_preview(self):
+        """Chia lại chương khi đổi truyện/mẫu; giữ lựa chọn nếu cách chia không đổi."""
+        slug, title, is_new = self.selected_story()
+        plan, state = self.plan, self.state
+        plan.update(slug=slug, title=title, error=None)
+        groups = []
+        if not slug:
+            plan["error"] = "Chọn truyện có sẵn hoặc nhập tên truyện mới."
+        elif self.r_one.isChecked():
+            groups = [(self.one_title.text().strip() or "Oneshot", self.pairs)]
+        else:
             try:
-                _catalog, slug, _saved = store.save_chapters(
-                    LIBRARY_DIR, BASE_DIR, LIBRARY_CATALOG, slug, plan["title"], plan["chapters"])
-            except store.ChapterClashError as error:
-                messagebox.showerror("Trùng mã chương",
-                    f"Chương {', '.join(error.chapter_ids[:5])} đã tồn tại. Mở lại hộp thoại để lấy mã mới.", parent=dlg)
-                return
-            except CatalogError as error:
-                messagebox.showerror("Không đọc được danh mục", str(error), parent=dlg)
-                return
-            except Exception as error:
-                messagebox.showerror("Lỗi khi lưu thư viện", str(error), parent=dlg)
-                return
-            self.saved = True
-            first, last = plan["chapters"][0][0], plan["chapters"][-1][0]
-            span = first if first == last else f"{first}–{last}"
-            self.set_status(f"📚 Đã lưu {len(plan['chapters'])} chương vào library/{slug} ({span}) · {plan['title']}")
-            cleared = self.app.clear_temp_names()
-            self.app.set_status(f"📚 Đã lưu vào thư viện: {slug} | {plan['title']}"
-                                + (f" · đã xoá {cleared} name tạm" if cleared else ""), "#8fc29a")
-            close()
+                found = store.split_into_chapters(self.pairs, self.pattern.currentText().strip() or "^$",
+                                                  text_of=lambda p: p[1])
+                groups = [(g["title"], g["items"]) for g in found if g["items"]]
+            except re.error as exc:
+                plan["error"] = f"Regex lỗi: {exc}"
+        story = next((s for s in self.catalog if s.get("slug") == slug), None) if slug and not is_new else None
+        existing = {chapter_name_key(c.get("name")) for c in (story or {}).get("chapters", [])} - {""}
+        key = (slug, self.r_one.isChecked(), tuple(n for n, _ in groups), tuple(len(i) for _, i in groups))
+        if key != state["key"]:
+            # Đổi truyện đích hoặc cách chia: tick sẵn những chương chưa có trong truyện.
+            picked = [chapter_name_key(n) not in existing for n, _ in groups]
+            if groups and not any(picked):
+                picked = [True] * len(groups)
+            state.update(key=key, picked=picked)
+        state.update(groups=groups, existing=existing, is_new=is_new,
+                     start=int(store.next_chapter_id(self.catalog, slug)) if slug else 1)
+        self.draw()
 
-        bottom = tk.Frame(dlg, bg=PANEL)
-        # Pack lên trước các khối khác để nút Lưu/Hủy và dòng tóm tắt không bị bảng chương đẩy khuất.
-        bottom.pack(side="bottom", fill="x", padx=16, pady=12, before=dlg.winfo_children()[0])
-        summary.pack_forget()
-        summary.pack(side="bottom", fill="x", padx=16, pady=(4, 0), after=bottom)
-        tk.Button(bottom, text="Hủy", command=close, bg=FIELD, fg="white", borderwidth=0, padx=14, pady=4).pack(side="right")
-        save_btn = tk.Button(bottom, text="📚 Lưu vào thư viện", command=do_save, bg="#9c6a28", fg="white",
-                             borderwidth=0, padx=14, pady=4, font=("Segoe UI", 9, "bold"))
-        save_btn.pack(side="right", padx=8)
-        dlg.bind("<Escape>", close)
-        dlg.protocol("WM_DELETE_WINDOW", close)
-        refresh_story_list()
-        story_filter.focus_set()
-
-
-# --- CLASS GIAO DIỆN CHÍNH ---
-class TranslatorGUI:
-    def __init__(self, root, container=None):
-        """``container``: khung chứa giao diện khi nhúng vào app khác (studio.py).
-        Khi đó cửa sổ (tiêu đề, kích thước) do app chứa quản lý."""
-        self.root = root
-        self.frame = container if container is not None else root
-        embedded = container is not None
-        if not embedded:
-            self.root.title("Story Translator Pro - SangTacViet API")
-        self.frame.configure(bg=BG)
-        self._resize_timer = None
-        self._count_timer = None
-        self._worker = None
-        self._cancel_event = None
-        # Thanh tiến trình: giữ một giá trị đích và nội suy từng khung hình
-        # thay vì nhảy cóc mỗi khi API trả về một đợt.
-        self._busy = False
-        self._progress_value = 0.0
-        self._progress_from = 0.0
-        self._progress_to = 0.0
-        self._progress_started = 0.0
-        self._progress_duration = 0.45
-        self._progress_anim = None
-        self._progress_max = 1
-        # Name tạm: chỉ dùng cho lượt dịch hiện tại, không ghi name.cfg,
-        # tự xoá sau khi lưu data.json / lưu vào thư viện.
-        self.temp_names = {}
-        # Luồng nền không được chạm vào Tk: mọi cập nhật giao diện đi qua hàng đợi này.
-        self._ui_queue = queue.Queue()
-
-        if not embedded:
-            # Restore saved geometry or use default
-            self.root.geometry(load_config().get("builder_main", "700x600"))
-
-        apply_tk_defaults(self.root)
-        self._configure_styles()
-        self.setup_ui()
-        self._pump_ui_queue()
-
-        if not embedded:
-            # Save geometry on resize (debounced)
-            self.root.bind("<Configure>", self._on_root_configure)
-
-        # Nạp sẵn mô hình NER đã có trên máy để lần Scan Names đầu tiên không phải chờ.
-        # Tắt bằng biến môi trường STV_NER_PRELOAD=0.
-        # Kết quả đồng bộ R2 chạy nền hiện trên thanh trạng thái (lỗi màu đỏ); mở app thì đẩy nốt
-        # phần lần trước chưa lên được (mất mạng, tắt app giữa chừng…).
-        r2_store.add_listener(lambda message, ok: self.call_ui(self.set_status, message, None if ok else "#e8857b"))
-        r2_store.request_sync(BASE_DIR)   # gọi nhiều lần (studio, builder) vẫn chỉ chạy một luồng
-
-        if (_NAME_SCANNER_OK or _MOXHI_OK) and os.environ.get('STV_NER_PRELOAD', '1') != '0':
-            self.root.after(1500, self._preload_name_model)
-
-    # ── luồng giao diện ──
-
-    def call_ui(self, func, *args):
-        """Thread-safe: run func(*args) on the Tk main thread."""
-        self._ui_queue.put((func, args))
-
-    def _pump_ui_queue(self):
-        try:
-            while True:
-                func, args = self._ui_queue.get_nowait()
-                try:
-                    func(*args)
-                except Exception as error:  # never kill the pump
-                    print(f"UI callback error: {error}")
-        except queue.Empty:
-            pass
-        self.root.after(40, self._pump_ui_queue)
-
-    def set_status(self, text, color=None):
-        """Main-thread only; background threads use call_ui(self.set_status, ...)."""
-        if color:
-            self.lbl_status.config(text=text, fg=color)
+    def draw(self):
+        """Vẽ bảng + lập kế hoạch lưu: chỉ chương được tick, mã nối tiếp truyện."""
+        plan, state = self.plan, self.state
+        groups, picked = state["groups"], state["picked"]
+        plan["chapters"] = []
+        next_no = state["start"]
+        scroll = self.tree.verticalScrollBar().value()
+        self.tree.clear()
+        off, dup_color = QColor(HINT), QColor("#c9a063")
+        rows = []
+        for i, (name, items) in enumerate(groups):
+            name = name or f"Chương {i + 1}"
+            dup = chapter_name_key(name) in state["existing"]
+            chap_id = ""
+            if picked[i]:
+                chap_id = store.format_chapter_id(next_no)
+                plan["chapters"].append((chap_id, name, items))
+                next_no += 1
+            item = QTreeWidgetItem(["☑" if picked[i] else "☐", str(i + 1), chap_id,
+                                    name[:120] + ("  · đã có" if dup else ""), str(len(items))])
+            item.setData(0, Qt.UserRole, i)
+            for col, align in ((0, Qt.AlignCenter), (1, Qt.AlignRight), (2, Qt.AlignCenter), (4, Qt.AlignRight)):
+                item.setTextAlignment(col, align | Qt.AlignVCenter)
+            if dup or not picked[i]:
+                for col in range(5):
+                    item.setForeground(col, dup_color if dup else off)
+            rows.append(item)
+        self.tree.addTopLevelItems(rows)
+        self.tree.verticalScrollBar().setValue(scroll)
+        if plan["error"]:
+            set_label(self.summary, plan["error"], ERROR)
         else:
-            self.lbl_status.config(text=text)
+            n = len(plan["chapters"])
+            span = ""
+            if n:
+                first, last = plan["chapters"][0][0], plan["chapters"][-1][0]
+                span = f" → mã {first}" + (f"–{last}" if first != last else "")
+            head = "TRUYỆN MỚI" if state["is_new"] else "Truyện"
+            dups = sum(1 for name, _ in groups if chapter_name_key(name) in state["existing"])
+            set_label(self.summary, f"{head} {plan['slug']} | {plan['title']} — lưu {n}/{len(groups)} chương{span}"
+                      + (f" · {dups} chương trùng tên với chương đã có" if dups else ""), MUTED)
+        self.save_btn.setEnabled(bool(plan["chapters"]) and not plan["error"])
+        self.save_btn.setText(f"📚 Lưu {len(plan['chapters'])} chương vào thư viện" if plan["chapters"]
+                              else "📚 Lưu vào thư viện")
 
-    def _configure_styles(self):
-        style = ttk.Style(self.root)
-        try:
-            style.theme_use("clam")
-        except tk.TclError:
-            pass
-        style.configure("TCombobox", fieldbackground=FIELD, background=FIELD, foreground="white",
-                        arrowcolor=MUTED, bordercolor="#4a4238", lightcolor="#4a4238", darkcolor="#4a4238")
-        style.map("TCombobox", fieldbackground=[("readonly", FIELD)], foreground=[("readonly", "white")])
-        self.root.option_add("*TCombobox*Listbox.background", FIELD)
-        self.root.option_add("*TCombobox*Listbox.foreground", "white")
-        style.configure("Run.Horizontal.TProgressbar", troughcolor=PANEL, background="#9c6a28",
-                        bordercolor=BG, lightcolor="#d9a35c", darkcolor="#d9a35c", thickness=8)
-        style.configure("Scan.Treeview", background=PANEL, fieldbackground=PANEL, foreground=TEXT,
-                        rowheight=26, borderwidth=0, font=("Segoe UI", 10))
-        style.map("Scan.Treeview", background=[("selected", "#4f3f63")], foreground=[("selected", "white")])
-        style.configure("Scan.Treeview.Heading", background=FIELD, foreground=MUTED, relief="flat",
-                        font=("Segoe UI", 9, "bold"), bordercolor=BG, lightcolor=FIELD, darkcolor=FIELD)
-        style.map("Scan.Treeview.Heading", background=[("active", "#3a332c")])
-        style.configure("Vertical.TScrollbar", background="#3a332c", troughcolor=BG, bordercolor=BG,
-                        arrowcolor=MUTED, lightcolor="#4a4238", darkcolor="#4a4238")
+    def selected_rows(self):
+        return [int(item.data(0, Qt.UserRole)) for item in self.tree.selectedItems()]
 
-    def _preload_name_model(self):
-        # Chỉ nạp model đã có trên ổ đĩa, không tự tải khi khởi động; lỗi (nếu có) hiện khi bấm Scan Names.
-        engines = self._scan_engines()
-        try:
-            if 'bert' in engines and _ner_installed():
-                _ner_preload()
-        except Exception:
-            pass
-        if 'moxhi' in engines and _moxhi.is_installed():
-            threading.Thread(target=self._quiet, args=(_moxhi.preload,), name='moxhi-preload', daemon=True).start()
-
-    @staticmethod
-    def _quiet(func):
-        try:
-            func()
-        except Exception:
-            pass
-
-    def _scan_engines(self):
-        """Bộ quét tên đang dùng: biến môi trường STV_SCAN_ENGINE hoặc "scan_engine" trong
-        editor_config.json — "moxhi" (mặc định), "both" hoặc "bert". Đọc cấu hình một lần.
-
-        Bộ được chọn mà không nạp được thì dùng bộ còn lại và ghi lý do vào self._scan_note
-        (hiện trên thanh trạng thái sau khi quét) thay vì lặng lẽ đổi."""
-        if not hasattr(self, '_scan_choice'):
-            self._scan_choice = (os.environ.get('STV_SCAN_ENGINE') or load_config().get('scan_engine')
-                                 or 'moxhi').strip().lower()
-        wanted = {'both': ('moxhi', 'bert'), 'moxhi': ('moxhi',), 'bert': ('bert',)}.get(self._scan_choice)
-        self._scan_note = ''
-        if wanted is None:
-            self._scan_note = f'scan_engine "{self._scan_choice}" không hợp lệ (both/moxhi/bert) — dùng both'
-            wanted = ('moxhi', 'bert')
-        available = {'moxhi': _MOXHI_OK, 'bert': _NAME_SCANNER_OK}
-        engines = [name for name in wanted if available[name]]
-        missing = [name for name in wanted if not available[name]]
-        if not engines:
-            engines = [name for name in ('moxhi', 'bert') if available[name]]
-        if missing and engines:
-            self._scan_note = (f'không nạp được bộ quét {"/".join(missing)} (thiếu file hoặc thư viện) — '
-                               f'đã dùng {"/".join(engines)}')
-        return engines
-
-    def _on_root_configure(self, event=None):
-        if event and event.widget is not self.root:
+    def toggle(self, indexes):
+        if not indexes:
             return
-        if self._resize_timer:
-            self.root.after_cancel(self._resize_timer)
-        self._resize_timer = self.root.after(600, self._save_root_geometry)
+        value = not all(self.state["picked"][i] for i in indexes)
+        for i in indexes:
+            self.state["picked"][i] = value
+        self.draw()
+        for i in indexes:
+            self.tree.topLevelItem(i).setSelected(True)
+        self.tree.setCurrentItem(self.tree.topLevelItem(indexes[-1]), 0, QItemSelectionModel.NoUpdate)
 
-    def _save_root_geometry(self):
-        save_config({"builder_main": self.root.geometry()})
+    def pick_all(self, value):
+        self.state["picked"] = [value] * len(self.state["groups"])
+        self.draw()
 
-    def setup_ui(self):
-        # Header
-        tk.Label(self.frame, text="DỊCH TRUYỆN TRUNG - VIỆT", font=("Segoe UI", 14, "bold"), fg="#f4ede1", bg=BG).pack(pady=10)
+    def pick_missing(self):
+        self.state["picked"] = [chapter_name_key(n) not in self.state["existing"] for n, _ in self.state["groups"]]
+        self.draw()
 
-        # Story Title Input
-        frame_title = tk.Frame(self.frame, bg=BG)
-        frame_title.pack(fill="x", padx=20, pady=5)
-        tk.Label(frame_title, text="Tên truyện:", fg=MUTED, bg=BG).pack(side="left")
-        self.ent_title = tk.Entry(frame_title, bg=PANEL, fg="#f4ede1", insertbackground="white", borderwidth=0)
-        self.ent_title.pack(side="left", fill="x", expand=True, padx=10, ipady=5)
-
-        # Text Area for Copy-Paste
-        head = tk.Frame(self.frame, bg=BG)
-        head.pack(fill="x", padx=20, pady=(10, 0))
-        tk.Label(head, text="Nội dung tiếng Trung:", fg=MUTED, bg=BG).pack(side="left")
-        self.lbl_counter = tk.Label(head, text="", fg="#8a7f70", bg=BG, font=("Segoe UI", 9))
-        self.lbl_counter.pack(side="right")
-        self.txt_area = StyledScrolledText(self.frame, height=15, bg=PANEL, fg=TEXT, borderwidth=0,
-                                                  font=("Microsoft YaHei UI", 11), insertbackground="white", undo=True,
-                                                  padx=10, pady=8, spacing1=2)
-        self.txt_area.pack(fill="both", expand=True, padx=20, pady=5)
-        self.txt_area.bind("<<Modified>>", self._on_text_modified)
-        self.txt_area.bind("<Control-Return>", lambda e: (self.start_thread(), "break")[1])
-        self._build_find_bar()
-
-        # Drop Zone
-        self.drop_zone = tk.Label(
-            self.frame, text="📂  Kéo thả file .txt vào đây",
-            bg=PANEL, fg="#8a7f70", font=("Segoe UI", 10),
-            relief="groove", borderwidth=2, pady=12
-        )
-        self.drop_zone.pack(fill="x", padx=20, pady=(0, 5))
-        self.drop_zone.drop_target_register(DND_FILES)
-        self.drop_zone.dnd_bind("<<Drop>>", self.handle_drop)
-        self.drop_zone.dnd_bind("<<DragEnter>>", lambda e: self.drop_zone.config(bg=FIELD, fg="#d9a35c"))
-        self.drop_zone.dnd_bind("<<DragLeave>>", lambda e: self.drop_zone.config(bg=PANEL, fg="#8a7f70"))
-
-        # Buttons Frame
-        btn_frame = tk.Frame(self.frame, bg=BG)
-        btn_frame.pack(fill="x", padx=20, pady=10)
-
-        self.btn_file = tk.Button(btn_frame, text="📁 Chọn File .txt", command=self.load_file, bg=FIELD, fg="white", borderwidth=0, padx=15)
-        self.btn_file.pack(side="left", padx=5)
-
-        self.btn_scan = tk.Button(btn_frame, text="🔍 Scan Names", command=self.open_scan_names_dialog, bg="#6a5683", fg="white", borderwidth=0, padx=15)
-        self.btn_scan.pack(side="left", padx=5)
-
-        self.btn_draft = tk.Button(btn_frame, text="📝 Mở nháp", command=self.open_draft, bg=FIELD, fg="white", borderwidth=0, padx=15)
-        self.btn_draft.pack(side="left", padx=5)
-
-        self.btn_temp_names = tk.Button(btn_frame, text="🏷 Name tạm", command=self.open_temp_names_dialog,
-                                        bg=FIELD, fg="white", borderwidth=0, padx=15)
-        self.btn_temp_names.pack(side="left", padx=5)
-
-        self.btn_r2 = tk.Button(btn_frame, text="☁ R2", command=self.open_r2_dialog,
-                                bg=FIELD, fg="white", borderwidth=0, padx=15)
-        self.btn_r2.pack(side="left", padx=5)
-
-        self.btn_run = tk.Button(btn_frame, text="🚀 Bắt đầu dịch", command=self.start_thread, bg="#9c6a28", fg="white", borderwidth=0, padx=25)
-        self.btn_run.pack(side="right", padx=5)
-
-        self.btn_cancel = tk.Button(btn_frame, text="⏹ Huỷ", command=self.cancel_translation, bg="#8a372e", fg="white", borderwidth=0, padx=15)
-
-        self.btn_clear = tk.Button(btn_frame, text="🗑️ Xóa tất cả", command=self.clear_all, bg="#9a3f35", fg="white", borderwidth=0, padx=15)
-
-        # Progress: khung giữ chỗ cố định để thanh tiến trình hiện/ẩn
-        # không làm co giãn vùng nội dung phía trên.
-        self.progress_row = tk.Frame(self.frame, bg=BG, height=18)
-        self.progress_row.pack(fill="x")
-        self.progress_row.pack_propagate(False)
-        self.progress = ttk.Progressbar(self.progress_row, style="Run.Horizontal.TProgressbar", mode="determinate")
-        self.lbl_status = tk.Label(self.frame, text="Sẵn sàng  ·  Ctrl+Enter để dịch", fg="#8a7f70", bg=BG)
-        self.lbl_status.pack(pady=5)
-
-    # ── tìm kiếm (Ctrl+F) ──
-
-    FIND_LIMIT = 5000  # tô sáng tối đa; văn bản dài vẫn đếm/nhảy trong giới hạn này
-
-    def _build_find_bar(self):
-        """Thanh tìm kiếm cho ô nội dung, ẩn cho tới khi bấm Ctrl+F."""
-        self._find_matches = []   # [(start, end)] chỉ số Tk
-        self._find_index = -1
-        self._find_timer = None
-        bar = self.find_bar = tk.Frame(self.frame, bg=FIELD)
-        tk.Label(bar, text="🔍", bg=FIELD, fg=MUTED).pack(side="left", padx=(8, 2))
-        self.find_var = tk.StringVar()
-        self.find_entry = tk.Entry(bar, textvariable=self.find_var, bg=PANEL, fg="#f4ede1",
-                                   insertbackground="white", borderwidth=0, font=("Consolas", 10))
-        self.find_entry.pack(side="left", fill="x", expand=True, ipady=4, pady=4)
-        self.find_regex = tk.BooleanVar(value=False)
-        self.find_case = tk.BooleanVar(value=False)
-        check = dict(bg=FIELD, fg=MUTED, selectcolor=PANEL, activebackground=FIELD, activeforeground=TEXT,
-                     borderwidth=0, highlightthickness=0, font=("Segoe UI", 9), cursor="hand2",
-                     command=lambda: self.refresh_find(keep_position=True))
-        tk.Checkbutton(bar, text="Regex", variable=self.find_regex, **check).pack(side="left", padx=(6, 0))
-        tk.Checkbutton(bar, text="Aa", variable=self.find_case, **check).pack(side="left")
-        self.find_status = tk.Label(bar, text="", width=12, bg=FIELD, fg=MUTED, font=("Segoe UI", 9))
-        self.find_status.pack(side="left", padx=6)
-        small = dict(bg="#3a332c", fg="white", activebackground="#4a4238", activeforeground="white",
-                     borderwidth=0, padx=8, cursor="hand2")
-        tk.Button(bar, text="▲", command=lambda: self.find_step(-1), **small).pack(side="left", padx=(0, 2), pady=4)
-        tk.Button(bar, text="▼", command=lambda: self.find_step(1), **small).pack(side="left", padx=(0, 6), pady=4)
-        tk.Button(bar, text="✕", command=self.hide_find_bar, **small).pack(side="left", padx=(0, 6), pady=4)
-
-        self.find_var.trace_add("write", lambda *_: self._schedule_find())
-        self.find_entry.bind("<Return>", lambda e: (self.find_step(1), "break")[1])
-        self.find_entry.bind("<Shift-Return>", lambda e: (self.find_step(-1), "break")[1])
-        self.find_entry.bind("<Escape>", lambda e: (self.hide_find_bar(), "break")[1])
-        for widget in (self.txt_area, self.find_entry, self.ent_title):
-            widget.bind("<Control-f>", lambda e: (self.show_find_bar(), "break")[1])
-            widget.bind("<Control-F>", lambda e: (self.show_find_bar(), "break")[1])
-            widget.bind("<F3>", lambda e: (self.find_step(1), "break")[1])
-            widget.bind("<Shift-F3>", lambda e: (self.find_step(-1), "break")[1])
-        self.txt_area.bind("<Escape>", lambda e: self.hide_find_bar() if self.find_bar.winfo_ismapped() else None)
-
-        self.txt_area.tag_configure("find_match", background="#6b4a1c", foreground="#f4ede1")
-        self.txt_area.tag_configure("find_current", background="#8a5a22", foreground="#15130f")
-        self.txt_area.tag_raise("find_current", "find_match")
-        self.txt_area.tag_raise("sel")
-
-    def show_find_bar(self):
-        if not self.find_bar.winfo_ismapped():
-            self.find_bar.pack(fill="x", padx=20, pady=(5, 0), before=self.txt_area)
+    def pick_range(self):
         try:
-            selected = self.txt_area.get("sel.first", "sel.last")
-        except tk.TclError:
-            selected = ""
-        if selected and "\n" not in selected:
-            self.txt_area.mark_set("insert", "sel.first")  # bắt đầu từ chính chỗ đang bôi đen
-            if self.find_regex.get():
-                selected = re.escape(selected)
-            self.find_var.set(selected)  # trace sẽ tìm lại
-        self.find_entry.focus_set()
-        self.find_entry.select_range(0, tk.END)
-        self.refresh_find()
-
-    def hide_find_bar(self):
-        current = self._find_matches[self._find_index] if 0 <= self._find_index < len(self._find_matches) else None
-        self.find_bar.pack_forget()
-        self.txt_area.tag_remove("find_match", "1.0", tk.END)
-        self.txt_area.tag_remove("find_current", "1.0", tk.END)
-        self._find_matches, self._find_index = [], -1
-        self.txt_area.focus_set()
-        if current:  # giữ vị trí vừa tìm được: bôi đen để sửa/xoá ngay
-            self.txt_area.tag_remove("sel", "1.0", tk.END)
-            self.txt_area.tag_add("sel", *current)
-            self.txt_area.mark_set("insert", current[1])
-            self.txt_area.see(current[0])
-
-    def _schedule_find(self):
-        if self._find_timer:
-            self.root.after_cancel(self._find_timer)
-        self._find_timer = self.root.after(150, self.refresh_find)
-
-    def refresh_find(self, keep_position=False):
-        """Tô sáng mọi kết quả (chuỗi thường hoặc regex; mặc định không phân biệt hoa/thường)."""
-        if self._find_timer:
-            self.root.after_cancel(self._find_timer)
-        self._find_timer = None
-        text = self.txt_area
-        text.tag_remove("find_match", "1.0", tk.END)
-        text.tag_remove("find_current", "1.0", tk.END)
-        query = self.find_var.get()
-        previous = self._find_matches[self._find_index][0] if keep_position and self._find_matches else None
-        self._find_matches, self._find_index = [], -1
-        if not query:
-            self.find_status.config(text="", fg=MUTED)
+            chosen = core.parse_ranges(self.range_entry.text())
+        except ValueError as exc:
+            warn(self, "Khoảng không hợp lệ", f"Không hiểu “{exc}”. Ví dụ: 41-60 hoặc 1-5, 8")
             return
+        if chosen:
+            self.state["picked"] = [(i + 1) in chosen for i in range(len(self.state["groups"]))]
+            self.draw()
+
+    def do_save(self):
+        plan = self.plan
+        if not plan["chapters"]:
+            return
+        # Truyện mới: để save_chapters tự cấp mã từ catalog đọc mới nhất,
+        # tránh dùng mã đã xem trước khi có người khác thêm truyện.
+        slug = None if self.r_new.isChecked() else plan["slug"]
         try:
-            pattern = store.compile_search(query, regex=self.find_regex.get(), match_case=self.find_case.get())
-        except re.error:
-            self.find_status.config(text="Regex lỗi", fg="#e8857b")
+            _catalog, slug, _saved = store.save_chapters(
+                LIBRARY_DIR, BASE_DIR, LIBRARY_CATALOG, slug, plan["title"], plan["chapters"])
+        except store.ChapterClashError as exc:
+            error(self, "Trùng mã chương", f"Chương {', '.join(exc.chapter_ids[:5])} đã tồn tại. "
+                                           "Mở lại hộp thoại để lấy mã mới.")
             return
-        flat = []
-        for match in pattern.finditer(text.get("1.0", "end-1c")):
-            if match.start() == match.end():
-                continue  # regex khớp rỗng (vd. "a*") thì bỏ
-            start, end = text.index(f"1.0+{match.start()}c"), text.index(f"1.0+{match.end()}c")
-            self._find_matches.append((start, end))
-            flat += (start, end)
-            if len(self._find_matches) >= self.FIND_LIMIT:
-                break
-        if flat:
-            text.tag_add("find_match", *flat)
-        if not self._find_matches:
-            self.find_status.config(text="Không thấy", fg="#e8857b")
+        except CatalogError as exc:
+            error(self, "Không đọc được danh mục", str(exc))
             return
-        # Bắt đầu từ kết quả gần con trỏ (hoặc vị trí cũ khi nội dung vừa đổi).
-        anchor = previous or text.index("insert")
-        self._find_index = next((i for i, (start, _end) in enumerate(self._find_matches)
-                                 if text.compare(start, ">=", anchor)), 0)
-        # Đang gõ trong ô nội dung thì không kéo con trỏ đi chỗ khác.
-        self._show_find_current(move_cursor=not keep_position)
+        except Exception as exc:
+            error(self, "Lỗi khi lưu thư viện", str(exc))
+            return
+        self.result_plan = (slug, plan["title"], list(plan["chapters"]))
+        self.accept()
 
-    def find_step(self, direction):
-        if not self.find_bar.winfo_ismapped():
-            self.show_find_bar()
+
+class _KeyTree(QTreeWidget):
+    """QTreeWidget với phím tắt riêng ({Qt.Key: hàm}); phím khác giữ hành vi mặc định."""
+
+    def __init__(self, keys=None):
+        super().__init__()
+        self.keys = keys or {}
+        self.setAlternatingRowColors(True)
+        self.setUniformRowHeights(True)
+
+    def keyPressEvent(self, event):
+        handler = self.keys.get(event.key())
+        if handler is not None and not event.modifiers() & (Qt.ControlModifier | Qt.AltModifier):
+            handler()
             return
-        if not self._find_matches:
-            self.refresh_find()
-            if not self._find_matches:
-                return
+        super().keyPressEvent(event)
+
+
+# ═════════════════════════ Scan Names ═════════════════════════
+
+class ScanNamesDialog(QDialog):
+    COLUMNS = (("sel", "✓", 34), ("cn", "Tiếng Trung", 130), ("type", "Loại", 80), ("count", "Xuất hiện", 80),
+               ("conf", "Điểm", 64), ("vi", "Bản dịch sẽ lưu", 220), ("alt", "Gợi ý còn lại", 180))
+    SOURCES = (("moxhi_vi", "Moxhi"), ("hanviet", "HV"), ("api_vi", "API"))
+
+    def __init__(self, app, candidates):
+        super().__init__(app)
+        self.app = app
+        self.setWindowTitle("🔍 Scan Names — Danh sách tên phát hiện")
+        self.setWindowFlag(Qt.WindowMaximizeButtonHint, True)
+        restore_geometry(self, "builder_scan_names", 920, 680)
+        self.setMinimumSize(760, 560)
+        self.candidates = candidates
+        self.by_cn = {c["cn"]: c for c in candidates}
+        self.ignored = set()
+        self.edited = {c["cn"]: c.get("suggested_vi", "") for c in candidates}
+        self.selected = set()
+        self.sort = {"col": None, "reverse": False}
+        self.current = None
+        self.tier = "sure" if any(core.is_sure_candidate(c) for c in candidates) else "review"
+        self.source_text = raw_text(app.txt_area)
+        self._filter_timer = QTimer(self, singleShot=True, interval=150)
+        self._filter_timer.timeout.connect(self.rebuild)
+        self._build()
+        self.rebuild()
+        self.tree.setFocus()
+
+    # ── dựng giao diện ──
+
+    def _build(self):
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 8)
+        lay.setSpacing(0)
+        top = QFrame()
+        top.setStyleSheet(f"QFrame {{ background: {PANEL}; }} QWidget {{ background: {PANEL}; }}")
+        tl = QVBoxLayout(top)
+        tl.setContentsMargins(16, 10, 16, 6)
+        self.count_lbl = label(f"{len(self.candidates)} ứng viên tìm được", MUTED, 9)
+        tl.addLayout(hbox(label("🔍 Scan Names", "#f4ede1", 12, True), self.count_lbl, "stretch",
+                          button("🔄 Quét lại", self.rerun, "#3a332c", small=True)))
+        self.tier_buttons = {}
+        tiers = []
+        for key, text in (("sure", "Chắc chắn"), ("review", "Cần xem"), ("all", "Tất cả")):
+            btn = button(text, lambda k=key: self.set_tier(k))
+            self.tier_buttons[key] = (btn, text)
+            tiers.append(btn)
+        tl.addLayout(hbox(*tiers, "stretch", label("Chắc chắn = 2 bộ quét cùng thấy, tên ≥2 chữ điểm ≥95%, "
+                                                    "hoặc lặp lại nhiều lần · Cần xem: còn lại", HINT, 9)))
+        self.type_combo = QComboBox()
+        self.type_combo.addItems(["TẤT CẢ"] + sorted({c["type"] for c in self.candidates}))
+        self.min_conf = QSpinBox()
+        self.min_conf.setRange(0, 99)
+        self.search = LineEdit()
+        self.search.setFixedWidth(170)
+        tl.addLayout(hbox(label("Lọc:", MUTED, 9), self.type_combo, label("Điểm ≥", MUTED, 9), self.min_conf,
+                          label("%", MUTED, 9), label("  Tìm:", MUTED, 9), self.search, "stretch",
+                          label("Space: chọn · Del: bỏ qua · Enter: sửa · F2: đổi Moxhi/Hán-Việt/API", HINT, 9)))
+        lay.addWidget(top)
+        if not self.candidates:
+            lay.addWidget(label("Bộ quét không tìm thấy tên mới. Có thể thêm thủ công ở phía dưới.", WARN))
+
+        self.tree = _KeyTree({Qt.Key_Space: lambda: self.toggle(self.selection()),
+                              Qt.Key_Delete: lambda: self.ignore_rows(self.selection()),
+                              Qt.Key_F2: self.swap_sources,
+                              Qt.Key_Return: self.focus_vi, Qt.Key_Enter: self.focus_vi})
+        self.tree.setColumnCount(len(self.COLUMNS))
+        self.tree.setHeaderLabels([c[1] for c in self.COLUMNS])
+        self.tree.setRootIsDecorated(False)
+        self.tree.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        for i, (_key, _text, width) in enumerate(self.COLUMNS):
+            self.tree.setColumnWidth(i, width)
+        self.tree.header().setSectionsClickable(True)
+        self.tree.header().sectionClicked.connect(lambda i: self.sort_by(self.COLUMNS[i][0]))
+        self.tree.currentItemChanged.connect(lambda cur, _prev: self.show_detail(cur.data(0, Qt.UserRole) if cur else None))
+        self.tree.itemClicked.connect(lambda item, col: col == 0 and self.toggle([item.data(0, Qt.UserRole)]))
+        self.tree.itemDoubleClicked.connect(lambda _item, _col: self.focus_vi())
+        table = QVBoxLayout()
+        table.setContentsMargins(12, 6, 12, 0)
+        table.addWidget(self.tree)
+        lay.addLayout(table, 1)
+
+        detail = QFrame()
+        detail.setStyleSheet(f"QFrame {{ background: {PANEL}; }} QLabel {{ background: {PANEL}; }}")
+        dl = QVBoxLayout(detail)
+        dl.setContentsMargins(12, 8, 12, 8)
+        self.detail_cn = label("—", "#f4ede1", 14, True)
+        self.detail_cn.setFont(QFont(CN_FONT, 14, QFont.Bold))
+        self.detail_meta = label("", MUTED, 9)
+        dl.addLayout(hbox(self.detail_cn, (self.detail_meta, 1)))
+        self.vi_entry = _ScanEntry(self)
+        self.vi_entry.setStyleSheet(f"background: {FIELD}; font-size: 11pt;")
+        self.vi_entry.textEdited.connect(self.on_vi_change)
+        dl.addLayout(hbox(label("Bản dịch:", OK_GREEN, 9, True), (self.vi_entry, 1),
+                          button("Copy Hán", self.copy_chinese, ACCENT, small=True, bold=True),
+                          button("Thêm", self.add_current, "#46734f", small=True, bold=True),
+                          button("Bỏ qua", lambda: self.ignore_rows(self.selection()), "#3a332c", small=True, bold=True)))
+        self.moxhi_btn = button("Moxhi: —", lambda: self.use_source("moxhi_vi"), FIELD, fg="#c9b8e0", small=True)
+        self.hv_btn = button("Hán-Việt: —", lambda: self.use_source("hanviet"), FIELD, fg="#f0d9a8", small=True)
+        self.api_btn = button("API: —", lambda: self.use_source("api_vi"), FIELD, fg="#ddd5c7", small=True)
+        dl.addLayout(hbox(label("Gợi ý:", MUTED, 9), self.moxhi_btn, self.hv_btn, self.api_btn, "stretch"))
+        self.context = QTextEdit()
+        self.context.setReadOnly(True)
+        self.context.setFixedHeight(92)
+        self.context.setStyleSheet(f"QTextEdit {{ background: {BG}; color: {MUTED}; font-family: '{CN_FONT}'; font-size: 10pt; }}")
+        self.context.viewport().installEventFilter(self)
+        dl.addWidget(self.context)
+        wrap = QVBoxLayout()
+        wrap.setContentsMargins(12, 6, 12, 0)
+        wrap.addWidget(detail)
+        lay.addLayout(wrap)
+        self.status = label("", OK_GREEN, 9)
+        lay.addLayout(hbox(self.status, margins=(16, 4, 16, 0)))
+
+        # Thêm tên thủ công: cho tên bộ quét bỏ sót (bôi đen trong ngữ cảnh để điền nhanh)
+        manual = QFrame()
+        manual.setStyleSheet(f"QFrame {{ background: {PANEL}; }} QLabel {{ background: {PANEL}; }}")
+        ml = QHBoxLayout(manual)
+        ml.setContentsMargins(12, 8, 12, 8)
+        self.manual_cn = LineEdit()
+        self.manual_cn.setFixedWidth(140)
+        self.manual_cn.setFont(QFont(CN_FONT, 11))
+        self.manual_vi = LineEdit()
+        self.manual_info = label("", MUTED, 9)
+        self.manual_info.setMinimumWidth(150)
+        self.manual_auto = ""
+        for w in (label("Thêm tên thủ công:", WARN, 9, True), self.manual_cn, label("="), self.manual_vi):
+            ml.addWidget(w, 1 if w is self.manual_vi else 0)
+        ml.addWidget(self.manual_info)
+        ml.addWidget(button("Thêm", self.add_manual, "#46734f", small=True, bold=True))
+        wrap2 = QVBoxLayout()
+        wrap2.setContentsMargins(12, 4, 12, 0)
+        wrap2.addWidget(manual)
+        lay.addLayout(wrap2)
+        lay.addLayout(hbox(label("Mẹo: bôi đen một tên trong khung ngữ cảnh ở trên để điền nhanh vào ô thêm thủ công.",
+                                 HINT, 9), margins=(16, 2, 16, 4)))
+        self.temp_box = QCheckBox("🏷 Thêm làm name tạm")
+        self.temp_box.setStyleSheet("color: #e8c27a;")
+        lay.addLayout(hbox(button("Chọn mục đang hiện (có bản dịch)", lambda: self.select_visible(True), fg="#ddd5c7"),
+                           button("Bỏ chọn đang hiện", lambda: self.select_visible(False), fg=MUTED), "stretch",
+                           self.temp_box, button("✅ Thêm các mục đã chọn", self.add_selected, "#6a5683", bold=True),
+                           button("Đóng", self.reject, fg=MUTED), margins=(12, 8, 12, 0)))
+
+        self.type_combo.currentTextChanged.connect(lambda _t: self.rebuild())
+        self.min_conf.valueChanged.connect(lambda _v: self._filter_timer.start())
+        self.search.textChanged.connect(lambda _t: self._filter_timer.start())
+        self.manual_cn.textChanged.connect(self.on_manual_cn)
+        self.manual_cn.returnPressed.connect(self.manual_vi.setFocus)
+        self.manual_vi.returnPressed.connect(self.add_manual)
+
+    def eventFilter(self, obj, event):
+        if obj is self.context.viewport() and event.type() == QEvent.Type.MouseButtonRelease:
+            QTimer.singleShot(0, self.take_selection)
+        return super().eventFilter(obj, event)
+
+    def done(self, code):
+        self._filter_timer.stop()
+        save_geometry(self, "builder_scan_names")
+        super().done(code)
+
+    def rerun(self):
+        self.reject()
+        self.app.open_scan_names_dialog()
+
+    # ── bảng ──
+
+    def alternative(self, c):
+        """Gợi ý không đang dùng (Moxhi, Hán-Việt hoặc API) để so nhanh."""
+        current_value = self.edited[c["cn"]].strip()
+        for key, name in self.SOURCES:
+            value = (c.get(key) or "").strip()
+            if value and value != current_value:
+                return f"{name}: {value}"
+        return ""
+
+    def row_values(self, c):
+        cn = c["cn"]
+        return ["☑" if cn in self.selected else "☐", cn, c["type"], str(c["count"]),
+                f"{int(c['confidence'] * 100)}%", self.edited[cn], self.alternative(c)]
+
+    def _paint_item(self, item, c):
+        for col, value in enumerate(self.row_values(c)):
+            item.setText(col, value)
+        color = None
+        if not self.edited[c["cn"]].strip():
+            color = QColor(WARN)
+        elif c["cn"] in self.selected:
+            color = QColor("#c9b8e0")
+        for col in range(len(self.COLUMNS)):
+            item.setForeground(col, color if color else QColor(TEXT))
+
+    def matching(self):
+        filter_type = self.type_combo.currentText()
+        query = self.search.text().strip().casefold()
+        min_conf = self.min_conf.value()
+        rows = [c for c in self.candidates
+                if c["cn"] not in self.ignored
+                and (self.tier == "all" or core.is_sure_candidate(c) == (self.tier == "sure"))
+                and (filter_type == "TẤT CẢ" or c["type"] == filter_type)
+                and c["confidence"] * 100 >= min_conf
+                and (not query or query in c["cn"].casefold() or query in self.edited[c["cn"]].casefold())]
+        col = self.sort["col"]
+        if col:
+            keys = {"sel": lambda c: c["cn"] in self.selected, "cn": lambda c: c["cn"], "type": lambda c: c["type"],
+                    "count": lambda c: c["count"], "conf": lambda c: c["confidence"],
+                    "vi": lambda c: self.edited[c["cn"]].casefold(), "alt": self.alternative}
+            rows.sort(key=keys[col], reverse=self.sort["reverse"])
         else:
-            self._find_index = (self._find_index + direction) % len(self._find_matches)
-        self._show_find_current()
+            rows.sort(key=core.candidate_rank, reverse=True)
+        return rows
 
-    def _show_find_current(self, move_cursor=True):
-        text = self.txt_area
-        text.tag_remove("find_current", "1.0", tk.END)
-        start, end = self._find_matches[self._find_index]
-        text.tag_add("find_current", start, end)
-        if move_cursor:
-            text.mark_set("insert", start)
-            text.see(start)
-        more = "+" if len(self._find_matches) >= self.FIND_LIMIT else ""
-        self.find_status.config(text=f"{self._find_index + 1}/{len(self._find_matches)}{more}", fg=TEXT)
+    def rebuild(self):
+        self._filter_timer.stop()
+        focus = self.current
+        self.tree.blockSignals(True)
+        self.tree.clear()
+        self.items = {}
+        rows = self.matching()
+        for c in rows:
+            item = QTreeWidgetItem()
+            item.setData(0, Qt.UserRole, c["cn"])
+            for col in (0, 2, 3, 4):
+                item.setTextAlignment(col, Qt.AlignCenter)
+            item.setFont(1, QFont(CN_FONT, 10))
+            self._paint_item(item, c)
+            self.items[c["cn"]] = item
+        self.tree.addTopLevelItems(list(self.items.values()))
+        self.tree.blockSignals(False)
+        self.update_counts()
+        target = focus if focus in self.items else (rows[0]["cn"] if rows else None)
+        if target:
+            self.focus_row(target)
+        else:
+            self.show_detail(None)
 
-    # ── bộ đếm ──
+    def update_counts(self):
+        left = [c for c in self.candidates if c["cn"] not in self.ignored]
+        counts = {"sure": sum(1 for c in left if core.is_sure_candidate(c)), "all": len(left)}
+        counts["review"] = counts["all"] - counts["sure"]
+        for key, (btn, text) in self.tier_buttons.items():
+            active = self.tier == key
+            btn.setText(f"{text} ({counts[key]})")
+            btn.setStyleSheet(f"QPushButton {{ background: {'#6a5683' if active else FIELD}; "
+                              f"color: {'white' if active else MUTED}; }}")
+        self.count_lbl.setText(f"{len(left)} ứng viên · đang hiện {self.tree.topLevelItemCount()} · "
+                               f"đã chọn {len(self.selected)}")
 
-    def _on_text_modified(self, event=None):
-        if self.txt_area.edit_modified():
-            self.txt_area.edit_modified(False)
-            if self._count_timer:
-                self.root.after_cancel(self._count_timer)
-            self._count_timer = self.root.after(400, self.update_counter)
-            if self.find_bar.winfo_ismapped() and self.find_var.get():
-                # Nội dung đổi: tìm lại, giữ gần kết quả đang xem.
-                if self._find_timer:
-                    self.root.after_cancel(self._find_timer)
-                self._find_timer = self.root.after(300, lambda: self.refresh_find(keep_position=True))
+    def refresh_row(self, cn, counts=True):
+        item = self.items.get(cn)
+        if item is not None and cn in self.by_cn:
+            self._paint_item(item, self.by_cn[cn])
+        if counts:
+            self.update_counts()
 
-    def update_counter(self):
-        self._count_timer = None
-        content = self.txt_area.get("1.0", "end-1c")
-        lines = [l.strip() for l in content.split("\n") if l.strip()]
-        if not lines:
-            self.lbl_counter.config(text="")
+    def set_tier(self, key):
+        self.tier = key
+        self.rebuild()
+
+    def sort_by(self, col):
+        if self.sort["col"] == col:
+            self.sort["reverse"] = not self.sort["reverse"]
+        else:
+            self.sort.update(col=col, reverse=col in ("count", "conf", "sel"))
+        self.tree.setHeaderLabels([text + ((" ▼" if self.sort["reverse"] else " ▲") if key == col else "")
+                                   for key, text, _w in self.COLUMNS])
+        self.rebuild()
+
+    def selection(self):
+        return [item.data(0, Qt.UserRole) for item in self.tree.selectedItems()]
+
+    def focus_row(self, cn):
+        item = self.items.get(cn)
+        if item is None:
             return
-        chars = sum(len(l) for l in lines)
-        chunks = estimate_chunks(lines)
-        # ~ 1 lần gọi API mỗi đợt + DELAY; con số chỉ để ước lượng.
-        seconds = chunks * (DELAY + 4)
-        eta = f"~{seconds // 60:.0f} phút" if seconds >= 90 else f"~{seconds:.0f} giây"
-        self.lbl_counter.config(text=f"{chars:,} ký tự · {len(lines):,} đoạn · {chunks} đợt API · {eta}".replace(",", "."))
+        self.tree.setCurrentItem(item)
+        self.tree.scrollToItem(item)
+        self.show_detail(cn)
+
+    # ── chi tiết ──
+
+    def show_detail(self, cn):
+        self.current = cn
+        self.context.clear()
+        if cn is None or cn not in self.by_cn:
+            self.current = None
+            self.detail_cn.setText("—")
+            self.detail_meta.setText("")
+            self.vi_entry.setText("")
+            for btn, text in ((self.hv_btn, "Hán-Việt: —"), (self.api_btn, "API: —"), (self.moxhi_btn, "Moxhi: —")):
+                btn.setText(text)
+                btn.setEnabled(False)
+            return
+        c = self.by_cn[cn]
+        self.detail_cn.setText(cn)
+        signals = ", ".join(c.get("signals", []))
+        self.detail_meta.setText(f"{c['type']} · {c['count']} lần · điểm {int(c['confidence'] * 100)}%"
+                                 + (f" · căn cứ: {signals}" if signals else ""))
+        self.vi_entry.setText(self.edited[cn])
+        self.hv_btn.setText(f"Hán-Việt: {c.get('hanviet') or '— (chưa đủ âm)'}")
+        self.hv_btn.setEnabled(bool(c.get("hanviet")))
+        self.api_btn.setText(f"API: {c.get('api_vi') or '—'}")
+        self.api_btn.setEnabled(bool(c.get("api_vi")))
+        self.moxhi_btn.setText(f"Moxhi: {c.get('moxhi_vi') or '—'}")
+        self.moxhi_btn.setEnabled(bool(c.get("moxhi_vi")))
+        cursor = self.context.textCursor()
+        plain, hit = QTextCharFormat(), QTextCharFormat()
+        hit.setForeground(QColor("#f0d9a8"))
+        hit.setBackground(QColor("#3a2a12"))
+        for ctx in c.get("contexts", []) or ["(không có ngữ cảnh mẫu)"]:
+            line = "… " + ctx.replace("\n", " ") + " …"
+            for piece_i, piece in enumerate(line.split(cn)):
+                if piece_i:
+                    cursor.insertText(cn, hit)
+                cursor.insertText(piece, plain)
+            cursor.insertText("\n", plain)
+        self.context.moveCursor(QTextCursor.Start)
+
+    def on_vi_change(self, text):
+        cn = self.current
+        if cn is not None and self.edited.get(cn) != text:
+            self.edited[cn] = text
+            self.refresh_row(cn)
+
+    def use_source(self, key, cns=None):
+        cns = [cn for cn in (cns or [self.current]) if cn in self.by_cn]
+        for cn in cns:
+            value = (self.by_cn[cn].get(key) or "").strip()
+            if value:
+                self.edited[cn] = value
+                self.refresh_row(cn)
+        if self.current in cns:
+            self.vi_entry.setText(self.edited[self.current])
+
+    def swap_sources(self):
+        """F2: xoay vòng sang gợi ý khác (Moxhi → Hán-Việt → API), bỏ qua gợi ý trống/trùng."""
+        for cn in [cn for cn in (self.selection() or [self.current]) if cn in self.by_cn]:
+            c = self.by_cn[cn]
+            options = []
+            for key, _ in self.SOURCES:
+                value = (c.get(key) or "").strip()
+                if value and value not in [v for _, v in options]:
+                    options.append((key, value))
+            if not options:
+                continue
+            values = [v for _, v in options]
+            now = self.edited[cn].strip()
+            nxt = options[(values.index(now) + 1) % len(options)] if now in values else options[0]
+            self.use_source(nxt[0], [cn])
+
+    def toggle(self, cns):
+        cns = [cn for cn in cns if cn in self.by_cn]
+        if not cns:
+            return
+        turn_on = any(cn not in self.selected for cn in cns)
+        for cn in cns:
+            (self.selected.add if turn_on else self.selected.discard)(cn)
+            self.refresh_row(cn)
+
+    def remove_rows(self, cns):
+        order = [self.tree.topLevelItem(i).data(0, Qt.UserRole) for i in range(self.tree.topLevelItemCount())]
+        positions = [order.index(cn) for cn in cns if cn in order]
+        following = None
+        if positions:
+            after = [cn for cn in order[max(positions) + 1:] if cn not in cns]
+            before = [cn for cn in order[:min(positions)] if cn not in cns]
+            following = (after or before or [None])[0]
+        for cn in cns:
+            self.selected.discard(cn)
+            self.ignored.add(cn)
+            item = self.items.pop(cn, None)
+            if item is not None:
+                self.tree.takeTopLevelItem(self.tree.indexOfTopLevelItem(item))
+        if following:
+            self.focus_row(following)
+        else:
+            self.show_detail(None)
+        self.update_counts()
+
+    def ignore_rows(self, cns):
+        cns = [cn for cn in cns if cn in self.by_cn]
+        if cns:
+            self.remove_rows(cns)
+            set_label(self.status, f"Đã bỏ qua: {', '.join(cns[:5])}{'…' if len(cns) > 5 else ''}", OK_GREEN)
+
+    def copy_chinese(self):
+        if not self.current:
+            return
+        QGuiApplication.clipboard().setText(self.current)
+        self.vi_entry.setFocus()
+        self.vi_entry.selectAll()
+        set_label(self.status, f"Đã copy chữ Hán: {self.current}", OK_GREEN)
+
+    def add_current(self):
+        cn = self.current
+        if not cn:
+            return
+        vi_text = self.edited[cn].strip()
+        if not vi_text:
+            warn(self, "Chú ý", "Vui lòng nhập tên tiếng Việt!")
+            return
+        temporary = self.temp_box.isChecked()
+        if self.app.add_names([(cn, vi_text)], temporary, parent=self):
+            self.remove_rows([cn])
+            set_label(self.status, f"✅ Đã thêm{' name tạm' if temporary else ''}: {cn} = {vi_text}", OK_GREEN)
+            self.tree.setFocus()
+
+    def focus_vi(self):
+        if self.current:
+            self.vi_entry.setFocus()
+            self.vi_entry.selectAll()
+
+    def tree_step(self, delta):
+        self.tree.setFocus()
+        index = self.tree.indexOfTopLevelItem(self.tree.currentItem()) if self.tree.currentItem() else -1
+        target = self.tree.topLevelItem(max(0, min(self.tree.topLevelItemCount() - 1, index + delta)))
+        if target is not None:
+            self.tree.setCurrentItem(target)
+
+    # ── thêm thủ công ──
+
+    def on_manual_cn(self, text):
+        cn = unicodedata.normalize("NFC", text.strip())
+        if not cn:
+            set_label(self.manual_info, "", MUTED)
+            return
+        hits = self.source_text.count(cn)
+        known = cn in self.app.load_name_config() or cn in self.app.temp_names
+        set_label(self.manual_info, ("đã có trong name · " if known else "") + f"{hits} lần trong bài",
+                  WARN if known else (MUTED if hits else ERROR))
+        suggestion = self.app._suggest_vi(cn)
+        if self.manual_vi.text().strip() in ("", self.manual_auto):
+            self.manual_vi.setText(suggestion)
+            self.manual_auto = suggestion
+
+    def add_manual(self):
+        cn = unicodedata.normalize("NFC", self.manual_cn.text().strip())
+        vi = self.manual_vi.text().strip()
+        if not cn or not vi:
+            warn(self, "Chú ý", "Nhập cả chữ Hán và tên tiếng Việt.")
+            return
+        temporary = self.temp_box.isChecked()
+        if self.app.add_names([(cn, vi)], temporary, parent=self):
+            if cn in self.by_cn and cn not in self.ignored:
+                self.remove_rows([cn])
+            set_label(self.status, f"✅ Đã thêm{' name tạm' if temporary else ''} (thủ công): {cn} = {vi}", OK_GREEN)
+            self.manual_cn.clear()
+            self.manual_vi.clear()
+            self.manual_auto = ""
+            self.manual_cn.setFocus()
+
+    def take_selection(self):
+        """Bôi đen chữ Hán trong khung ngữ cảnh → điền vào ô thêm thủ công."""
+        picked = self.context.textCursor().selectedText().strip()
+        if picked and len(picked) <= 12 and all("\u3400" <= ch <= "\u9fff" or ch == "·" for ch in picked):
+            self.manual_cn.setText(picked)
+            self.manual_vi.setFocus()
+            self.manual_vi.selectAll()
+
+    # ── thêm theo lô ──
+
+    def select_visible(self, value):
+        for cn in list(self.items):
+            if value and self.edited[cn].strip():
+                self.selected.add(cn)
+            elif not value:
+                self.selected.discard(cn)
+            self.refresh_row(cn, counts=False)
+        self.update_counts()
+
+    def add_selected(self):
+        entries = [(c["cn"], self.edited[c["cn"]].strip()) for c in self.candidates
+                   if c["cn"] in self.selected and c["cn"] not in self.ignored and self.edited[c["cn"]].strip()]
+        missing = sum(1 for cn in self.selected if cn not in self.ignored and not self.edited[cn].strip())
+        if not entries:
+            warn(self, "Chú ý", "Chưa chọn tên nào có bản dịch tiếng Việt.")
+            return
+        temporary = self.temp_box.isChecked()
+        if not self.app.add_names(entries, temporary, parent=self):
+            return
+        self.remove_rows([cn for cn, _vi in entries])
+        suffix = f"; bỏ qua {missing} mục trống" if missing else ""
+        set_label(self.status, f"✅ Đã lưu {len(entries)} tên vào {'name tạm' if temporary else 'name.cfg'}{suffix}",
+                  OK_GREEN)
+
+
+class _ScanEntry(LineEdit):
+    """Ô "Bản dịch" của Scan Names: Enter thêm, Esc về bảng, ↑↓ đi dòng, F2 đổi gợi ý."""
+
+    def __init__(self, dialog):
+        super().__init__()
+        self.dialog = dialog
+
+    def keyPressEvent(self, event):
+        key, d = event.key(), self.dialog
+        if key in (Qt.Key_Return, Qt.Key_Enter):
+            d.add_current()
+        elif key == Qt.Key_Escape:
+            d.tree.setFocus()
+        elif key == Qt.Key_Down:
+            d.tree_step(1)
+        elif key == Qt.Key_Up:
+            d.tree_step(-1)
+        elif key == Qt.Key_F2:
+            d.swap_sources()
+        else:
+            super().keyPressEvent(event)
+
+
+# ═════════════════════════ Name tạm & R2 ═════════════════════════
+
+class TempNamesDialog(QDialog):
+    def __init__(self, app):
+        super().__init__(app)
+        self.app = app
+        self.setWindowTitle("🏷 Name tạm — chỉ dùng cho lượt dịch này")
+        restore_geometry(self, "builder_temp_names", 540, 460)
+        self.setMinimumSize(420, 360)
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(16, 12, 16, 12)
+        lay.addWidget(label("Áp dụng cho lần dịch / dịch lại tiếp theo, không ghi vào name.cfg.\n"
+                            "Tự xoá sau khi Lưu data.json hoặc Lưu vào thư viện."))
+        self.ent_cn, self.ent_vi = LineEdit(), LineEdit()
+        self.ent_cn.setFixedWidth(130)
+        lay.addLayout(hbox(self.ent_cn, label("="), (self.ent_vi, 1), button("➕ Thêm", self.add, "#8a5a22")))
+        self.listbox = QListWidget()
+        self.listbox.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        lay.addWidget(self.listbox, 1)
+        self.status = label("", MUTED)
+        lay.addWidget(self.status)
+        lay.addLayout(hbox(button("Xoá mục chọn", self.remove_selected), button("Xoá hết", self.clear_all, "#5a2a24"),
+                           "stretch", button("💾 Lưu vĩnh viễn vào name.cfg", self.make_permanent, ACCENT),
+                           button("Đóng", self.reject)))
+        self.ent_cn.returnPressed.connect(self.ent_vi.setFocus)
+        self.ent_vi.returnPressed.connect(self.add)
+        self.listbox.itemSelectionChanged.connect(self.on_select)
+        QShortcut(QKeySequence("Delete"), self.listbox, self.remove_selected, context=Qt.WidgetShortcut)
+        self.keys = []
+        self.refresh()
+        self.ent_cn.setFocus()
+
+    def done(self, code):
+        save_geometry(self, "builder_temp_names")
+        super().done(code)
+
+    def picked(self):
+        return [self.keys[self.listbox.row(item)] for item in self.listbox.selectedItems()]
+
+    def refresh(self):
+        self.keys = sorted(self.app.temp_names)
+        self.listbox.clear()
+        self.listbox.addItems([f"{cn}  =  {self.app.temp_names[cn]}" for cn in self.keys])
+        self.status.setText(f"{len(self.keys)} name tạm" if self.keys else "Chưa có name tạm nào.")
+
+    def add(self):
+        cn, vi = self.ent_cn.text().strip(), self.ent_vi.text().strip()
+        if not cn or not vi:
+            warn(self, "Chú ý", "Nhập cả chữ Hán và tên tiếng Việt.")
+            return
+        if self.app.add_temp_names([(cn, vi)], parent=self):
+            self.ent_cn.clear()
+            self.ent_vi.clear()
+            self.ent_cn.setFocus()
+            self.refresh()
+
+    def on_select(self):
+        picked = self.picked()
+        if len(picked) == 1:   # chọn một dòng để sửa: nạp lên ô nhập
+            self.ent_cn.setText(picked[0])
+            self.ent_vi.setText(self.app.temp_names[picked[0]])
+
+    def remove_selected(self):
+        for cn in self.picked():
+            self.app.temp_names.pop(cn, None)
+        self.app.refresh_temp_names_button()
+        self.refresh()
+
+    def make_permanent(self):
+        picked = self.picked() or list(self.keys)
+        if picked and self.app.add_names([(cn, self.app.temp_names[cn]) for cn in picked], False, parent=self):
+            self.refresh()
+            self.status.setText(f"✅ Đã lưu {len(picked)} name vào name.cfg")
 
     def clear_all(self):
-        self.ent_title.delete(0, tk.END)
-        self.txt_area.delete(1.0, tk.END)
-        self.clear_temp_names()  # truyện mới: name tạm của truyện cũ không còn dùng
-        self.set_status("Sẵn sàng", "#8a7f70")
-        self.btn_clear.pack_forget()
+        if self.app.temp_names and ask_yes_no(self, "Xoá name tạm", "Xoá hết name tạm?"):
+            self.app.clear_temp_names()
+            self.refresh()
 
-    def handle_drop(self, event):
-        self.drop_zone.config(bg=PANEL, fg="#8a7f70")
-        try:
-            paths = self.root.tk.splitlist(event.data)
-        except tk.TclError:
-            paths = [event.data.strip("{}")]
+
+class R2Dialog(QDialog):
+    """Khoá API R2 (lưu ngoài repo) + đồng bộ / khôi phục truyện bằng tay."""
+    ROWS = (("account_id", "Account ID", False), ("access_key_id", "Access Key ID", False),
+            ("secret_access_key", "Secret Access Key", True), ("bucket", "Bucket", False))
+
+    def __init__(self, app):
+        super().__init__(app)
+        self.app = app
+        self.busy = False
+        self.setWindowTitle("☁ Cloudflare R2 — nơi lưu truyện cho trang web")
+        self.creds = r2_store.load_credentials() or {}
+        grid = QGridLayout(self)
+        grid.setContentsMargins(14, 12, 14, 14)
+        grid.addWidget(label("Truyện lưu xong được tự đẩy lên R2 (không commit/push). Khoá API: R2 → Manage API tokens,\n"
+                             "quyền Object Read & Write, chỉ bucket của trang. Khoá chỉ lưu trên máy này.", MUTED, 9),
+                       0, 0, 1, 2)
+        self.fields = {}
+        for i, (key, text, secret) in enumerate(self.ROWS, start=1):
+            grid.addWidget(label(text, "#e0d6c6", 9), i, 0)
+            entry = LineEdit("" if secret else self.creds.get(key, "stv-library" if key == "bucket" else ""))
+            entry.setMinimumWidth(420)
+            entry.setStyleSheet("font-family: Consolas;")
+            if secret:
+                entry.setEchoMode(QLineEdit.EchoMode.Password)
+            grid.addWidget(entry, i, 1)
+            self.fields[key] = entry
+        if self.creds.get("secret_access_key"):
+            grid.addWidget(label("(để trống ô Secret = giữ khoá đã lưu)", HINT, 8), 5, 1)
+        self.status = label(f"Cấu hình: {r2_store.config_path()}" if self.creds else "Chưa cấu hình.", OK_GREEN, 9, wrap=True)
+        grid.addWidget(self.status, 6, 0, 1, 2)
+        grid.addLayout(hbox(button("Lưu & kiểm tra", self.save_and_check, "#46734f", bold=True),
+                            button("Đồng bộ ngay", self.sync_now, "#6a5683", bold=True),
+                            button("Xoá file thừa", self.prune, "#8a372e", bold=True), "stretch",
+                            button("Tải truyện từ R2 về", self.restore, bold=True)), 7, 0, 1, 2)
+
+    def run(self, text, job, done):
+        if self.busy:
+            return
+        self.busy = True
+        self.status.setText(text)
+
+        def work():
+            try:
+                message = job()
+            except Exception as exc:
+                message = f"⚠ {exc}"
+            self.app.bridge.call(self._finish, message, done)
+        threading.Thread(target=work, daemon=True).start()
+
+    def _finish(self, message, done):
+        self.busy = False
+        self.status.setText(message)
+        done(message)
+
+    def save_and_check(self):
+        values = {k: e.text().strip() for k, e in self.fields.items()}
+        if not values["secret_access_key"]:
+            values["secret_access_key"] = self.creds.get("secret_access_key", "")
+        if not all(values.values()):
+            self.status.setText("⚠ Điền đủ 4 ô.")
+            return
+
+        def job():
+            r2_store.R2Client(values).check()          # thử ghi + xoá một file nhỏ
+            r2_store.save_credentials(**values)
+            return "✅ Kết nối được và đã lưu khoá. Bấm “Đồng bộ ngay” để đẩy truyện lên."
+
+        def saved(message):
+            if not message.startswith("✅"):
+                return
+            self.creds.update(values)
+            # Xoá cảnh báo "chưa cấu hình" cũ trên thanh trạng thái và đẩy ngay phần còn chờ.
+            self.app.set_status("R2: đã lưu khoá — đang đồng bộ truyện lên R2…")
+            r2_store.reset_unconfigured_warning()
+            r2_store.request_sync(BASE_DIR)
+        self.run("Đang kiểm tra kết nối…", job, saved)
+
+    def sync_now(self, mass=False):
+        if not r2_store.load_credentials():
+            self.status.setText("⚠ Chưa có khoá: lưu khoá trước.")
+            return
+
+        def job():
+            client = r2_store.R2Client(r2_store.load_credentials())
+            result = r2_store.sync(BASE_DIR, client, lambda m: self.app.bridge.call(self.status.setText, m),
+                                   allow_mass_delete=mass)
+            if result.errors:
+                return f"⚠ {result.summary()} — {result.errors[0]}"
+            if result.held_deletes:
+                return (f"⚠ {result.summary()}. Có {len(result.held_deletes)} file trên R2 không còn trên máy "
+                        "(vd. {}) — kiểm tra rồi bấm “Xoá file thừa”.".format(result.held_deletes[0]))
+            return f"✅ R2: {result.summary()}."
+        self.run("Đang đồng bộ… (lần đầu đẩy toàn bộ truyện, có thể mất vài phút)", job,
+                 lambda m: self.app.set_status(m.replace("✅ ", ""), ERROR if m.startswith("⚠") else None))
+
+    def prune(self):
+        if ask_yes_no(self, "Xoá file thừa trên R2", "Xoá trên R2 mọi chương/truyện không còn trong thư mục "
+                                                    "trên máy?\nKhông hoàn tác được.", default_no=True, warning=True):
+            self.sync_now(mass=True)
+
+    def restore(self):
+        if not ask_yes_no(self, "Tải truyện từ R2 về",
+                          f"Tải mọi truyện trên R2 về {BASE_DIR}?\nFile đã có trên máy được giữ nguyên."):
+            return
+
+        def job():
+            count, errors = r2_store.restore(BASE_DIR, progress=lambda m: self.app.bridge.call(self.status.setText, m))
+            if errors:
+                return f"⚠ Đã ghi {count} file, {len(errors)} lỗi (vd. {errors[0]})."
+            return f"✅ Đã ghi {count} file."
+        self.run("Đang tải từ R2 về…", job, lambda m: None)
+
+
+# ═════════════════════════ Cửa sổ chính ═════════════════════════
+
+class TranslatorWindow(QWidget, core.TranslatorCore):
+    def __init__(self, embedded=False):
+        """embedded: nằm trong studio.py (cửa sổ, kích thước do app chứa quản lý)."""
+        QWidget.__init__(self)
+        core.TranslatorCore.__init__(self)
+        self.embedded = embedded
+        self.bridge = UiBridge(self)
+        self.reviews = []
+        self._worker = None
+        self._cancel_event = None
+        self._busy = False
+        if not embedded:
+            self.setWindowTitle("Story Translator Pro - SangTacViet API")
+            restore_geometry(self, "builder_main", 760, 640)
+        self.setAcceptDrops(True)
+        self.setup_ui()
+        self._count_timer = QTimer(self, singleShot=True, interval=400)
+        self._count_timer.timeout.connect(self.update_counter)
+        self.txt_area.textChanged.connect(self._count_timer.start)
+        self._progress_anim = QVariantAnimation(self, duration=450, easingCurve=QEasingCurve.OutCubic)
+        self._progress_anim.valueChanged.connect(lambda v: self.progress.setValue(int(v)))
+
+        # Kết quả đồng bộ R2 chạy nền hiện trên thanh trạng thái (lỗi màu đỏ); mở app thì đẩy nốt
+        # phần lần trước chưa lên được (mất mạng, tắt app giữa chừng…).
+        r2_store.add_listener(lambda message, ok: self.bridge.call(self.set_status, message, None if ok else ERROR))
+        r2_store.request_sync(BASE_DIR)
+        # Nạp sẵn model quét tên đã có trên máy để lần Scan Names đầu không phải chờ (STV_NER_PRELOAD=0 để tắt).
+        if (core._NAME_SCANNER_OK or core._MOXHI_OK) and os.environ.get("STV_NER_PRELOAD", "1") != "0":
+            QTimer.singleShot(1500, lambda: threading.Thread(target=self.preload_name_model,
+                                                             name="name-preload", daemon=True).start())
+
+    # ── giao diện ──
+
+    def setup_ui(self):
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(20, 10, 20, 8)
+        title = label("DỊCH TRUYỆN TRUNG - VIỆT", "#f4ede1", 14, True)
+        title.setAlignment(Qt.AlignCenter)
+        lay.addWidget(title)
+        self.ent_title = LineEdit()
+        lay.addLayout(hbox(label("Tên truyện:"), (self.ent_title, 1)))
+        self.lbl_counter = label("", "#8a7f70", 9)
+        lay.addLayout(hbox(label("Nội dung tiếng Trung:"), "stretch", self.lbl_counter, margins=(0, 8, 0, 0)))
+        self.txt_area = PlainTextEdit()
+        self.txt_area.setAcceptDrops(False)   # file thả vào đâu cũng do cửa sổ xử lý
+        self.txt_area.setStyleSheet(f"QPlainTextEdit {{ font-family: '{CN_FONT}'; font-size: 11pt; padding: 6px; }}")
+        self.find_bar = FindBar(self.txt_area, self)
+        lay.addWidget(self.find_bar)
+        lay.addWidget(self.txt_area, 1)
+
+        self.drop_zone = QLabel("📂  Kéo thả file .txt vào đây")
+        self.drop_zone.setAlignment(Qt.AlignCenter)
+        self._drop_style(False)
+        lay.addWidget(self.drop_zone)
+
+        self.btn_file = button("📁 Chọn File .txt", self.load_file)
+        self.btn_scan = button("🔍 Scan Names", self.open_scan_names_dialog, "#6a5683")
+        self.btn_draft = button("📝 Mở nháp", self.open_draft)
+        self.btn_temp_names = button("🏷 Name tạm", lambda: TempNamesDialog(self).exec())
+        self.btn_r2 = button("☁ R2", lambda: R2Dialog(self).exec())
+        self.btn_clear = button("🗑️ Xóa tất cả", self.clear_all, "#9a3f35")
+        self.btn_cancel = button("⏹ Huỷ", self.cancel_translation, "#8a372e")
+        self.btn_run = button("🚀 Bắt đầu dịch", self.start_thread, ACCENT, bold=True)
+        self.btn_clear.hide()
+        self.btn_cancel.hide()
+        lay.addLayout(hbox(self.btn_file, self.btn_scan, self.btn_draft, self.btn_temp_names, self.btn_r2, "stretch",
+                           self.btn_clear, self.btn_cancel, self.btn_run, margins=(0, 6, 0, 0)))
+        self.progress = QProgressBar()
+        self.progress.setTextVisible(False)
+        self.progress.setFixedHeight(8)
+        self.progress.setRange(0, 1000)
+        holder = QWidget()   # giữ chỗ cố định: thanh hiện/ẩn không làm co giãn ô nội dung
+        holder.setFixedHeight(14)
+        hl = QVBoxLayout(holder)
+        hl.setContentsMargins(0, 3, 0, 3)
+        hl.addWidget(self.progress)
+        self.progress.hide()
+        lay.addWidget(holder)
+        self.lbl_status = label("Sẵn sàng  ·  Ctrl+Enter để dịch", "#8a7f70")
+        self.lbl_status.setAlignment(Qt.AlignCenter)
+        lay.addWidget(self.lbl_status)
+
+        # Chỉ có hiệu lực khi đang ở trang này (studio có 2 trang cùng phím tắt).
+        ctx = Qt.WidgetWithChildrenShortcut
+        for keys, slot in (("Ctrl+Return", self.start_thread), ("Ctrl+Enter", self.start_thread),
+                           ("Ctrl+F", self.find_bar.open_bar), ("F3", lambda: self.find_bar.step(1)),
+                           ("Shift+F3", lambda: self.find_bar.step(-1)), ("Ctrl+O", self.load_file)):
+            QShortcut(QKeySequence(keys), self, slot, context=ctx)
+        QShortcut(QKeySequence("Escape"), self.txt_area,
+                  lambda: self.find_bar.isVisible() and self.find_bar.close_bar(), context=Qt.WidgetShortcut)
+
+    def _drop_style(self, active):
+        self.drop_zone.setStyleSheet(
+            f"QLabel {{ background: {FIELD if active else PANEL}; color: {'#d9a35c' if active else '#8a7f70'}; "
+            f"border: 2px dashed {'#d9a35c' if active else '#3a332c'}; border-radius: 4px; padding: 12px; }}")
+
+    def set_status(self, text, color=None):
+        set_label(self.lbl_status, text, color)
+
+    def report_status(self, text):   # TranslatorCore gọi từ luồng nền
+        self.bridge.call(self.set_status, text)
+
+    def update_counter(self):
+        self.lbl_counter.setText(core.counter_text(raw_text(self.txt_area)))
+
+    # ── kéo thả / mở file ──
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+            self._drop_style(True)
+
+    def dragLeaveEvent(self, event):
+        self._drop_style(False)
+
+    def dropEvent(self, event):
+        self._drop_style(False)
+        paths = [u.toLocalFile() for u in event.mimeData().urls() if u.isLocalFile()]
         txt_files = [p for p in paths if p.lower().endswith(".txt")]
         if not txt_files:
-            messagebox.showwarning("Chú ý", "Chỉ hỗ trợ file .txt!")
+            warn(self, "Chú ý", "Chỉ hỗ trợ file .txt!")
             return
+        event.acceptProposedAction()
         self._load_from_path(txt_files[0])
         if len(txt_files) > 1:
-            self.set_status(f"Đã tải {os.path.basename(txt_files[0])} (bỏ qua {len(txt_files) - 1} file còn lại)", "#e0b25c")
+            self.set_status(f"Đã tải {os.path.basename(txt_files[0])} (bỏ qua {len(txt_files) - 1} file còn lại)", WARN)
 
     def load_file(self):
-        file_path = filedialog.askopenfilename(filetypes=[("Text files", "*.txt")])
-        if file_path:
-            self._load_from_path(file_path)
+        path, _ = QFileDialog.getOpenFileName(self, "Chọn file truyện", "", "Text files (*.txt)")
+        if path:
+            self._load_from_path(path)
 
     def _load_from_path(self, file_path):
         try:
             text, encoding = store.read_text_file(file_path)
-        except Exception as e:
-            messagebox.showerror("Lỗi", f"Không thể đọc file:\n{e}")
+        except Exception as exc:
+            error(self, "Lỗi", f"Không thể đọc file:\n{exc}")
             return
-        self.txt_area.delete(1.0, tk.END)
-        self.txt_area.insert(tk.END, text)
-
-        title_suggest = os.path.splitext(os.path.basename(file_path))[0]
-        self.ent_title.delete(0, tk.END)
-        self.ent_title.insert(0, title_suggest)
-        color="#e0b25c" if "lỗi" in encoding else "#8fc29a"
-        self.set_status(f"Đã tải: {os.path.basename(file_path)}  ·  mã hoá {encoding}", color)
+        self.txt_area.setPlainText(text)
+        self.ent_title.setText(os.path.splitext(os.path.basename(file_path))[0])
+        self.set_status(f"Đã tải: {os.path.basename(file_path)}  ·  mã hoá {encoding}",
+                        WARN if "lỗi" in encoding else OK_GREEN)
         self.update_counter()
 
     def open_draft(self):
-        os.makedirs(DRAFT_DIR, exist_ok=True)
-        path = filedialog.askopenfilename(title="Mở bản nháp", initialdir=DRAFT_DIR,
-                                          filetypes=[("Bản nháp", "*.json")])
+        os.makedirs(core.DRAFT_DIR, exist_ok=True)
+        path, _ = QFileDialog.getOpenFileName(self, "Mở bản nháp", core.DRAFT_DIR, "Bản nháp (*.json)")
         if not path:
             return
         try:
-            with open(path, "r", encoding="utf-8") as f:
-                draft = json.load(f)
-            cn, vi = draft["cn"], draft["vi"]
-            if len(cn) != len(vi):
-                raise ValueError("số đoạn Trung/Việt không khớp")
-        except Exception as error:
-            messagebox.showerror("Lỗi", f"Không mở được nháp:\n{error}")
+            title, slug, cn, vi, stamp = core.read_draft(path)
+        except Exception as exc:
+            error(self, "Lỗi", f"Không mở được nháp:\n{exc}")
             return
-        title = draft.get("title") or os.path.splitext(os.path.basename(path))[0]
-        slug = draft.get("slug") or slugify_vn(title)
-        self.btn_run.config(state="disabled")
-        self.btn_clear.pack_forget()
-        self.set_status(f"Đang xem nháp: {title} ({draft.get('time', '')})", "#e0b25c")
-        ReviewWindow(self.root, title, slug, cn, vi, self, from_draft=True)
-
-    def update_catalog(self, title, slug):
-        catalog_path = os.path.join(STORIES_DIR, "list.json")
-        os.makedirs(STORIES_DIR, exist_ok=True)
-        catalog = read_catalog(catalog_path)  # lỗi đọc -> CatalogError, không ghi đè
-        existing = next((item for item in catalog if item.get('slug') == slug), None)
-        now = datetime.datetime.now()
-        if not existing:
-            catalog.append({"title": title, "slug": slug, "date": now.strftime("%d/%m/%Y"), "timestamp": now.timestamp()})
-        else:
-            existing['date'] = now.strftime("%d/%m/%Y")
-            existing['timestamp'] = now.timestamp()
-        write_catalog(catalog_path, catalog)
-
-    def load_name_config(self):
-        cfg_path = name_cfg_path()
-        if not os.path.exists(cfg_path):
-            try:
-                with open(cfg_path, "w", encoding="utf-8") as f:
-                    f.write("# Thêm tên cần dịch cố định vào đây theo định dạng Trung=Việt, ví dụ:\n")
-                    f.write("# 轩辕=Hiên Viên\n")
-            except Exception as e:
-                print(f"Lỗi khi tạo file name.cfg: {e}")
-
-        name_dict = {}
-        if os.path.exists(cfg_path):
-            try:
-                with open(cfg_path, "r", encoding="utf-8-sig") as f:
-                    for line in f:
-                        line = line.strip()
-                        if not line or line.startswith("#"):
-                            continue
-                        if "=" in line:
-                            cn, vi = line.split("=", 1)
-                            if cn.strip() and vi.strip():
-                                name_dict[unicodedata.normalize('NFC', cn.strip())] = unicodedata.normalize('NFC', vi.strip())
-            except Exception as e:
-                print(f"Lỗi khi đọc file name.cfg: {e}")
-        return name_dict
-
-    def translate_api(self, text):
-        headers = {"Origin": "https://www.bilibili.com", "Referer": "https://www.bilibili.com/", "User-Agent": "Mozilla/5.0"}
-        try:
-            res = requests.post(API_URL, data={"sajax": "trans", "content": text}, headers=headers, timeout=45)
-            if res.status_code == 200:
-                # Normalize NFC ngay khi nhận response để đảm bảo ký tự tiếng Việt đúng chuẩn
-                return unicodedata.normalize('NFC', res.text.strip())
-            return None
-        except Exception:
-            return None
-
-    def translate_lines(self, lines, cancel=None):
-        """Keep each translated paragraph paired with its original input line (worker thread)."""
-        if not lines:
-            return []
-        cancelled = (lambda: cancel is not None and cancel.is_set())
-        translate = self.translate_api
-        result = translate("\n".join(lines))
-        if not result and not cancelled():
-            time.sleep(3)
-            result = translate("\n".join(lines))
-        if not result:
-            return ["[Lỗi dịch]"] * len(lines)
-
-        translated = result.splitlines()
-        if len(translated) == len(lines):
-            return translated
-        if len(lines) == 1:
-            # Multiple output lines still belong to the same source paragraph.
-            return [" ".join(translated)]
-
-        # Never truncate extra lines or silently shift the CN/VI pairing.
-        aligned = []
-        for i, line in enumerate(lines):
-            if cancelled():
-                aligned.extend(["[Lỗi dịch]"] * (len(lines) - i))
-                break
-            self.call_ui(self.set_status, f"API trả lệch số dòng — đang dịch riêng {i + 1}/{len(lines)}...")
-            time.sleep(DELAY)
-            reply = translate(line)
-            if not reply:
-                time.sleep(3)
-                reply = translate(line)
-            aligned.append(" ".join(reply.splitlines()) if reply else "[Lỗi dịch]")
-        return aligned
-
-    # ─────────────────────────────────────────────────────────────
-    # SCAN NAMES FEATURE
-    # ─────────────────────────────────────────────────────────────
-
-    def _is_cjk(self, ch: str) -> bool:
-        return '\u4e00' <= ch <= '\u9fff'
-
-    def _han_viet_table(self):
-        """Bảng Hán-Việt = bảng có sẵn + âm học từ name.cfg; tính lại khi name.cfg đổi."""
-        path = name_cfg_path()
-        try:
-            stamp = os.path.getmtime(path)
-        except OSError:
-            stamp = None
-        cached = getattr(self, "_han_viet_cache", None)
-        if cached is None or cached[0] != stamp:
-            self._han_viet_cache = (stamp, _hv.build_table(path))
-        return self._han_viet_cache[1]
-
-    def _suggest_vi(self, cn: str) -> str:
-        """Gợi ý Hán-Việt cho tên; rỗng nếu còn chữ chưa biết âm."""
-        if not _HAN_VIET_OK:
-            return ""
-        return _hv.han_viet_name(cn, self._han_viet_table())
-
-    def scan_dictionary(self):
-        """Mined name dictionary (names.json) so known phrases are snapped whole."""
-        if not hasattr(self, "_scan_dictionary_cache"):
-            self._scan_dictionary_cache = {}
-            path = os.path.join(BASE_DIR, "names.json")
-            try:
-                with open(path, "r", encoding="utf-8") as stream:
-                    self._scan_dictionary_cache = json.load(stream).get("entries", {})
-            except (OSError, ValueError):
-                self._scan_dictionary_cache = {}
-        return self._scan_dictionary_cache
-
-    def scan_name_candidates(self, text: str, max_results: int = 2000, on_progress=None, temp_names=()) -> list:
-        """Quét tên chữ Hán trên máy (CUDA/CPU): MoxhiMT-30-Tag và/hoặc BERT NER, rồi gộp kết quả."""
-        engines = self._scan_engines()
-        if not engines:
-            raise RuntimeError("Không tải được bộ quét tên (moxhi_scanner.py / gpu_name_scanner.py). "
-                               "Xem SCAN_NAMES.md để cài đặt.")
-        glossary = set(self.load_name_config()) | set(temp_names)
-        common = dict(existing_glossary=glossary, max_results=max_results, on_progress=on_progress,
-                      dictionary=self.scan_dictionary())
-        found = {}
-        for engine in engines:
-            if engine == 'moxhi':
-                found['moxhi'] = _moxhi.MoxhiScanner().scan(text, reading=self._suggest_vi, **common)
-            else:
-                found['bert'] = _NameScanner().scan(text, **common)
-        if len(found) == 2:
-            results = _moxhi.merge_candidates(found['bert'], found['moxhi'])
-        else:
-            results = next(iter(found.values()))
-        # suggested_vi được điền sau (Moxhi → Hán-Việt → API thường) khi đã có đủ ứng viên.
-        for item in results:
-            item['suggested_vi'] = ''
-            item.setdefault('moxhi_vi', '')
-        return results[:max_results]
-
-    def _fill_name_suggestions_from_api(self, candidates):
-        from name_suggestions import NameSuggestions
-        if not hasattr(self, '_name_suggestions'):
-            self._name_suggestions = NameSuggestions()
-
-        def fetch(names):
-            reply = self.translate_api('\n'.join(names))
-            if not reply:
-                raise RuntimeError('API dịch thường không trả kết quả.')
-            return reply.splitlines()
-
-        self._name_suggestions.fill(candidates, fetch, ('legacy', API_URL))
-        return candidates
-
-    def open_scan_names_dialog(self):
-        """Open the Scan Names dialog."""
-        raw_text = self.txt_area.get(1.0, tk.END).strip()
-        if not raw_text:
-            messagebox.showwarning("Chú ý", "Vui lòng nhập nội dung tiếng Trung trước!")
-            return
-
-        self.root.config(cursor="watch")
-        self.btn_scan.config(state="disabled", text="⏳ Đang quét...")
-        self.root.update_idletasks()
-
-        results = queue.Queue()
-        known_temp = set(self.temp_names)  # chụp trên luồng chính
-        def worker():
-            try:
-                candidates = self.scan_name_candidates(
-                    raw_text, on_progress=lambda msg: results.put((None, msg, "progress")), temp_names=known_temp)
-                api_warning = None
-                try:
-                    candidates = self._fill_name_suggestions_from_api(candidates)
-                except Exception as error:
-                    api_warning = str(error)
-                for c in candidates:
-                    c['api_vi'] = c.get('suggested_vi', '')
-                    c['hanviet'] = self._suggest_vi(c['cn'])
-                    # Ưu tiên tên Moxhi dịch trong ngữ cảnh (khớp name.cfg ~90%); không có thì tên người
-                    # dùng Hán-Việt (đúng thói quen trong name.cfg), còn lại dùng API.
-                    if c.get('moxhi_vi'):
-                        c['suggested_vi'] = c['moxhi_vi']
-                    elif c['hanviet'] and (c['type'] == 'PERSON' or not c['api_vi']):
-                        c['suggested_vi'] = c['hanviet']
-                results.put((candidates, api_warning, None))
-            except Exception as error:
-                results.put((None, None, error))
-
-        def poll():
-            try:
-                candidates, api_warning, error = results.get_nowait()
-            except queue.Empty:
-                self.root.after(50, poll)
-                return
-            if error == "progress":
-                self.set_status(api_warning)
-                self.root.after(50, poll)
-                return
-            self.root.config(cursor="")
-            self.btn_scan.config(state="normal", text="🔍 Scan Names")
-            if error:
-                messagebox.showerror("Lỗi", f"Lỗi khi quét tên:\n{error}")
-                return
-            note = getattr(self, '_scan_note', '')
-            self.set_status(f"Đã quét xong: tìm thấy {len(candidates)} ứng viên" + (f" · ⚠ {note}" if note else ""),
-                            "#e0b25c" if note else None)
-            if api_warning:
-                messagebox.showwarning(
-                    "Không tự dịch được tên",
-                    f"Tên người vẫn có gợi ý Hán-Việt; mục còn trống có thể dùng nút Copy Hán để tra.\n\n{api_warning}",
-                    parent=self.root,
-                )
-            self._show_scan_names_dialog(candidates)
-
-        threading.Thread(target=worker, daemon=True).start()
-        self.root.after(50, poll)
-
-    def _show_scan_names_dialog(self, candidates):
-        """Scan Names: bảng Treeview + khung chi tiết (nhanh với hàng trăm ứng viên)."""
-        dlg = tk.Toplevel(self.root)
-        dlg.title("🔍 Scan Names — Danh sách tên phát hiện")
-        dlg.configure(bg=BG)
-        dlg.transient(self.root)
-        dlg.resizable(True, True)
-        scan_temp_var = tk.BooleanVar(master=dlg, value=False)  # thêm vào name tạm thay vì name.cfg
-
-        cfg = load_config()
-        dlg.geometry(cfg.get("builder_scan_names", "900x640"))
-        dlg.minsize(760, 520)
-        filter_after_id = None
-
-        def on_close(event=None):
-            nonlocal filter_after_id
-            if filter_after_id is not None:
-                dlg.after_cancel(filter_after_id)
-                filter_after_id = None
-            save_config({"builder_scan_names": dlg.geometry()})
-            dlg.destroy()
-        dlg.protocol("WM_DELETE_WINDOW", on_close)
-
-        # Header
-        hdr = tk.Frame(dlg, bg=PANEL, pady=10)
-        hdr.pack(fill=tk.X)
-        tk.Label(hdr, text="🔍 Scan Names", fg="#f4ede1", bg=PANEL, font=("Segoe UI", 12, "bold")).pack(side=tk.LEFT, padx=16)
-        hdr_count_lbl = tk.Label(hdr, text=f"{len(candidates)} ứng viên tìm được", fg=MUTED, bg=PANEL, font=("Segoe UI", 9))
-        hdr_count_lbl.pack(side=tk.LEFT)
-
-        def rerun():
-            on_close()
-            self.open_scan_names_dialog()
-
-        tk.Button(hdr, text="🔄 Quét lại", bg="#3a332c", fg="#f4ede1", relief="flat", borderwidth=0,
-                  padx=10, pady=4, font=("Segoe UI", 9), cursor="hand2", command=rerun).pack(side=tk.RIGHT, padx=16)
-
-        if not candidates:
-            tk.Label(dlg, text="Bộ quét không tìm thấy tên mới. Có thể thêm thủ công ở phía dưới.",
-                     fg="#e0b25c", bg=BG, font=("Segoe UI", 10)).pack(pady=(10, 0))
-
-        # Chia 2 nhóm thay cho cắt cứng: "Chắc chắn" (lặp lại nhiều / điểm cao / có trong từ điển)
-        # xem trước, "Cần xem" chứa phần nhiễu nhiều nhưng vẫn giữ để không bỏ sót tên.
-        def is_sure(c):
-            # Tên ≥2 chữ điểm rất cao là tên thật dù chỉ xuất hiện 1 lần (nhân vật phụ);
-            # nhiễu thường là họ 1 chữ đứng riêng hoặc từ thường điểm thấp.
-            multi = len(c['cn']) >= 2
-            return (c['count'] >= 3
-                    or (multi and (c['confidence'] >= 0.95 or (c['count'] >= 2 and c['confidence'] >= 0.85)))
-                    or any('Từ điển' in s or 'cùng thấy' in s for s in c.get('signals', [])))
-
-        def rank(c):
-            import math
-            return c['confidence'] * (1 + math.log2(c['count']))
-
-        tier_bar = tk.Frame(dlg, bg=PANEL, padx=16, pady=(0))
-        tier_bar.pack(fill=tk.X)
-        tier_var = tk.StringVar(value="sure" if any(is_sure(c) for c in candidates) else "review")
-        tier_buttons = {}
-        for key, label in (("sure", "Chắc chắn"), ("review", "Cần xem"), ("all", "Tất cả")):
-            b = tk.Button(tier_bar, text=label, relief="flat", borderwidth=0, padx=14, pady=5,
-                          font=("Segoe UI", 10), cursor="hand2", command=lambda k=key: (tier_var.set(k), rebuild()))
-            b.pack(side=tk.LEFT, padx=(0, 4), pady=(0, 6))
-            tier_buttons[key] = (b, label)
-        tk.Label(tier_bar, text="Chắc chắn = 2 bộ quét cùng thấy, tên ≥2 chữ điểm ≥95%, hoặc lặp lại nhiều lần · Cần xem: còn lại",
-                 fg="#6b6255", bg=PANEL, font=("Segoe UI", 9)).pack(side=tk.RIGHT)
-
-        # Filter bar
-        filter_frame = tk.Frame(dlg, bg=PANEL, padx=16, pady=6)
-        filter_frame.pack(fill=tk.X)
-        tk.Label(filter_frame, text="Lọc:", fg=MUTED, bg=PANEL, font=("Segoe UI", 9)).pack(side=tk.LEFT)
-        type_filter_var = tk.StringVar(value="TẤT CẢ")
-        types = ["TẤT CẢ"] + sorted({c['type'] for c in candidates})
-        type_combo = ttk.Combobox(filter_frame, textvariable=type_filter_var, values=types,
-                                  state="readonly", width=12, font=("Segoe UI", 9))
-        type_combo.pack(side=tk.LEFT, padx=(4, 12))
-        min_conf_var = tk.IntVar(value=0)
-        tk.Label(filter_frame, text="Điểm ≥", fg=MUTED, bg=PANEL, font=("Segoe UI", 9)).pack(side=tk.LEFT)
-        tk.Spinbox(filter_frame, from_=0, to=99, textvariable=min_conf_var, width=4, bg=FIELD, fg="white",
-                   insertbackground="white", relief="flat", font=("Segoe UI", 9)).pack(side=tk.LEFT, padx=(2, 0))
-        tk.Label(filter_frame, text="%", fg=MUTED, bg=PANEL, font=("Segoe UI", 9)).pack(side=tk.LEFT, padx=(2, 12))
-        search_var = tk.StringVar()
-        tk.Label(filter_frame, text="Tìm:", fg=MUTED, bg=PANEL, font=("Segoe UI", 9)).pack(side=tk.LEFT)
-        search_entry = tk.Entry(filter_frame, textvariable=search_var, width=20, bg=FIELD, fg="white",
-                                insertbackground="white", relief="flat", font=("Segoe UI", 9))
-        search_entry.pack(side=tk.LEFT, padx=(4, 0), ipady=2)
-        tk.Label(filter_frame, text="Space: chọn · Del: bỏ qua · Enter: sửa · F2: đổi Moxhi/Hán-Việt/API",
-                 fg="#6b6255", bg=PANEL, font=("Segoe UI", 9)).pack(side=tk.RIGHT)
-
-        # Bảng
-        table = tk.Frame(dlg, bg=BG)
-        table.pack(fill=tk.BOTH, expand=True, padx=12, pady=(6, 0))
-        columns = ("sel", "cn", "type", "count", "conf", "vi", "alt")
-        tree = ttk.Treeview(table, columns=columns, show="headings", style="Scan.Treeview", selectmode="extended")
-        scrollbar = ttk.Scrollbar(table, orient="vertical", command=tree.yview)
-        tree.configure(yscrollcommand=scrollbar.set)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        for col, text, width, anchor, stretch in (
-                ("sel", "✓", 34, "center", False), ("cn", "Tiếng Trung", 130, "w", False),
-                ("type", "Loại", 80, "center", False), ("count", "Xuất hiện", 80, "center", False),
-                ("conf", "Điểm", 64, "center", False), ("vi", "Bản dịch sẽ lưu", 220, "w", True),
-                ("alt", "Gợi ý còn lại", 180, "w", True)):
-            tree.heading(col, text=text, command=lambda c=col: sort_by(c))
-            tree.column(col, width=width, minwidth=width if not stretch else 120, anchor=anchor, stretch=stretch)
-        tree.tag_configure("odd", background="#221e19")
-        tree.tag_configure("checked", foreground="#c9b8e0")
-        tree.tag_configure("empty", foreground="#e0b25c")
-
-        # Khung chi tiết
-        detail = tk.Frame(dlg, bg=PANEL, padx=12, pady=8)
-        detail.pack(fill=tk.X, padx=12, pady=(6, 0))
-        top_row = tk.Frame(detail, bg=PANEL)
-        top_row.pack(fill=tk.X)
-        detail_cn = tk.Label(top_row, text="—", fg="#f4ede1", bg=PANEL, font=("Microsoft YaHei UI", 14, "bold"))
-        detail_cn.pack(side=tk.LEFT)
-        detail_meta = tk.Label(top_row, text="", fg=MUTED, bg=PANEL, font=("Segoe UI", 9))
-        detail_meta.pack(side=tk.LEFT, padx=10)
-        vi_row = tk.Frame(detail, bg=PANEL)
-        vi_row.pack(fill=tk.X, pady=(6, 4))
-        tk.Label(vi_row, text="Bản dịch:", fg="#8fc29a", bg=PANEL, font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT)
-        vi_var = tk.StringVar()
-        vi_entry = tk.Entry(vi_row, textvariable=vi_var, bg=FIELD, fg="white", insertbackground="white",
-                            relief="flat", font=("Segoe UI", 11), highlightthickness=1,
-                            highlightbackground="#4a4238", highlightcolor="#b8a4d6")
-        vi_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=8, ipady=3)
-        small = dict(relief="flat", borderwidth=0, padx=10, pady=3, font=("Segoe UI", 9, "bold"), cursor="hand2", fg="white")
-        tk.Button(vi_row, text="Copy Hán", bg="#9c6a28", command=lambda: copy_chinese(), **small).pack(side=tk.LEFT, padx=2)
-        tk.Button(vi_row, text="Thêm", bg="#46734f", command=lambda: add_current(), **small).pack(side=tk.LEFT, padx=2)
-        tk.Button(vi_row, text="Bỏ qua", bg="#3a332c", command=lambda: ignore_rows(tree.selection()), **small).pack(side=tk.LEFT, padx=2)
-        pick_row = tk.Frame(detail, bg=PANEL)
-        pick_row.pack(fill=tk.X, pady=(0, 4))
-        tk.Label(pick_row, text="Gợi ý:", fg=MUTED, bg=PANEL, font=("Segoe UI", 9)).pack(side=tk.LEFT)
-        moxhi_btn = tk.Button(pick_row, text="Moxhi: —", bg=FIELD, fg="#c9b8e0", relief="flat", borderwidth=0,
-                              padx=10, pady=3, font=("Segoe UI", 9), cursor="hand2", command=lambda: use_source("moxhi_vi"))
-        moxhi_btn.pack(side=tk.LEFT, padx=(6, 0))
-        hv_btn = tk.Button(pick_row, text="Hán-Việt: —", bg=FIELD, fg="#f0d9a8", relief="flat", borderwidth=0,
-                           padx=10, pady=3, font=("Segoe UI", 9), cursor="hand2", command=lambda: use_source("hanviet"))
-        hv_btn.pack(side=tk.LEFT, padx=(6, 4))
-        api_btn = tk.Button(pick_row, text="API: —", bg=FIELD, fg="#ddd5c7", relief="flat", borderwidth=0,
-                            padx=10, pady=3, font=("Segoe UI", 9), cursor="hand2", command=lambda: use_source("api_vi"))
-        api_btn.pack(side=tk.LEFT)
-        context_box = tk.Text(detail, height=4, wrap=tk.WORD, bg=BG, fg="#a39887", font=("Microsoft YaHei UI", 10),
-                              borderwidth=0, padx=8, pady=4)
-        context_box.pack(fill=tk.X)
-        context_box.tag_configure("hit", foreground="#f0d9a8", background="#3a2a12")
-        context_box.config(state=tk.DISABLED)
-
-        # Status bar
-        status_var = tk.StringVar(value="")
-        tk.Label(dlg, textvariable=status_var, fg="#8fc29a", bg=BG, font=("Segoe UI", 9)).pack(anchor="w", padx=16, pady=4)
-
-        by_cn = {c['cn']: c for c in candidates}
-        ignored: set = set()
-        edited_values = {c['cn']: c.get('suggested_vi', '') for c in candidates}
-        selected = set()  # Review suggestions before selecting them for saving.
-        sort_state = {"col": None, "reverse": False}
-        current = {"cn": None}
-
-        SOURCES = (("moxhi_vi", "Moxhi"), ("hanviet", "HV"), ("api_vi", "API"))
-
-        def alternative(c):
-            """Gợi ý không đang dùng (Moxhi, Hán-Việt hoặc API) để so nhanh."""
-            current_value = edited_values[c['cn']].strip()
-            for key, label in SOURCES:
-                value = (c.get(key) or "").strip()
-                if value and value != current_value:
-                    return f"{label}: {value}"
-            return ""
-
-        def row_values(c):
-            cn = c['cn']
-            return ("☑" if cn in selected else "☐", cn, c['type'], c['count'],
-                    f"{int(c['confidence'] * 100)}%", edited_values[cn], alternative(c))
-
-        def row_tags(c, index):
-            tags = ["odd"] if index % 2 else []
-            if c['cn'] in selected:
-                tags.append("checked")
-            if not edited_values[c['cn']].strip():
-                tags.append("empty")
-            return tags
-
-        def matching_candidates():
-            try:
-                min_conf = min_conf_var.get()
-            except tk.TclError:
-                min_conf = 0
-            filter_type = type_filter_var.get()
-            query = search_var.get().strip().casefold()
-            tier = tier_var.get()
-            rows = [c for c in candidates
-                    if c['cn'] not in ignored
-                    and (tier == "all" or is_sure(c) == (tier == "sure"))
-                    and (filter_type == "TẤT CẢ" or c['type'] == filter_type)
-                    and c['confidence'] * 100 >= min_conf
-                    and (not query or query in c['cn'].casefold() or query in edited_values[c['cn']].casefold())]
-            col = sort_state["col"]
-            if col:
-                keys = {"sel": lambda c: c['cn'] in selected, "cn": lambda c: c['cn'], "type": lambda c: c['type'],
-                        "count": lambda c: c['count'], "conf": lambda c: c['confidence'],
-                        "vi": lambda c: edited_values[c['cn']].casefold(), "alt": alternative}
-                rows.sort(key=keys[col], reverse=sort_state["reverse"])
-            else:
-                rows.sort(key=rank, reverse=True)
-            return rows
-
-        def rebuild(event=None):
-            nonlocal filter_after_id
-            filter_after_id = None
-            focus = tree.focus()
-            tree.delete(*tree.get_children())
-            rows = matching_candidates()
-            for index, c in enumerate(rows):
-                tree.insert("", tk.END, iid=c['cn'], values=row_values(c), tags=row_tags(c, index))
-            remaining = len([c for c in candidates if c['cn'] not in ignored])
-            hdr_count_lbl.config(text=f"{remaining} ứng viên · đang hiện {len(rows)} · đã chọn {len(selected)}")
-            update_tier_buttons()
-            if focus and tree.exists(focus):
-                tree.focus(focus)
-                tree.selection_set(focus)
-                tree.see(focus)
-            elif rows:
-                tree.focus(rows[0]['cn'])
-                tree.selection_set(rows[0]['cn'])
-            else:
-                show_detail(None)
-
-        def update_tier_buttons():
-            left = [c for c in candidates if c['cn'] not in ignored]
-            counts = {"sure": sum(1 for c in left if is_sure(c)), "all": len(left)}
-            counts["review"] = counts["all"] - counts["sure"]
-            for key, (button, label) in tier_buttons.items():
-                active = tier_var.get() == key
-                button.config(text=f"{label} ({counts[key]})", bg="#6a5683" if active else FIELD,
-                              fg="white" if active else MUTED)
-
-        def refresh_row(cn):
-            if cn in by_cn and tree.exists(cn):
-                index = tree.index(cn)
-                tree.item(cn, values=row_values(by_cn[cn]), tags=row_tags(by_cn[cn], index))
-            hdr_count_lbl.config(text=f"{len([c for c in candidates if c['cn'] not in ignored])} ứng viên · "
-                                      f"đang hiện {len(tree.get_children())} · đã chọn {len(selected)}")
-
-        def schedule_filter(*_args):
-            nonlocal filter_after_id
-            if filter_after_id is not None:
-                dlg.after_cancel(filter_after_id)
-            filter_after_id = dlg.after(150, rebuild)
-
-        def sort_by(col):
-            if sort_state["col"] == col:
-                sort_state["reverse"] = not sort_state["reverse"]
-            else:
-                sort_state["col"], sort_state["reverse"] = col, col in ("count", "conf", "sel")
-            for name in columns:
-                base = tree.heading(name, "text").rstrip(" ▲▼")
-                arrow = (" ▼" if sort_state["reverse"] else " ▲") if name == col else ""
-                tree.heading(name, text=base + arrow)
-            rebuild()
-
-        def show_detail(cn):
-            current["cn"] = cn
-            context_box.config(state=tk.NORMAL)
-            context_box.delete("1.0", tk.END)
-            if cn is None:
-                detail_cn.config(text="—")
-                detail_meta.config(text="")
-                vi_var.set("")
-                hv_btn.config(text="Hán-Việt: —", state=tk.DISABLED)
-                api_btn.config(text="API: —", state=tk.DISABLED)
-                moxhi_btn.config(text="Moxhi: —", state=tk.DISABLED)
-            else:
-                c = by_cn[cn]
-                detail_cn.config(text=cn)
-                signals = ", ".join(c.get('signals', []))
-                detail_meta.config(text=f"{c['type']} · {c['count']} lần · điểm {int(c['confidence'] * 100)}%"
-                                        + (f" · căn cứ: {signals}" if signals else ""))
-                vi_var.set(edited_values[cn])
-                hv_btn.config(text=f"Hán-Việt: {c.get('hanviet') or '— (chưa đủ âm)'}",
-                              state=tk.NORMAL if c.get('hanviet') else tk.DISABLED)
-                api_btn.config(text=f"API: {c.get('api_vi') or '—'}",
-                               state=tk.NORMAL if c.get('api_vi') else tk.DISABLED)
-                moxhi_btn.config(text=f"Moxhi: {c.get('moxhi_vi') or '—'}",
-                                 state=tk.NORMAL if c.get('moxhi_vi') else tk.DISABLED)
-                for ctx in c.get('contexts', []) or ["(không có ngữ cảnh mẫu)"]:
-                    start = context_box.index("end-1c")
-                    context_box.insert(tk.END, "… " + ctx.replace("\n", " ") + " …\n")
-                    pos = ctx.replace("\n", " ").find(cn)
-                    while pos >= 0:
-                        context_box.tag_add("hit", f"{start}+{pos + 2}c", f"{start}+{pos + 2 + len(cn)}c")
-                        pos = ctx.replace("\n", " ").find(cn, pos + len(cn))
-            context_box.config(state=tk.DISABLED)
-
-        def on_select(event=None):
-            focus = tree.focus()
-            show_detail(focus if focus and focus in by_cn else None)
-
-        def on_vi_change(*_args):
-            cn = current["cn"]
-            if cn is not None and edited_values.get(cn) != vi_var.get():
-                edited_values[cn] = vi_var.get()
-                refresh_row(cn)
-        vi_var.trace_add("write", on_vi_change)
-
-        def use_source(key, cns=None):
-            """Dùng Hán-Việt hoặc API làm bản dịch cho dòng đang xem (hoặc các dòng cns)."""
-            cns = [cn for cn in (cns or [current["cn"]]) if cn in by_cn]
-            changed = 0
-            for cn in cns:
-                value = (by_cn[cn].get(key) or "").strip()
-                if value:
-                    edited_values[cn] = value
-                    changed += 1
-                    refresh_row(cn)
-            if current["cn"] in cns:
-                vi_var.set(edited_values[current["cn"]])
-            return changed
-
-        def swap_sources(event=None):
-            """F2: xoay vòng sang gợi ý khác (Moxhi → Hán-Việt → API), bỏ qua gợi ý trống/trùng."""
-            cns = [cn for cn in tree.selection() if cn in by_cn]
-            for cn in cns:
-                c = by_cn[cn]
-                options = []
-                for key, _ in SOURCES:
-                    value = (c.get(key) or "").strip()
-                    if value and value not in [v for _, v in options]:
-                        options.append((key, value))
-                if not options:
-                    continue
-                values = [v for _, v in options]
-                now = edited_values[cn].strip()
-                nxt = options[(values.index(now) + 1) % len(options)] if now in values else options[0]
-                use_source(nxt[0], [cn])
-            return "break"
-
-        def toggle(cns):
-            cns = [cn for cn in cns if cn in by_cn]
-            if not cns:
-                return
-            turn_on = any(cn not in selected for cn in cns)
-            for cn in cns:
-                if turn_on:
-                    selected.add(cn)
-                else:
-                    selected.discard(cn)
-                refresh_row(cn)
-
-        def on_click(event):
-            if tree.identify_region(event.x, event.y) == "cell" and tree.identify_column(event.x) == "#1":
-                row = tree.identify_row(event.y)
-                if row:
-                    toggle([row])
-                    return "break"
-            return None
-
-        def next_row_after(cns):
-            children = tree.get_children()
-            indexes = [children.index(cn) for cn in cns if cn in children]
-            if not indexes:
-                return None
-            after = [c for c in children[max(indexes) + 1:] if c not in cns]
-            before = [c for c in children[:min(indexes)] if c not in cns]
-            return (after or before or [None])[0]
-
-        def remove_rows(cns):
-            following = next_row_after(cns)
-            for cn in cns:
-                selected.discard(cn)
-                ignored.add(cn)
-                if tree.exists(cn):
-                    tree.delete(cn)
-            if following:
-                tree.focus(following)
-                tree.selection_set(following)
-                tree.see(following)
-            else:
-                show_detail(None)
-            refresh_row("")
-
-        def ignore_rows(cns):
-            cns = [cn for cn in cns if cn in by_cn]
-            if cns:
-                remove_rows(cns)
-                status_var.set(f"Đã bỏ qua: {', '.join(cns[:5])}{'…' if len(cns) > 5 else ''}")
-
-        def copy_chinese():
-            cn = current["cn"]
-            if not cn:
-                return
-            dlg.clipboard_clear()
-            dlg.clipboard_append(cn)
-            vi_entry.focus_set()
-            vi_entry.selection_range(0, tk.END)
-            status_var.set(f"Đã copy chữ Hán: {cn}")
-
-        def add_current(event=None):
-            cn = current["cn"]
-            if not cn:
-                return "break"
-            vi_text = edited_values[cn].strip()
-            if not vi_text:
-                messagebox.showwarning("Chú ý", "Vui lòng nhập tên tiếng Việt!", parent=dlg)
-                return "break"
-            if self.add_names([(cn, vi_text)], scan_temp_var.get(), parent=dlg):
-                remove_rows([cn])
-                status_var.set(f"✅ Đã thêm{' name tạm' if scan_temp_var.get() else ''}: {cn} = {vi_text}")
-                tree.focus_set()
-            return "break"
-
-        def focus_vi(event=None):
-            if current["cn"]:
-                vi_entry.focus_set()
-                vi_entry.selection_range(0, tk.END)
-            return "break"
-
-        tree.bind("<<TreeviewSelect>>", on_select)
-        tree.bind("<Button-1>", on_click)
-        tree.bind("<space>", lambda e: (toggle(tree.selection()), "break")[1])
-        tree.bind("<Delete>", lambda e: (ignore_rows(tree.selection()), "break")[1])
-        tree.bind("<F2>", swap_sources)
-        vi_entry.bind("<F2>", swap_sources)
-        tree.bind("<Return>", focus_vi)
-        tree.bind("<Double-Button-1>", focus_vi)
-        vi_entry.bind("<Return>", add_current)
-        vi_entry.bind("<Escape>", lambda e: (tree.focus_set(), "break")[1])
-        vi_entry.bind("<Down>", lambda e: (tree.focus_set(), tree.event_generate("<Down>"), "break")[2])
-        vi_entry.bind("<Up>", lambda e: (tree.focus_set(), tree.event_generate("<Up>"), "break")[2])
-        type_combo.bind("<<ComboboxSelected>>", rebuild)
-        min_conf_var.trace_add("write", schedule_filter)
-        search_var.trace_add("write", schedule_filter)
-        dlg.bind("<Escape>", lambda e: on_close() if e.widget is not vi_entry else None)
-
-        # ── Thêm tên thủ công: cho tên bộ quét bỏ sót (bôi đen trong ngữ cảnh để điền nhanh) ──
-        source_text = self.txt_area.get("1.0", "end-1c")
-        manual = tk.Frame(dlg, bg=PANEL, padx=12, pady=8)
-        manual.pack(fill=tk.X, padx=12, pady=(4, 0))
-        tk.Label(manual, text="Thêm tên thủ công:", fg="#e0b25c", bg=PANEL,
-                 font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT)
-        manual_cn = tk.StringVar()
-        manual_vi = tk.StringVar()
-        manual_cn_entry = tk.Entry(manual, textvariable=manual_cn, width=14, bg=FIELD, fg="white",
-                                   insertbackground="white", relief="flat", font=("Microsoft YaHei UI", 11))
-        manual_cn_entry.pack(side=tk.LEFT, padx=(8, 4), ipady=2)
-        tk.Label(manual, text="=", fg=MUTED, bg=PANEL).pack(side=tk.LEFT)
-        manual_vi_entry = tk.Entry(manual, textvariable=manual_vi, bg=FIELD, fg="white",
-                                   insertbackground="white", relief="flat", font=("Segoe UI", 11))
-        manual_vi_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(4, 6), ipady=2)
-        manual_info = tk.Label(manual, text="", fg=MUTED, bg=PANEL, font=("Segoe UI", 9), width=16, anchor="w")
-        manual_info.pack(side=tk.LEFT)
-        manual_state = {"auto_vi": ""}   # gợi ý đã tự điền; người dùng gõ khác thì không ghi đè
-
-        def on_manual_cn(*_args):
-            cn = unicodedata.normalize("NFC", manual_cn.get().strip())
-            if not cn:
-                manual_info.config(text="")
-                return
-            hits = source_text.count(cn)
-            known = cn in self.load_name_config() or cn in self.temp_names
-            manual_info.config(text=("đã có trong name · " if known else "") + f"{hits} lần trong bài",
-                               fg="#e0b25c" if known else (MUTED if hits else "#e8857b"))
-            suggestion = self._suggest_vi(cn)
-            if manual_vi.get().strip() in ("", manual_state["auto_vi"]):
-                manual_vi.set(suggestion)
-                manual_state["auto_vi"] = suggestion
-
-        def add_manual(event=None):
-            cn = unicodedata.normalize("NFC", manual_cn.get().strip())
-            vi = manual_vi.get().strip()
-            if not cn or not vi:
-                messagebox.showwarning("Chú ý", "Nhập cả chữ Hán và tên tiếng Việt.", parent=dlg)
-                return "break"
-            if self.add_names([(cn, vi)], scan_temp_var.get(), parent=dlg):
-                if cn in by_cn and cn not in ignored:
-                    remove_rows([cn])
-                status_var.set(f"✅ Đã thêm{' name tạm' if scan_temp_var.get() else ''} (thủ công): {cn} = {vi}")
-                manual_cn.set("")
-                manual_vi.set("")
-                manual_state["auto_vi"] = ""
-                manual_cn_entry.focus_set()
-            return "break"
-
-        def take_selection(event=None):
-            """Bôi đen chữ Hán trong khung ngữ cảnh → điền vào ô thêm thủ công."""
-            try:
-                picked = context_box.get("sel.first", "sel.last").strip()
-            except tk.TclError:
-                return
-            if picked and len(picked) <= 12 and all("\u3400" <= ch <= "\u9fff" or ch == "·" for ch in picked):
-                manual_cn.set(picked)
-                manual_vi_entry.focus_set()
-                manual_vi_entry.selection_range(0, tk.END)
-
-        manual_cn.trace_add("write", on_manual_cn)
-        tk.Button(manual, text="Thêm", bg="#46734f", fg="white", relief="flat", borderwidth=0, padx=12, pady=3,
-                  font=("Segoe UI", 9, "bold"), cursor="hand2", command=add_manual).pack(side=tk.LEFT)
-        manual_cn_entry.bind("<Return>", lambda e: (manual_vi_entry.focus_set(), "break")[1])
-        manual_vi_entry.bind("<Return>", add_manual)
-        context_box.bind("<ButtonRelease-1>", take_selection, add="+")
-        tk.Label(dlg, text="Mẹo: bôi đen một tên trong khung ngữ cảnh ở trên để điền nhanh vào ô thêm thủ công.",
-                 fg="#6b6255", bg=BG, font=("Segoe UI", 9)).pack(anchor="w", padx=16)
-
-        # Bottom bar: select and add in one batch (one name.cfg write).
-        tk.Frame(dlg, bg=FIELD, height=1).pack(fill=tk.X, padx=12)
-        bot = tk.Frame(dlg, bg=BG, pady=8)
-        bot.pack(fill=tk.X, padx=12)
-
-        def select_visible(value):
-            for cn in tree.get_children():
-                if value and edited_values[cn].strip():
-                    selected.add(cn)
-                elif not value:
-                    selected.discard(cn)
-                refresh_row(cn)
-
-        def add_selected():
-            entries = [(c['cn'], edited_values[c['cn']].strip()) for c in candidates
-                       if c['cn'] in selected and c['cn'] not in ignored and edited_values[c['cn']].strip()]
-            missing = sum(1 for cn in selected if cn not in ignored and not edited_values[cn].strip())
-            if not entries:
-                messagebox.showwarning("Chú ý", "Chưa chọn tên nào có bản dịch tiếng Việt.", parent=dlg)
-                return
-            if not self.add_names(entries, scan_temp_var.get(), parent=dlg):
-                return
-            remove_rows([cn for cn, _vi in entries])
-            suffix = f"; bỏ qua {missing} mục trống" if missing else ""
-            where = "name tạm" if scan_temp_var.get() else "name.cfg"
-            status_var.set(f"✅ Đã lưu {len(entries)} tên vào {where}{suffix}")
-
-        bar_btn = dict(relief="flat", borderwidth=0, padx=10, pady=6, font=("Segoe UI", 9), cursor="hand2")
-        tk.Button(bot, text="Chọn mục đang hiện (có bản dịch)", bg=FIELD, fg="#ddd5c7",
-                  command=lambda: select_visible(True), **bar_btn).pack(side=tk.LEFT)
-        tk.Button(bot, text="Bỏ chọn đang hiện", bg=FIELD, fg=MUTED,
-                  command=lambda: select_visible(False), **bar_btn).pack(side=tk.LEFT, padx=4)
-        tk.Button(bot, text="Đóng", bg=FIELD, fg=MUTED, activebackground="#3a332c", relief="flat", borderwidth=0,
-                  padx=16, pady=6, font=("Segoe UI", 9), cursor="hand2", command=on_close).pack(side=tk.RIGHT, padx=(6, 0))
-        tk.Button(bot, text="✅ Thêm các mục đã chọn", bg="#6a5683", fg="white", activebackground="#5c4a73",
-                  relief="flat", borderwidth=0, padx=16, pady=6, font=("Segoe UI", 9, "bold"), cursor="hand2",
-                  command=add_selected).pack(side=tk.RIGHT)
-        tk.Checkbutton(bot, text="🏷 Thêm làm name tạm", variable=scan_temp_var, bg=BG, fg="#e8c27a",
-                       selectcolor=FIELD, activebackground=BG, activeforeground="#e8c27a",
-                       font=("Segoe UI", 9)).pack(side=tk.RIGHT, padx=8)
-
-        rebuild()
-        tree.focus_set()
-
-    def _name_cfg_path(self):
-        return name_cfg_path()
+        self.btn_run.setEnabled(False)
+        self.btn_clear.hide()
+        self.set_status(f"Đang xem nháp: {title} ({stamp})", WARN)
+        ReviewWindow(self, title, slug, cn, vi, from_draft=True)
+
+    def clear_all(self):
+        self.ent_title.clear()
+        self.txt_area.clear()
+        self.clear_temp_names()   # truyện mới: name tạm của truyện cũ không còn dùng
+        self.set_status("Sẵn sàng", "#8a7f70")
+        self.btn_clear.hide()
+
+    def review_closed(self):
+        """Một cửa sổ Review vừa đóng: mở lại nút dịch."""
+        if not self.reviews and not self._busy:
+            self.btn_run.setEnabled(True)
+            self.btn_clear.show()
+            if not self.lbl_status.text().startswith(("✅", "📚")):
+                self.set_status("Sẵn sàng", "#8a7f70")
 
     # ── name tạm ──
 
-    def effective_names(self, temp_names=None):
-        """name.cfg + name tạm (name tạm thắng khi trùng chữ Hán)."""
-        names = self.load_name_config()
-        names.update(self.temp_names if temp_names is None else temp_names)
-        return names
-
     def add_temp_names(self, entries, parent=None):
         try:
-            pending = normalize_entries(entries)
-        except ValueError as error:
-            messagebox.showerror("Name tạm không hợp lệ", str(error), parent=parent or self.root)
+            self.merge_temp_names(entries)
+        except ValueError as exc:
+            error(parent or self, "Name tạm không hợp lệ", str(exc))
             return False
-        self.temp_names.update(pending)
-        self._refresh_temp_names_button()
+        self.refresh_temp_names_button()
         return True
 
     def clear_temp_names(self):
         count = len(self.temp_names)
         self.temp_names.clear()
-        self._refresh_temp_names_button()
+        self.refresh_temp_names_button()
         return count
 
-    def _refresh_temp_names_button(self):
+    def refresh_temp_names_button(self):
         count = len(self.temp_names)
-        self.btn_temp_names.config(text=f"🏷 Name tạm ({count})" if count else "🏷 Name tạm",
-                                   bg="#8a5a22" if count else FIELD)
+        self.btn_temp_names.setText(f"🏷 Name tạm ({count})" if count else "🏷 Name tạm")
+        self.btn_temp_names.setStyleSheet("QPushButton { background: #8a5a22; }" if count else "")
 
     def add_names(self, entries, temporary, parent=None):
         """Thêm vào name tạm hoặc name.cfg tuỳ lựa chọn của người dùng."""
         if temporary:
             return self.add_temp_names(entries, parent=parent)
-        if not self._add_names_to_cfg(entries, parent=parent):
+        try:
+            self.save_names_to_cfg(entries)
+        except Exception as exc:
+            error(parent or self, "Lỗi", f"Không thể ghi name.cfg:\n{exc}")
             return False
-        # Đã lưu vĩnh viễn thì name tạm cùng chữ Hán không còn cần nữa.
-        for cn, _vi in entries:
-            self.temp_names.pop(unicodedata.normalize('NFC', cn.strip()), None)
-        self._refresh_temp_names_button()
+        self.refresh_temp_names_button()
         return True
 
-    def open_r2_dialog(self):
-        """Khoá API R2 (lưu ngoài repo) + đồng bộ / khôi phục truyện bằng tay."""
-        dlg = tk.Toplevel(self.root)
-        dlg.title("☁ Cloudflare R2 — nơi lưu truyện cho trang web")
-        dlg.configure(bg=PANEL)
-        dlg.transient(self.root)
-        dlg.resizable(False, False)
-        creds = r2_store.load_credentials() or {}
-        tk.Label(dlg, text="Truyện lưu xong được tự đẩy lên R2 (không commit/push). Khoá API: R2 → Manage API tokens,\n"
-                           "quyền Object Read & Write, chỉ bucket của trang. Khoá chỉ lưu trên máy này.",
-                 fg=MUTED, bg=PANEL, justify="left", font=("Segoe UI", 9)).grid(row=0, column=0, columnspan=2,
-                                                                               sticky="w", padx=14, pady=(12, 8))
-        fields = {}
-        rows = (("account_id", "Account ID", False), ("access_key_id", "Access Key ID", False),
-                ("secret_access_key", "Secret Access Key", True), ("bucket", "Bucket", False))
-        for i, (key, label, secret) in enumerate(rows, start=1):
-            tk.Label(dlg, text=label, fg="#e0d6c6", bg=PANEL, font=("Segoe UI", 9)).grid(row=i, column=0, sticky="w", padx=14, pady=3)
-            var = tk.StringVar(value="" if secret else creds.get(key, "stv-library" if key == "bucket" else ""))
-            entry = tk.Entry(dlg, textvariable=var, width=52, bg=FIELD, fg="white", insertbackground="white",
-                             relief="flat", font=("Consolas", 10), show="•" if secret else "")
-            entry.grid(row=i, column=1, sticky="we", padx=(0, 14), pady=3, ipady=2)
-            fields[key] = var
-        if creds.get("secret_access_key"):
-            tk.Label(dlg, text="(để trống ô Secret = giữ khoá đã lưu)", fg="#6b6255", bg=PANEL,
-                     font=("Segoe UI", 8)).grid(row=5, column=1, sticky="w")
-        status = tk.StringVar(value=f"Cấu hình: {r2_store.config_path()}" if creds else "Chưa cấu hình.")
-        tk.Label(dlg, textvariable=status, fg="#8fc29a", bg=PANEL, wraplength=560, justify="left",
-                 font=("Segoe UI", 9)).grid(row=6, column=0, columnspan=2, sticky="w", padx=14, pady=(8, 4))
-        bar = tk.Frame(dlg, bg=PANEL)
-        bar.grid(row=7, column=0, columnspan=2, sticky="we", padx=14, pady=(4, 14))
-        busy = []
+    # ── Scan Names ──
 
-        def run(label, job, done):
-            if busy:
+    def open_scan_names_dialog(self):
+        text = raw_text(self.txt_area).strip()
+        if not text:
+            warn(self, "Chú ý", "Vui lòng nhập nội dung tiếng Trung trước!")
+            return
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        self.btn_scan.setEnabled(False)
+        self.btn_scan.setText("⏳ Đang quét...")
+        known_temp = set(self.temp_names)
+
+        def worker():
+            try:
+                found, warning = self.scan_names_with_suggestions(
+                    text, known_temp, on_progress=lambda msg: self.bridge.call(self.set_status, msg))
+                self.bridge.call(done, found, warning, None)
+            except Exception as exc:
+                self.bridge.call(done, None, None, exc)
+
+        def done(candidates, api_warning, err):
+            QApplication.restoreOverrideCursor()
+            self.btn_scan.setEnabled(True)
+            self.btn_scan.setText("🔍 Scan Names")
+            if err:
+                error(self, "Lỗi", f"Lỗi khi quét tên:\n{err}")
                 return
-            busy.append(1)
-            status.set(label)
+            note = getattr(self, "_scan_note", "")
+            self.set_status(f"Đã quét xong: tìm thấy {len(candidates)} ứng viên" + (f" · ⚠ {note}" if note else ""),
+                            WARN if note else None)
+            if api_warning:
+                warn(self, "Không tự dịch được tên",
+                     f"Tên người vẫn có gợi ý Hán-Việt; mục còn trống có thể dùng nút Copy Hán để tra.\n\n{api_warning}")
+            dlg = ScanNamesDialog(self, candidates)
+            dlg.setAttribute(Qt.WA_DeleteOnClose)
+            dlg.show()
 
-            def work():
-                try:
-                    message = job()
-                except Exception as exc:
-                    message = f"⚠ {exc}"
-                self.call_ui(lambda: (busy.clear(), status.set(message), done(message)))
-            threading.Thread(target=work, daemon=True).start()
+        threading.Thread(target=worker, daemon=True).start()
 
-        def save_and_check():
-            values = {k: v.get().strip() for k, v in fields.items()}
-            if not values["secret_access_key"]:
-                values["secret_access_key"] = creds.get("secret_access_key", "")
-            if not all(values.values()):
-                status.set("⚠ Điền đủ 4 ô.")
-                return
-
-            def job():
-                r2_store.R2Client(values).check()          # thử ghi + xoá một file nhỏ
-                r2_store.save_credentials(**values)
-                return "✅ Kết nối được và đã lưu khoá. Bấm “Đồng bộ ngay” để đẩy truyện lên."
-            def saved(message):
-                if not message.startswith("✅"):
-                    return
-                creds.update(values)
-                # Xoá cảnh báo "chưa cấu hình" cũ trên thanh trạng thái và đẩy ngay phần còn chờ.
-                self.set_status("R2: đã lưu khoá — đang đồng bộ truyện lên R2…")
-                r2_store.reset_unconfigured_warning()
-                r2_store.request_sync(BASE_DIR)
-            run("Đang kiểm tra kết nối…", job, saved)
-
-        def sync_now(mass=False):
-            if not r2_store.load_credentials():
-                status.set("⚠ Chưa có khoá: lưu khoá trước.")
-                return
-
-            def job():
-                client = r2_store.R2Client(r2_store.load_credentials())
-                result = r2_store.sync(BASE_DIR, client, lambda m: self.call_ui(status.set, m), allow_mass_delete=mass)
-                if result.errors:
-                    return f"⚠ {result.summary()} — {result.errors[0]}"
-                if result.held_deletes:
-                    return (f"⚠ {result.summary()}. Có {len(result.held_deletes)} file trên R2 không còn trên máy "
-                            "(vd. {}) — kiểm tra rồi bấm “Xoá file thừa”.".format(result.held_deletes[0]))
-                return f"✅ R2: {result.summary()}."
-            run("Đang đồng bộ… (lần đầu đẩy toàn bộ truyện, có thể mất vài phút)", job,
-                lambda m: self.set_status(m.replace("✅ ", ""), "#e8857b" if m.startswith("⚠") else None))
-
-        def prune():
-            if messagebox.askyesno("Xoá file thừa trên R2",
-                                   "Xoá trên R2 mọi chương/truyện không còn trong thư mục trên máy?\n"
-                                   "Không hoàn tác được.", parent=dlg):
-                sync_now(mass=True)
-
-        def restore():
-            if not messagebox.askyesno("Tải truyện từ R2 về",
-                                       f"Tải mọi truyện trên R2 về {BASE_DIR}?\nFile đã có trên máy được giữ nguyên.",
-                                       parent=dlg):
-                return
-            def job():
-                count, errors = r2_store.restore(BASE_DIR, progress=lambda m: self.call_ui(status.set, m))
-                if errors:
-                    return f"⚠ Đã ghi {count} file, {len(errors)} lỗi (vd. {errors[0]})."
-                return f"✅ Đã ghi {count} file."
-            run("Đang tải từ R2 về…", job, lambda m: None)
-
-        small = dict(relief="flat", borderwidth=0, padx=12, pady=5, font=("Segoe UI", 9, "bold"), cursor="hand2", fg="white")
-        tk.Button(bar, text="Lưu & kiểm tra", bg="#46734f", command=save_and_check, **small).pack(side="left")
-        tk.Button(bar, text="Đồng bộ ngay", bg="#6a5683", command=sync_now, **small).pack(side="left", padx=6)
-        tk.Button(bar, text="Xoá file thừa", bg="#8a372e", command=prune, **small).pack(side="left")
-        tk.Button(bar, text="Tải truyện từ R2 về", bg=FIELD, command=restore, **small).pack(side="right")
-
-    def open_temp_names_dialog(self):
-        dlg = tk.Toplevel(self.root)
-        dlg.title("🏷 Name tạm — chỉ dùng cho lượt dịch này")
-        dlg.configure(bg=PANEL)
-        dlg.transient(self.root)
-        dlg.grab_set()
-        try:
-            dlg.geometry(load_config().get("builder_temp_names", "520x460"))
-        except tk.TclError:
-            dlg.geometry("520x460")
-        dlg.minsize(420, 360)
-
-        tk.Label(dlg, text="Áp dụng cho lần dịch / dịch lại tiếp theo, không ghi vào name.cfg.\n"
-                           "Tự xoá sau khi Lưu data.json hoặc Lưu vào thư viện.",
-                 fg=MUTED, bg=PANEL, justify="left").pack(anchor="w", padx=16, pady=(12, 8))
-
-        entry = dict(bg=FIELD, fg="white", insertbackground="white", borderwidth=0, font=("Segoe UI", 10))
-        row = tk.Frame(dlg, bg=PANEL)
-        row.pack(fill="x", padx=16)
-        ent_cn = tk.Entry(row, width=14, **entry)
-        ent_cn.pack(side="left", ipady=4)
-        tk.Label(row, text="=", fg=MUTED, bg=PANEL).pack(side="left", padx=6)
-        ent_vi = tk.Entry(row, **entry)
-        ent_vi.pack(side="left", fill="x", expand=True, ipady=4)
-        btn = dict(fg="white", borderwidth=0, padx=12, pady=4, cursor="hand2")
-        tk.Button(row, text="➕ Thêm", bg="#8a5a22", command=lambda: add(), **btn).pack(side="left", padx=(8, 0))
-
-        listbox = tk.Listbox(dlg, bg=BG, fg=TEXT, selectbackground="#8a5a22", borderwidth=0, highlightthickness=0,
-                             font=("Segoe UI", 10), activestyle="none", selectmode="extended")
-        listbox.pack(fill="both", expand=True, padx=16, pady=(10, 0))
-        status = tk.Label(dlg, text="", fg=MUTED, bg=PANEL, anchor="w")
-        status.pack(fill="x", padx=16, pady=(4, 0))
-        keys = []
-
-        def refresh():
-            keys[:] = sorted(self.temp_names)
-            listbox.delete(0, tk.END)
-            for cn in keys:
-                listbox.insert(tk.END, f"{cn}  =  {self.temp_names[cn]}")
-            status.config(text=f"{len(keys)} name tạm" if keys else "Chưa có name tạm nào.")
-
-        def add(event=None):
-            cn, vi = ent_cn.get().strip(), ent_vi.get().strip()
-            if not cn or not vi:
-                messagebox.showwarning("Chú ý", "Nhập cả chữ Hán và tên tiếng Việt.", parent=dlg)
-                return "break"
-            if self.add_temp_names([(cn, vi)], parent=dlg):
-                ent_cn.delete(0, tk.END)
-                ent_vi.delete(0, tk.END)
-                ent_cn.focus_set()
-                refresh()
-            return "break"
-
-        def on_select(event=None):
-            picked = [keys[i] for i in listbox.curselection()]
-            if len(picked) == 1:  # chọn một dòng để sửa: nạp lên ô nhập
-                ent_cn.delete(0, tk.END)
-                ent_cn.insert(0, picked[0])
-                ent_vi.delete(0, tk.END)
-                ent_vi.insert(0, self.temp_names[picked[0]])
-
-        def remove_selected(event=None):
-            for i in listbox.curselection():
-                self.temp_names.pop(keys[i], None)
-            self._refresh_temp_names_button()
-            refresh()
-
-        def make_permanent():
-            picked = [keys[i] for i in listbox.curselection()] or list(keys)
-            if not picked:
-                return
-            if self.add_names([(cn, self.temp_names[cn]) for cn in picked], temporary=False, parent=dlg):
-                refresh()
-                status.config(text=f"✅ Đã lưu {len(picked)} name vào name.cfg")
-
-        def clear_all():
-            if self.temp_names and messagebox.askyesno("Xoá name tạm", "Xoá hết name tạm?", parent=dlg):
-                self.clear_temp_names()
-                refresh()
-
-        def close(event=None):
-            save_config({"builder_temp_names": dlg.geometry()})
-            dlg.destroy()
-
-        bottom = tk.Frame(dlg, bg=PANEL)
-        bottom.pack(fill="x", padx=16, pady=12)
-        tk.Button(bottom, text="Xoá mục chọn", bg=FIELD, command=remove_selected, **btn).pack(side="left")
-        tk.Button(bottom, text="Xoá hết", bg="#5a2a24", command=clear_all, **btn).pack(side="left", padx=6)
-        tk.Button(bottom, text="Đóng", bg=FIELD, command=close, **btn).pack(side="right")
-        tk.Button(bottom, text="💾 Lưu vĩnh viễn vào name.cfg", bg="#9c6a28", command=make_permanent,
-                  **btn).pack(side="right", padx=6)
-
-        ent_cn.bind("<Return>", lambda e: (ent_vi.focus_set(), "break")[1])
-        ent_vi.bind("<Return>", add)
-        listbox.bind("<<ListboxSelect>>", on_select)
-        listbox.bind("<Delete>", remove_selected)
-        dlg.bind("<Escape>", close)
-        dlg.protocol("WM_DELETE_WINDOW", close)
-        refresh()
-        ent_cn.focus_set()
-
-    def _add_names_to_cfg(self, entries, parent=None):
-        """Validate and persist several names using one atomic file replacement."""
-        try:
-            update_name_cfg(self._name_cfg_path(), entries)
-            return True
-        except Exception as e:
-            messagebox.showerror("Lỗi", f"Không thể ghi name.cfg:\n{e}", parent=parent or self.root)
-            return False
-
-    def _add_name_to_cfg(self, cn: str, vi: str, parent=None):
-        return self._add_names_to_cfg([(cn, vi)], parent=parent)
-
-    # ─────────────────────────────────────────────────────────────
-    # DỊCH (luồng nền chỉ gửi cập nhật giao diện qua call_ui)
-    # ─────────────────────────────────────────────────────────────
+    # ── dịch ──
 
     def _set_busy(self, busy):
         self._busy = busy
         if busy:
-            self.btn_run.config(state="disabled")
-            self.btn_clear.pack_forget()
-            self.btn_cancel.config(state="normal", text="⏹ Huỷ")
-            self.btn_cancel.pack(side="right", padx=5, before=self.btn_run)
-            self._progress_max = 1
-            self._progress_value = 0.0
-            self._progress_from = 0.0
-            self._progress_to = 0.0
-            self.progress.config(value=0.0, maximum=1)
-            self.progress.pack(fill="x", padx=20, pady=5)
+            self.btn_run.setEnabled(False)
+            self.btn_clear.hide()
+            self.btn_cancel.setEnabled(True)
+            self.btn_cancel.setText("⏹ Huỷ")
+            self.btn_cancel.show()
+            self._progress_anim.stop()
+            self.progress.setValue(0)
+            self.progress.show()
         else:
-            self.btn_cancel.pack_forget()
-            self._stop_progress_animation()
-            self.progress.pack_forget()
+            self.btn_cancel.hide()
+            self._progress_anim.stop()
+            self.progress.hide()
 
     def cancel_translation(self):
         if self._cancel_event is not None:
             self._cancel_event.set()
-            self.btn_cancel.config(state="disabled", text="Đang dừng…")
-            self.set_status("Đang dừng sau đợt hiện tại…", "#e0b25c")
+            self.btn_cancel.setEnabled(False)
+            self.btn_cancel.setText("Đang dừng…")
+            self.set_status("Đang dừng sau đợt hiện tại…", WARN)
 
     def start_thread(self):
-        """Main thread: read and validate inputs, then translate in the background."""
         if self._worker is not None and self._worker.is_alive():
             return
-        title = self.ent_title.get().strip()
-        content = self.txt_area.get(1.0, tk.END).strip()
+        if self.reviews:
+            self.reviews[-1].raise_()
+            self.reviews[-1].activateWindow()
+            return
+        title = self.ent_title.text().strip()
+        content = raw_text(self.txt_area).strip()
         if not title or not content:
-            messagebox.showwarning("Chú ý", "Vui lòng nhập tiêu đề và nội dung!")
-            self.btn_run.config(state="normal")
+            warn(self, "Chú ý", "Vui lòng nhập tiêu đề và nội dung!")
             return
-        slug = story_slug(title)
+        slug = core.story_slug(title)
         if not slug:
-            messagebox.showwarning("Chú ý", "Tiêu đề không hợp lệ, không thể tạo slug!")
-            self.btn_run.config(state="normal")
+            warn(self, "Chú ý", "Tiêu đề không hợp lệ, không thể tạo slug!")
             return
-
         self._cancel_event = threading.Event()
         self._set_busy(True)
         self.set_status(f"Slug: {slug} — Đang xử lý dữ liệu...", "#d9a35c")
@@ -2380,45 +1750,14 @@ class TranslatorGUI:
                                         daemon=True)
         self._worker.start()
 
-    def _stop_progress_animation(self):
-        if self._progress_anim is not None:
-            try:
-                self.root.after_cancel(self._progress_anim)
-            except tk.TclError:
-                pass
-            self._progress_anim = None
-
-    def _animate_progress(self):
-        """Nội suy giá trị thanh tiến trình ở ~60fps (16ms/khung hình)."""
-        self._progress_anim = None
-        if not self._busy:
-            return
-        elapsed = time.perf_counter() - self._progress_started
-        ratio = min(1.0, elapsed / self._progress_duration) if self._progress_duration else 1.0
-        eased = 1 - (1 - ratio) ** 3  # ease-out: nhanh lúc đầu, chậm dần, không giật
-        self._progress_value = self._progress_from + (self._progress_to - self._progress_from) * eased
-        self.progress.config(value=self._progress_value)
-        if ratio < 1.0:
-            self._progress_anim = self.root.after(16, self._animate_progress)
-        else:
-            self._progress_value = self._progress_to
-
-    def _move_progress_to(self, value):
-        """Đặt đích mới; thanh chạy tới đó trong ~0.45s thay vì nhảy cóc."""
-        self._progress_from = self._progress_value
-        self._progress_to = float(value)
-        self._progress_started = time.perf_counter()
-        if self._progress_anim is None:
-            self._animate_progress()
-
     def _update_progress(self, done, total, started):
         total = max(total, 1)
-        if total != self._progress_max:
-            self._progress_max = total
-            self.progress.config(maximum=total)
-        # +0.5: thanh nhích lên trong lúc chờ API của đợt hiện tại,
-        # để không đứng im rồi nhảy một mạch khi đợt xong.
-        self._move_progress_to(min(done + 0.5, total))
+        # +0.5: thanh nhích lên trong lúc chờ API của đợt hiện tại, không đứng im rồi nhảy một mạch.
+        target = min(done + 0.5, total) / total * 1000
+        self._progress_anim.stop()
+        self._progress_anim.setStartValue(float(self.progress.value()))
+        self._progress_anim.setEndValue(float(target))
+        self._progress_anim.start()
         text = f"Đang dịch đợt {min(done + 1, total)}/{total}"
         if done:
             remaining = (time.time() - started) / done * (total - done)
@@ -2426,64 +1765,71 @@ class TranslatorGUI:
         self.set_status(text + "...", "#d9a35c")
 
     def run_process(self, title, slug, content, cancel, temp_names=None):
-        """Worker thread. Never touch Tk widgets here."""
+        """Luồng nền: không chạm widget, mọi cập nhật qua bridge."""
         try:
-            lines = [l.strip() for l in content.split("\n") if l.strip()]
-            name_dict = self.effective_names(temp_names or {})
-            source_pattern = compile_name_source_pattern(name_dict)
-            processed_lines = [(line, substitute_names(line, name_dict, source_pattern)) for line in lines]
+            cn_lines, vi_lines, total = self.translate_story(
+                content, cancel, temp_names,
+                on_progress=lambda i, n, started: self.bridge.call(self._update_progress, i, n, started))
+            self.bridge.call(self._translation_finished, title, slug, cn_lines, vi_lines, cancel.is_set(), total)
+        except Exception as exc:
+            self.bridge.call(self._translation_failed, exc)
 
-            chunks = split_translation(processed_lines)
-            vi_names = list(name_dict.values())
-            name_pattern = compile_name_pattern(vi_names)
-            spacing_pattern = compile_name_loose_pattern(vi_names)
-            final_cn_lines, final_vi_lines = [], []
-            started = time.time()
-
-            for i, group in enumerate(chunks):
-                if cancel.is_set():
-                    break
-                self.call_ui(self._update_progress, i, len(chunks), started)
-                vi_lines = self.translate_lines([rep for _, rep in group], cancel)
-                for j, (orig_cn, _rep_cn) in enumerate(group):
-                    vi = vi_lines[j] if j < len(vi_lines) else ""
-                    vi = re.sub(r'  +', ' ', vi).strip()  # dấu cách kép do từ không dịch được
-                    vi = fix_name_spacing(vi, spacing_pattern)
-                    vi = fix_capitalization_after_names(vi, vi_names, name_pattern)
-                    final_cn_lines.append(orig_cn)
-                    final_vi_lines.append(vi)
-                if i + 1 < len(chunks):
-                    cancel.wait(DELAY)
-
-            self.call_ui(self._translation_finished, title, slug, final_cn_lines, final_vi_lines,
-                         cancel.is_set(), len(lines))
-        except Exception as error:
-            self.call_ui(self._translation_failed, error)
-
-    def _translation_failed(self, error):
+    def _translation_failed(self, exc):
         self._set_busy(False)
-        self.btn_run.config(state="normal")
-        self.btn_clear.pack(side="right", padx=5)
-        self.set_status("❌ Lỗi khi dịch", "#e8857b")
-        messagebox.showerror("Lỗi", f"Lỗi khi dịch:\n{error}")
+        self.btn_run.setEnabled(True)
+        self.btn_clear.show()
+        self.set_status("❌ Lỗi khi dịch", ERROR)
+        error(self, "Lỗi", f"Lỗi khi dịch:\n{exc}")
 
     def _translation_finished(self, title, slug, cn_lines, vi_lines, cancelled, total):
         self._set_busy(False)
         if cancelled:
-            if cn_lines and messagebox.askyesno(
-                    "Đã huỷ", f"Đã dịch {len(cn_lines)}/{total} đoạn trước khi huỷ.\nMở Review với phần đã dịch?"):
-                self.set_status(f"Đã huỷ — xem {len(cn_lines)}/{total} đoạn đã dịch", "#e0b25c")
-                ReviewWindow(self.root, title, slug, cn_lines, vi_lines, self)
+            if cn_lines and ask_yes_no(self, "Đã huỷ", f"Đã dịch {len(cn_lines)}/{total} đoạn trước khi huỷ.\n"
+                                                       "Mở Review với phần đã dịch?"):
+                self.set_status(f"Đã huỷ — xem {len(cn_lines)}/{total} đoạn đã dịch", WARN)
+                ReviewWindow(self, title, slug, cn_lines, vi_lines)
             else:
-                self.btn_run.config(state="normal")
-                self.btn_clear.pack(side="right", padx=5)
-                self.set_status("Đã huỷ dịch.", "#e0b25c")
+                self.btn_run.setEnabled(True)
+                self.btn_clear.show()
+                self.set_status("Đã huỷ dịch.", WARN)
             return
-        self.set_status("Hoàn tất dịch API. Đang mở cửa sổ Review...", "#e0b25c")
-        ReviewWindow(self.root, title, slug, cn_lines, vi_lines, self)
+        self.set_status("Hoàn tất dịch API. Đang mở cửa sổ Review...", WARN)
+        ReviewWindow(self, title, slug, cn_lines, vi_lines)
+
+    # ── đóng ──
+
+    def can_close(self):
+        """False nếu còn cửa sổ Review hoặc người dùng không muốn bỏ bản đang dịch."""
+        if self.reviews:
+            self.reviews[0].raise_()
+            warn(self.reviews[0], "Còn cửa sổ Review",
+                 "Hãy đóng cửa sổ Review bản dịch trước để lưu hoặc giữ nháp.")
+            return False
+        if self._worker is not None and self._worker.is_alive():
+            if not ask_yes_no(self, "Đang dịch", "Bản dịch đang chạy. Thoát và bỏ phần đang dịch?",
+                              default_no=True, warning=True):
+                return False
+            self._cancel_event.set()
+        return True
+
+    def closeEvent(self, event):
+        if not self.can_close():
+            event.ignore()
+            return
+        if not self.embedded:
+            save_geometry(self, "builder_main")
+        super().closeEvent(event)
+
+
+def main():
+    app = QApplication(sys.argv)
+    app.setApplicationName("Story Translator")
+    app.setFont(QFont("Segoe UI", 10))
+    app.setStyleSheet(STYLE)
+    window = TranslatorWindow()
+    window.show()
+    sys.exit(app.exec())
 
 
 if __name__ == "__main__":
-    root = TkinterDnD.Tk()
-    app = TranslatorGUI(root)
-    root.mainloop()
+    main()

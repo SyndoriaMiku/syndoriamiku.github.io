@@ -1,2040 +1,1076 @@
-import base64
-import json
+"""Trình biên tập thư viện (bản Qt / PySide6): sửa/lưu chương, mở nguồn JSON, phân chương tự động,
+tìm & thay (cả truyện). Qt/PySide6: gõ IME ngay trong ô.
+Phần xử lý dùng chung: editor_core.py.
+
+Chạy: python editor.py
+"""
 import os
 import re
-import shutil
 import sys
-# Console Windows (cp1252) không in được tiếng Việt: print() sẽ ném UnicodeEncodeError giữa chừng.
+
 for _stream in (sys.stdout, sys.stderr):
     try:
         _stream.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
-import tempfile
-import queue
-import unicodedata
-import tkinter as tk
-from tkinter import filedialog, messagebox, scrolledtext, simpledialog, ttk
-from editor_widgets import StorySearchCombo, StyledScrolledText, story_options, configure_theme
+
+from PySide6.QtCore import QStringListModel, Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QFont, QKeySequence, QShortcut, QTextCursor, QTextFormat
+from PySide6.QtWidgets import (QAbstractItemView, QApplication, QComboBox, QCompleter, QDialog, QFileDialog,
+                               QFrame, QGridLayout, QHBoxLayout, QHeaderView, QSplitter, QTableWidget,
+                               QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget)
+
 import library_store as store
+import editor_core as ec
 from library_store import CatalogError, read_catalog, write_catalog
-
-# Phần không dính giao diện nằm ở editor_core (dùng chung với editor_qt.py).
-from editor_core import (  # noqa: F401
-	BASE_DIR, LIBRARY_DIR, CATALOG_PATH, CONFIG_PATH, BACKUP_DIR,
-	delete_library_chapter, delete_library_story, load_config, save_config, safe_decode_b64, slugify_vn,
-	chapter_counter_text)
-
-
-def setup_text_shortcuts(widget):
-	# Keep native Text editing semantics (selection replacement, cursor and undo).
-	widget.configure(exportselection=False, undo=True, autoseparators=True)
-	def select_all(event=None):
-		widget.tag_add("sel", "1.0", "end-1c")
-		return "break"
-
-	def action(virtual):
-		def invoke(event=None):
-			widget.event_generate(virtual)
-			return "break"
-		return invoke
-
-	widget.bind("<<SelectAll>>", select_all)
-	for key in ("a", "A"):
-		widget.bind(f"<Control-{key}>", select_all)
-	for keys, virtual in (("cC", "<<Copy>>"), ("xX", "<<Cut>>"),
-		("vV", "<<Paste>>"), ("zZ", "<<Undo>>"), ("yY", "<<Redo>>")):
-		for key in keys:
-			widget.bind(f"<Control-{key}>", action(virtual))
-	widget.bind("<Control-Shift-Z>", action("<<Redo>>"))
-	widget.bind("<Control-Shift-z>", action("<<Redo>>"))
-
-	menu = tk.Menu(widget, tearoff=0, bg="#231f1a", fg="#e6dfd2",
-		activebackground="#9c6a28", activeforeground="white", bd=0)
-	for label, virtual, shortcut in (("Hoàn tác", "<<Undo>>", "Ctrl+Z"),
-		("Làm lại", "<<Redo>>", "Ctrl+Y"), ("Cắt", "<<Cut>>", "Ctrl+X"),
-		("Sao chép", "<<Copy>>", "Ctrl+C"), ("Dán", "<<Paste>>", "Ctrl+V"),
-		("Chọn tất cả", "<<SelectAll>>", "Ctrl+A")):
-		menu.add_command(label=label, accelerator=shortcut, command=action(virtual))
-
-	def popup(event):
-		widget.focus_set()
-		try:
-			menu.tk_popup(event.x_root, event.y_root)
-		finally:
-			menu.grab_release()
-		return "break"
-	widget.bind("<Button-3>", popup)
-
-
-def setup_entry_shortcuts(widget):
-	def select_all(event):
-		widget.select_range(0, tk.END)
-		widget.icursor(tk.END)
-		return "break"
-
-	def copy(event):
-		if widget.select_present():
-			widget.clipboard_clear()
-			widget.clipboard_append(widget.selection_get())
-		return "break"
-
-	def cut(event):
-		if widget.select_present():
-			widget.clipboard_clear()
-			widget.clipboard_append(widget.selection_get())
-			first = widget.index("sel.first")
-			last = widget.index("sel.last")
-			widget.delete(first, last)
-		return "break"
-
-	def paste(event):
-		try:
-			text = widget.clipboard_get()
-			if widget.select_present():
-				first = widget.index("sel.first")
-				last = widget.index("sel.last")
-				widget.delete(first, last)
-			widget.insert(tk.INSERT, text)
-		except tk.TclError:
-			pass
-		return "break"
-
-	widget.bind("<Control-a>", select_all)
-	widget.bind("<Control-A>", select_all)
-	widget.bind("<Control-c>", copy)
-	widget.bind("<Control-C>", copy)
-	widget.bind("<Control-x>", cut)
-	widget.bind("<Control-X>", cut)
-	widget.bind("<Control-v>", paste)
-	widget.bind("<Control-V>", paste)
-
-
-class ChapterEditorApp:
-	def __init__(self, root, container=None):
-		"""``container``: khung chứa giao diện khi nhúng vào app khác (studio.py).
-		Khi đó cửa sổ (tiêu đề, kích thước, nút đóng) do app chứa quản lý."""
-		self.root = root
-		self.frame = container if container is not None else root
-		embedded = container is not None
-		if not embedded:
-			self.root.title("Trình Chỉnh Sửa Chapter & Quản Lý Thư Viện")
-		self.frame.configure(bg="#15130f")
-
-		self.loaded_json = None
-		self.story_options = []
-		self._resize_timer = None
-		self._flash_timer = None
-		self._count_timer = None
-		self._clean_snapshot = ("", "", "")
-		self._loaded_chapter = None  # (story_slug, chapter_id) opened with "Mở chương"
-		self.search_target = None
-		self.current_match_idx = -1
-
-		if not embedded:
-			# Restore saved geometry or use default
-			self.root.geometry(load_config().get("editor_main", "1300x750"))
-			self.root.minsize(1040, 680)
-
-		self.setup_ui()
-		self.load_story_list()
-		self.mark_clean()
-		self._watch_r2_sync()
-
-		if not embedded:
-			# Save geometry on resize (debounced)
-			self.root.bind("<Configure>", self._on_root_configure)
-			self.root.protocol("WM_DELETE_WINDOW", self.on_app_close)
-		for sequence, handler in (("<Control-s>", self.save_chapter), ("<Control-S>", self.save_chapter),
-				("<Control-o>", self.pick_json), ("<Control-O>", self.pick_json),
-				("<Control-h>", self.show_replace_dialog), ("<Control-H>", self.show_replace_dialog)):
-			self.root.bind_all(sequence, lambda event, h=handler: self._main_shortcut(event, h))
-
-	def _watch_r2_sync(self):
-		"""Kết quả đồng bộ R2 chạy nền (r2_store) hiện ở chân trang."""
-		try:
-			import r2_store
-		except ImportError:
-			return
-		self._r2_events = queue.Queue()
-		r2_store.add_listener(lambda message, ok: self._r2_events.put((message, ok)))
-		self._poll_r2_events()
-
-	def _poll_r2_events(self):
-		try:
-			while True:
-				message, ok = self._r2_events.get_nowait()
-				self.flash(message, "info" if ok else "error")
-		except queue.Empty:
-			pass
-		try:
-			self.root.after(500, self._poll_r2_events)
-		except tk.TclError:
-			pass  # cửa sổ đã đóng
-
-	def _main_shortcut(self, event, handler):
-		# Shortcuts belong to the main window, not to open dialogs
-		# (nor to another tab when embedded in studio.py).
-		try:
-			if event.widget.winfo_toplevel() is not self.root or not self.frame.winfo_ismapped():
-				return None
-		except (AttributeError, tk.TclError):
-			return None
-		handler()
-		return "break"
-
-	# --- TRẠNG THÁI CHƯA LƯU / THÔNG BÁO NHANH ---
-
-	def _editor_snapshot(self):
-		return (self.chap_entry.get().strip(), self.chap_title_entry.get().strip(),
-			self.content_text.get("1.0", tk.END).strip())
-
-	def mark_clean(self):
-		self._clean_snapshot = self._editor_snapshot()
-		self.update_counter()
-
-	def is_dirty(self):
-		_chap_id, title, content = self._editor_snapshot()
-		clean_title, clean_content = self._clean_snapshot[1], self._clean_snapshot[2]
-		# Only unsaved title/content matter; the pre-filled next ID is not user work.
-		return (title, content) != (clean_title, clean_content) and bool(title or content)
-
-	def confirm_discard(self, action):
-		"""Ask before replacing unsaved editor content. Returns True to continue."""
-		if not self.is_dirty():
-			return True
-		answer = messagebox.askyesnocancel(
-			"Nội dung chưa lưu",
-			f"Chương đang soạn chưa được lưu.\n\nLưu trước khi {action}?\n"
-			"Có = Lưu rồi tiếp tục · Không = Bỏ thay đổi · Hủy = Quay lại",
-			parent=self.root, icon="warning")
-		if answer is None:
-			return False
-		if answer:
-			return self.save_chapter()
-		return True
-
-	def on_app_close(self):
-		if self.confirm_discard("thoát"):
-			self._save_root_geometry()
-			self.root.destroy()
-
-	def flash(self, text, kind="ok"):
-		"""Show a non-blocking status message in the footer instead of a popup."""
-		colors = {"ok": "#d9a35c", "warn": "#e8c27a", "error": "#e8857b", "info": "#a39887"}
-		self.library_status.config(text=text, fg=colors.get(kind, "#a39887"))
-		if self._flash_timer:
-			self.root.after_cancel(self._flash_timer)
-		self._flash_timer = self.root.after(8000, self._reset_status)
-
-	def _reset_status(self):
-		self._flash_timer = None
-		self.library_status.config(text=f"{len(self.story_options)} truyện  ·  Mới cập nhật trước", fg="#a39887")
-
-	def schedule_counter(self, event=None):
-		if self._count_timer:
-			self.root.after_cancel(self._count_timer)
-		self._count_timer = self.root.after(300, self.update_counter)
-
-	def update_counter(self):
-		self._count_timer = None
-		if not hasattr(self, "counter_label"):
-			return
-		dirty = self.is_dirty()
-		self.counter_label.config(text=chapter_counter_text(self.content_text.get("1.0", tk.END), dirty),
-			fg="#e8c27a" if dirty else "#8a7f70")
-
-	def _on_content_modified(self, event=None):
-		if self.content_text.edit_modified():
-			self.content_text.edit_modified(False)
-			self.schedule_counter()
-
-	def _catalog_or_error(self, parent=None):
-		"""Strict read for anything that will write list.json. None on error."""
-		try:
-			return read_catalog(CATALOG_PATH)
-		except CatalogError as error:
-			messagebox.showerror("Không đọc được danh mục", f"{error}\n\nĐã dừng để không ghi đè mất danh sách truyện.",
-				parent=parent or self.root)
-			return None
-
-	def _on_root_configure(self, event=None):
-		if event and event.widget is not self.root:
-			return
-		if self._resize_timer:
-			self.root.after_cancel(self._resize_timer)
-		self._resize_timer = self.root.after(600, self._save_root_geometry)
-
-	def _save_root_geometry(self):
-		geo = self.root.geometry()
-		save_config({"editor_main": geo})
-
-
-	def _button(self, parent, text, command, primary=False):
-		return tk.Button(parent, text=text, command=command, bg="#9c6a28" if primary else "#2f2a23",
-			fg="#f4ede1", activebackground="#b07a32" if primary else "#4a4238",
-			activeforeground="white", font=("Segoe UI", 10, "bold"), bd=0,
-			relief="flat", padx=14, pady=8, cursor="hand2")
-
-	def _search_buttons(self, parent, target):
-		"""Nút Tìm / Thay hiện sẵn cho một ô văn bản (cùng chức năng Ctrl+F / Ctrl+H)."""
-		row = tk.Frame(parent, bg="#1e1b17")
-		for text, replace in (("🔍 Tìm", False), ("↪ Thay", True)):
-			tk.Button(row, text=text, bg="#2f2a23", fg="#e6dfd2", activebackground="#3a332c",
-				activeforeground="#f4ede1", relief="flat", bd=0, padx=8, pady=1, cursor="hand2",
-				font=("Segoe UI", 9, "bold"),
-				command=lambda r=replace: self.show_search_dialog(target=target(), replace=r)).pack(side="left", padx=(0, 4))
-		return row
-
-	def setup_ui(self):
-		configure_theme(self.root)
-		header = tk.Frame(self.frame, bg="#15130f")
-		header.pack(fill="x", padx=24, pady=(20, 14))
-		tk.Label(header, text="THƯ VIỆN  /  BIÊN TẬP", fg="#d9a35c", bg="#15130f",
-			font=("Segoe UI", 9, "bold")).pack(anchor="w")
-		tk.Label(header, text="Không gian biên tập", fg="#f4ede1", bg="#15130f",
-			font=("Segoe UI", 23, "bold")).pack(anchor="w", pady=(3, 2))
-		tk.Label(header, text="Chọn truyện · Chỉnh sửa nội dung · Phân chương và lưu vào thư viện",
-			fg="#a39887", bg="#15130f", font=("Segoe UI", 10)).pack(anchor="w")
-		panes = tk.PanedWindow(self.frame, orient=tk.HORIZONTAL, bg="#15130f", bd=0,
-			sashwidth=12, sashrelief="flat", showhandle=False)
-		panes.pack(fill="both", expand=True, padx=24, pady=(0, 16))
-		self.panes = panes
-		left = tk.Frame(panes, bg="#1e1b17", highlightthickness=1, highlightbackground="#3a332c")
-		right = tk.Frame(panes, bg="#1e1b17", highlightthickness=1, highlightbackground="#3a332c")
-		panes.add(left, minsize=460, stretch="always")
-		panes.add(right, minsize=460, stretch="always")
-		self.build_left(left)
-		self.build_right(right)
-		self.build_search_bar(self.frame)
-		footer = tk.Frame(self.frame, bg="#15130f")
-		# Pack trước khung chính để footer không bị đẩy khỏi cửa sổ khi thấp.
-		footer.pack(side="bottom", fill="x", padx=24, pady=(0, 12), before=panes)
-		self.library_status = tk.Label(footer, text="Thư viện", bg="#15130f", fg="#a39887", font=("Segoe UI", 9))
-		self.library_status.pack(side="left")
-		tk.Label(footer, text="Ctrl+S Lưu  •  Ctrl+O Mở JSON  •  Ctrl+F Tìm  •  Ctrl+H Thay thế", bg="#15130f",
-			fg="#8a7f70", font=("Segoe UI", 9)).pack(side="right")
-
-	def build_left(self, parent):
-		tk.Label(parent, text="01   Biên tập chương", fg="#f4ede1", bg="#1e1b17",
-			font=("Segoe UI", 14, "bold")).pack(anchor="w", padx=18, pady=(16, 12))
-		form = tk.Frame(parent, bg="#1e1b17")
-		form.pack(fill="both", expand=True, padx=18)
-		tk.Label(form, text="TRUYỆN  ·  Gõ tên hoặc mã để tìm", fg="#a39887", bg="#1e1b17",
-			font=("Segoe UI", 9, "bold")).pack(anchor="w")
-		story_row = tk.Frame(form, bg="#1e1b17")
-		story_row.pack(fill="x", pady=(6, 12))
-		delete_story_button = self._button(story_row, "Xóa truyện", self.delete_story)
-		delete_story_button.config(bg="#7a322b", activebackground="#8f3a32")
-		delete_story_button.pack(side="right", padx=(8, 0))
-		self._button(story_row, "+ Truyện mới", self.add_new_story).pack(side="right", padx=(8, 0))
-		self.story_combo = StorySearchCombo(story_row, values=self.story_options, font=("Segoe UI", 10), width=20)
-		self.story_combo.pack(side="left", fill="x", expand=True)
-		self.story_combo.bind("<<ComboboxSelected>>", self.on_story_selected, add="+")
-		tk.Label(form, text="CHƯƠNG ĐÃ LƯU", fg="#a39887", bg="#1e1b17", font=("Segoe UI", 9, "bold")).pack(anchor="w")
-		chapter_row = tk.Frame(form, bg="#1e1b17")
-		chapter_row.pack(fill="x", pady=(6, 12))
-		self._button(chapter_row, "Mở chương", self.load_chapter_for_edit).pack(side="right", padx=(8, 0))
-		delete_button = self._button(chapter_row, "Xóa chương", self.delete_chapter)
-		delete_button.config(bg="#7a322b", activebackground="#8f3a32")
-		delete_button.pack(side="right", padx=(8, 0))
-		self.chap_select_combo = ttk.Combobox(chapter_row, font=("Segoe UI", 10), state="readonly", width=20)
-		self.chap_select_combo.pack(side="left", fill="x", expand=True)
-		self.chap_select_combo.bind("<Return>", lambda e: self.load_chapter_for_edit())
-		self.chap_select_combo.bind("<Double-Button-1>", lambda e: self.load_chapter_for_edit())
-		meta = tk.Frame(form, bg="#1e1b17")
-		meta.pack(fill="x", pady=(0, 12))
-		meta.columnconfigure(1, weight=1)
-		for column, label in enumerate(("ID KẾ TIẾP", "TÊN CHƯƠNG")):
-			tk.Label(meta, text=label, bg="#1e1b17", fg="#a39887", font=("Segoe UI", 9, "bold")).grid(row=0, column=column, sticky="w", pady=(0, 6))
-		self.chap_entry = tk.Entry(meta, width=10, bg="#15130f", fg="#e6dfd2", insertbackground="white", bd=0, font=("Segoe UI", 11))
-		self.chap_entry.grid(row=1, column=0, sticky="ew", padx=(0, 12), ipady=8)
-		self.chap_title_entry = tk.Entry(meta, bg="#15130f", fg="#e6dfd2", insertbackground="white", bd=0, font=("Segoe UI", 11))
-		self.chap_title_entry.grid(row=1, column=1, sticky="ew", ipady=8)
-		setup_entry_shortcuts(self.chap_entry)
-		setup_entry_shortcuts(self.chap_title_entry)
-		content_head = tk.Frame(form, bg="#1e1b17")
-		content_head.pack(fill="x")
-		# Bộ đếm pack trước để luôn đủ chỗ khi khung hẹp.
-		self.counter_label = tk.Label(content_head, text="", fg="#8a7f70", bg="#1e1b17", font=("Segoe UI", 9))
-		self.counter_label.pack(side="right")
-		tk.Label(content_head, text="NỘI DUNG", fg="#a39887", bg="#1e1b17", font=("Segoe UI", 9, "bold")).pack(side="left")
-		self._search_buttons(content_head, lambda: self.content_text).pack(side="left", padx=(10, 0))
-		self.content_text = StyledScrolledText(form, height=8, width=30, bg="#15130f", fg="#e6dfd2",
-			insertbackground="white", font=("Segoe UI", 11), wrap=tk.WORD, undo=True,
-			bd=0, padx=12, pady=10, spacing1=3, spacing3=5, selectbackground="#b07a32")
-		self.content_text.pack(fill="both", expand=True, pady=(6, 12))
-		setup_text_shortcuts(self.content_text)
-		self.content_text.bind("<<Modified>>", self._on_content_modified, add="+")
-		self.chap_title_entry.bind("<KeyRelease>", self.schedule_counter, add="+")
-		self._button(form, "Lưu chương vào thư viện", self.save_chapter, primary=True).pack(fill="x", pady=(0, 16))
-
-	def build_right(self, parent):
-		tk.Label(parent, text="02   Nguồn & phân chương", fg="#f4ede1", bg="#1e1b17",
-			font=("Segoe UI", 14, "bold")).pack(anchor="w", padx=18, pady=(16, 8))
-		tk.Label(parent, text="Mở bản dịch, chọn nội dung hoặc tách thành nhiều chương.",
-			fg="#a39887", bg="#1e1b17", font=("Segoe UI", 10)).pack(anchor="w", padx=18, pady=(0, 12))
-		actions = tk.Frame(parent, bg="#1e1b17")
-		actions.pack(fill="x", padx=18, pady=(0, 10))
-		actions.columnconfigure((0, 1), weight=1, uniform="actions")
-		for index, (label, command, primary) in enumerate((
-			("Mở file JSON", self.pick_json, False),
-			("Phân chương tự động", self.open_split_chapters_dialog, True),
-			("← Chuyển toàn bộ", self.process_json, False),
-			("← Chuyển phần chọn", self.move_selected_text, False))):
-			self._button(actions, label, command, primary).grid(row=index//2, column=index%2,
-				sticky="ew", padx=(0, 6) if index%2 == 0 else (6, 0), pady=4)
-		self.temp_status = tk.Label(parent, text="Chưa mở nguồn · Chọn file JSON để bắt đầu", fg="#a39887",
-			bg="#1e1b17", anchor="w", justify="left", wraplength=440, font=("Segoe UI", 9))
-		self.temp_status.pack(fill="x", padx=18, pady=(0, 10))
-		parent.bind("<Configure>", lambda e: self.temp_status.config(wraplength=max(200, e.width - 36)), add="+")
-		source_head = tk.Frame(parent, bg="#1e1b17")
-		source_head.pack(fill="x", padx=18, pady=(0, 6))
-		tk.Label(source_head, text="NGUỒN", fg="#a39887", bg="#1e1b17", font=("Segoe UI", 9, "bold")).pack(side="left")
-		self._search_buttons(source_head, lambda: self.temp_text).pack(side="left", padx=(10, 0))
-
-		# Temp text window
-		self.temp_text = StyledScrolledText(
-			parent,
-			height=10,
-			width=30,
-			bd=0, padx=12, pady=10, spacing1=3, spacing3=5,
-			bg="#15130f",
-			fg="#e6dfd2",
-			insertbackground="white",
-			font=("Segoe UI", 11),
-			wrap=tk.WORD,
-			undo=True
-		)
-		self.temp_text.pack(fill="both", expand=True, padx=16, pady=(0, 16))
-		setup_text_shortcuts(self.temp_text)
-		
-		for widget in (self.temp_text, self.content_text):
-			widget.tag_configure("match", background="#8a5a22", foreground="#f4ede1")
-			widget.tag_configure("active_match", background="#9c6a28", foreground="#f4ede1")
-			widget.tag_raise("sel")
-			widget.bind("<Control-f>", lambda e, w=widget: self.show_search_dialog(target=w))
-			widget.bind("<Control-F>", lambda e, w=widget: self.show_search_dialog(target=w))
-			widget.bind("<FocusIn>", lambda e, w=widget: self._set_last_text(w), add="+")
-			# Tk's Text class maps Ctrl+H to backspace; override it for Replace.
-			widget.bind("<Control-h>", lambda e, w=widget: self.show_search_dialog(target=w, replace=True))
-			widget.bind("<Control-H>", lambda e, w=widget: self.show_search_dialog(target=w, replace=True))
-			# Text's class binding for Ctrl+O inserts a newline; stop it before opening a file.
-			widget.bind("<Control-o>", lambda e: (self.pick_json(), "break")[1])
-			widget.bind("<Control-O>", lambda e: (self.pick_json(), "break")[1])
-
-	def _set_last_text(self, widget):
-		self._last_text = widget
-
-	def build_search_bar(self, parent):
-		"""Find/replace bar shared by both text areas (hidden by default)."""
-		bar = self.search_frame = tk.Frame(parent, bg="#231f1a", highlightthickness=1, highlightbackground="#4a4238")
-		label_opts = dict(bg="#231f1a", fg="#d6cebf", font=("Segoe UI", 9, "bold"))
-		entry_opts = dict(bg="#15130f", fg="#f4ede1", insertbackground="white", font=("Segoe UI", 10), bd=0)
-		check_opts = dict(bg="#231f1a", fg="#e6dfd2", selectcolor="#15130f", activebackground="#231f1a",
-			activeforeground="#f4ede1", font=("Segoe UI", 9))
-		small = dict(borderwidth=0, font=("Segoe UI", 9, "bold"), cursor="hand2", fg="#f4ede1", padx=8, pady=3)
-
-		row1 = tk.Frame(bar, bg="#231f1a")
-		row1.pack(fill="x", padx=8, pady=(6, 2))
-		self.search_where = tk.Label(row1, text="🔍 Tìm:", width=16, anchor="w", **label_opts)
-		self.search_where.pack(side="left")
-		self.search_entry = tk.Entry(row1, **entry_opts)
-		self.search_entry.pack(side="left", fill="x", expand=True, ipady=4, padx=4)
-		setup_entry_shortcuts(self.search_entry)
-		self.regex_var = tk.BooleanVar(value=False)
-		self.case_var = tk.BooleanVar(value=False)
-		tk.Checkbutton(row1, text="Regex", variable=self.regex_var, command=self.perform_search, **check_opts).pack(side="left")
-		tk.Checkbutton(row1, text="Aa", variable=self.case_var, command=self.perform_search, **check_opts).pack(side="left")
-		self.search_status = tk.Label(row1, text="0/0", width=9, fg="#a39887", bg="#231f1a", font=("Segoe UI", 9))
-		self.search_status.pack(side="left", padx=4)
-		tk.Button(row1, text="←", bg="#3a332c", command=self.find_prev, **small).pack(side="left", padx=2)
-		tk.Button(row1, text="→", bg="#3a332c", command=self.find_next, **small).pack(side="left", padx=2)
-		self.select_above_btn = tk.Button(row1, text="⬆️ Chọn Lên", bg="#6a5683", command=self.select_above_match, **small)
-		self.select_above_btn.pack(side="left", padx=2)
-		self._search_close_btn = tk.Button(row1, text="✕", bg="#9a3f35", command=self.hide_search_dialog, **small)
-		self._search_close_btn.pack(side="left", padx=(4, 0))
-
-		row2 = self.replace_row = tk.Frame(bar, bg="#231f1a")
-		tk.Label(row2, text="↪ Thay bằng:", width=16, anchor="w", **label_opts).pack(side="left")
-		self.replace_entry = tk.Entry(row2, **entry_opts)
-		self.replace_entry.pack(side="left", fill="x", expand=True, ipady=4, padx=4)
-		setup_entry_shortcuts(self.replace_entry)
-		tk.Button(row2, text="Thay", bg="#3a332c", command=self.replace_current, **small).pack(side="left", padx=2)
-		tk.Button(row2, text="Thay tất cả", bg="#9c6a28", command=self.replace_all, **small).pack(side="left", padx=2)
-		tk.Button(row2, text="Cả truyện…", bg="#8a5a22", command=self.replace_in_whole_story, **small).pack(side="left", padx=(2, 0))
-
-		self.search_entry.bind("<KeyRelease>", self.schedule_search)
-		self.search_entry.bind("<Return>", self.find_next)
-		self.search_entry.bind("<Shift-Return>", self.find_prev)
-		self.search_entry.bind("<Escape>", self.hide_search_dialog)
-		self.replace_entry.bind("<Return>", lambda e: (self.replace_current(), "break")[1])
-		self.replace_entry.bind("<Escape>", self.hide_search_dialog)
-		for entry in (self.search_entry, self.replace_entry):
-			entry.bind("<Control-h>", lambda e: self.show_search_dialog(target=self._target(), replace=True))
-
-	def load_story_list(self):
-		self.story_options = []
-		os.makedirs(LIBRARY_DIR, exist_ok=True)
-
-		# Auto-migrate list.json from stories/ to library/ if not exists
-		if not os.path.exists(CATALOG_PATH):
-			old_catalog = os.path.join(BASE_DIR, "stories", "list.json")
-			if os.path.exists(old_catalog):
-				try:
-					shutil.copy2(old_catalog, CATALOG_PATH)
-				except Exception:
-					pass
-
-		try:
-			self.story_options = story_options(read_catalog(CATALOG_PATH))
-		except CatalogError as error:
-			messagebox.showerror("Không đọc được danh mục",
-				f"{error}\n\nTrình biên tập sẽ không ghi vào list.json cho tới khi file được sửa.", parent=self.root)
-
-		self.story_combo["values"] = self.story_options
-		if hasattr(self, "library_status"):
-			self.library_status.config(text=f"{len(self.story_options)} truyện  ·  Mới cập nhật trước")
-
-	def get_next_story_id(self, catalog=None):
-		if catalog is None:
-			catalog = self._read_chapter_catalog()
-		return store.next_story_id(catalog)
-
-	def get_next_chapter_id(self, story_slug, catalog=None):
-		if not story_slug:
-			return store.format_chapter_id(1)
-		if catalog is None:
-			catalog = self._read_chapter_catalog()
-		return store.next_chapter_id(catalog, story_slug)
-
-	def _read_chapter_catalog(self):
-		"""Lenient read for display only; writers use _catalog_or_error()."""
-		try:
-			return read_catalog(CATALOG_PATH)
-		except CatalogError:
-			return []
-
-	def on_story_selected(self, event=None):
-		story_value = self.story_combo.get().strip()
-		if not story_value:
-			return
-
-		if "|" in story_value:
-			story_slug, _ = story_value.split("|", 1)
-			story_slug = story_slug.strip()
-		else:
-			story_slug = slugify_vn(story_value)
-
-		next_chap_id = self.get_next_chapter_id(story_slug)
-		self.chap_entry.delete(0, tk.END)
-		self.chap_entry.insert(0, next_chap_id)
-
-		# Populate chapter select combobox
-		self._refresh_chap_select(story_slug)
-
-	def _refresh_chap_select(self, story_slug, catalog=None, selected_id=None):
-		"""Load chapter list for the selected story into chap_select_combo."""
-		if catalog is None:
-			catalog = self._read_chapter_catalog()
-
-		story = next((item for item in catalog if item.get("slug") == story_slug), None)
-		chap_options = []
-		if story:
-			for chap in story.get("chapters", []):
-				cid = chap.get("id", "")
-				cname = chap.get("name", "")
-				chap_options.append(f"{cid} | {cname}")
-
-		self.chap_select_combo["values"] = chap_options
-		selected = next((option for option in chap_options
-			if option.split("|", 1)[0].strip() == selected_id), "")
-		self.chap_select_combo.set(selected)
-
-	def _sync_saved_chapters(self, story_slug, catalog, selected_id):
-		"""Refresh from the catalog just saved, without repeated disk reads."""
-		self.story_options = story_options(catalog)
-		self.story_combo["values"] = self.story_options
-		if hasattr(self, "library_status"):
-			self.library_status.config(text=f"{len(self.story_options)} truyện  ·  Mới cập nhật trước")
-		selected_story = next((option for option in self.story_options
-			if option.split("|", 1)[0].strip() == story_slug), "")
-		self.story_combo.set(selected_story)
-		self._refresh_chap_select(story_slug, catalog, selected_id)
-		self.chap_entry.delete(0, tk.END)
-		self.chap_entry.insert(0, self.get_next_chapter_id(story_slug, catalog))
-
-
-
-	def delete_story(self):
-		"""Delete the selected story and all of its saved chapters."""
-		story_value = self.story_combo.get().strip()
-		if not story_value or story_value not in self.story_options:
-			messagebox.showwarning("Chú ý", "Vui lòng chọn truyện trong danh sách!", parent=self.root)
-			return
-		story_slug, story_title = (part.strip() for part in story_value.split("|", 1))
-		if not messagebox.askyesno(
-			"Xóa truyện",
-			f"Xóa truyện {story_title} cùng toàn bộ chương đã lưu?\n\n"
-			"Dữ liệu truyện sẽ bị xóa khỏi thư viện.",
-			parent=self.root, icon="warning", default="no",
-		):
-			return
-		try:
-			catalog, cleanup_warning = delete_library_story(story_slug)
-		except Exception as error:
-			messagebox.showerror("Lỗi", f"Không thể xóa truyện:\n{error}", parent=self.root)
-			return
-
-		self.story_options = story_options(catalog)
-		self.story_combo["values"] = self.story_options
-		self.story_combo.set("")
-		self.chap_select_combo["values"] = ()
-		self.chap_select_combo.set("")
-		self.chap_entry.delete(0, tk.END)
-		self.chap_entry.insert(0, store.format_chapter_id(1))
-		# Only clear the editor if it holds a chapter of the deleted story.
-		if self._loaded_chapter and self._loaded_chapter[0] == story_slug:
-			self.chap_title_entry.delete(0, tk.END)
-			self.content_text.delete("1.0", tk.END)
-			self._loaded_chapter = None
-			self.mark_clean()
-		if cleanup_warning:
-			messagebox.showwarning("Đã xóa truyện", cleanup_warning, parent=self.root)
-		else:
-			self.flash(f"🗑 Đã xóa truyện: {story_title}")
-	def delete_chapter(self):
-		"""Delete the chapter selected in the saved-chapter list."""
-		story_value = self.story_combo.get().strip()
-		chap_value = self.chap_select_combo.get().strip()
-		if not story_value or story_value not in self.story_options:
-			messagebox.showwarning("Chú ý", "Vui lòng chọn truyện trong danh sách!", parent=self.root)
-			return
-		if not chap_value:
-			messagebox.showwarning("Chú ý", "Vui lòng chọn chương muốn xóa!", parent=self.root)
-			return
-		story_slug = story_value.split("|", 1)[0].strip()
-		chap_slug = chap_value.split("|", 1)[0].strip()
-		if not messagebox.askyesno(
-			"Xóa chương",
-			f"Xóa chương {chap_value} khỏi truyện {story_value}?\n\n"
-			"Dữ liệu chương sẽ bị xóa khỏi thư viện. Nếu đang biên tập chương này, "
-			"nội dung chưa lưu cũng sẽ bị xóa.",
-			parent=self.root, icon="warning", default="no",
-		):
-			return
-		try:
-			catalog, cleanup_warning = delete_library_chapter(story_slug, chap_slug)
-		except Exception as error:
-			messagebox.showerror("Lỗi", f"Không thể xóa chương:\n{error}", parent=self.root)
-			return
-
-		if self.chap_entry.get().strip() == chap_slug:
-			self.chap_title_entry.delete(0, tk.END)
-			self.content_text.delete("1.0", tk.END)
-			self.chap_entry.delete(0, tk.END)
-			self.chap_entry.insert(0, self.get_next_chapter_id(story_slug, catalog))
-			self._loaded_chapter = None
-			self.mark_clean()
-		elif not self.chap_title_entry.get().strip() and not self.content_text.get("1.0", tk.END).strip():
-			self.chap_entry.delete(0, tk.END)
-			self.chap_entry.insert(0, self.get_next_chapter_id(story_slug, catalog))
-		self._refresh_chap_select(story_slug, catalog)
-		if cleanup_warning:
-			messagebox.showwarning("Đã xóa chương", cleanup_warning, parent=self.root)
-		else:
-			self.flash(f"🗑 Đã xóa chương: {chap_value}")
-
-	def load_chapter_for_edit(self):
-		"""Load a chapter from library into the editor for editing."""
-		if not self.confirm_discard("mở chương khác"):
-			return
-		story_value = self.story_combo.get().strip()
-		if not story_value:
-			messagebox.showwarning("Chú ý", "Vui lòng chọn Truyện trước!")
-			return
-
-		chap_value = self.chap_select_combo.get().strip()
-		if not chap_value:
-			messagebox.showwarning("Chú ý", "Vui lòng chọn Chương muốn sửa!")
-			return
-
-		if "|" in story_value:
-			story_slug = story_value.split("|", 1)[0].strip()
-		else:
-			story_slug = slugify_vn(story_value)
-
-		if "|" in chap_value:
-			chap_slug = chap_value.split("|", 1)[0].strip()
-		else:
-			chap_slug = chap_value
-
-		data_path = os.path.join(LIBRARY_DIR, story_slug, chap_slug, "data.json")
-		if not os.path.exists(data_path):
-			messagebox.showerror("Lỗi", f"Không tìm thấy file:\n{data_path}")
-			return
-
-		try:
-			with open(data_path, "r", encoding="utf-8") as f:
-				chapter_json = json.load(f)
-		except Exception as e:
-			messagebox.showerror("Lỗi", f"Không thể đọc file data.json:\n{e}")
-			return
-
-		# Decode VI paragraphs
-		vi_paragraphs = []
-		for item in chapter_json.get("content", []):
-			vi = item.get("vi")
-			if vi:
-				vi_paragraphs.append(safe_decode_b64(vi))
-
-		chap_title = chapter_json.get("chapter_title", "")
-
-		# Fill editor
-		self.chap_entry.delete(0, tk.END)
-		self.chap_entry.insert(0, chap_slug)
-		self.chap_title_entry.delete(0, tk.END)
-		if chap_title:
-			self.chap_title_entry.insert(0, chap_title)
-		self.content_text.delete("1.0", tk.END)
-		self.content_text.insert("1.0", "\n\n".join(vi_paragraphs))
-		self.content_text.edit_reset()
-		self._loaded_chapter = (story_slug, chap_slug)
-		self.mark_clean()
-		self.flash(f"📖 Đang sửa chương {chap_value} — Ctrl+S để lưu đè.", "info")
-
-	def add_new_story(self):
-		default_title = ""
-		if self.loaded_json and "title" in self.loaded_json:
-			default_title = self.loaded_json.get("title", "")
-
-		dialog = tk.Toplevel(self.root)
-		dialog.title("Thêm Truyện Mới")
-		dialog.resizable(True, False)
-		dialog.transient(self.root)
-		dialog.grab_set()
-		dialog.configure(bg="#1e1b17")
-
-		# Header
-		header_frame = tk.Frame(dialog, bg="#15130f", pady=12)
-		header_frame.pack(fill=tk.X)
-		tk.Label(
-			header_frame,
-			text="➕ Thêm Truyện Mới",
-			fg="#f4ede1",
-			bg="#15130f",
-			font=("Segoe UI", 11, "bold"),
-		).pack(padx=16, anchor="w")
-
-		# Body
-		body_frame = tk.Frame(dialog, bg="#1e1b17")
-		body_frame.pack(fill=tk.X, padx=16, pady=(14, 0))
-
-		tk.Label(
-			body_frame,
-			text="Tên hiển thị của truyện:",
-			fg="#a39887",
-			bg="#1e1b17",
-			font=("Segoe UI", 9),
-		).pack(anchor="w")
-
-		entry_var = tk.StringVar(value=default_title)
-		entry = tk.Entry(
-			body_frame,
-			textvariable=entry_var,
-			bg="#15130f",
-			fg="#f4ede1",
-			insertbackground="#f4ede1",
-			relief="flat",
-			font=("Segoe UI", 11),
-			bd=0,
-			highlightthickness=1,
-			highlightbackground="#4a4238",
-			highlightcolor="#d9a35c",
-		)
-		entry.pack(fill=tk.X, pady=(6, 0), ipady=7)
-		entry.select_range(0, tk.END)
-		entry.focus_set()
-
-		# Hint
-		tk.Label(
-			body_frame,
-			text="ID 4 chữ số sẽ được tạo tự động.",
-			fg="#6b6255",
-			bg="#1e1b17",
-			font=("Segoe UI", 9),
-		).pack(anchor="w", pady=(4, 0))
-
-		# Separator
-		tk.Frame(dialog, bg="#2f2a23", height=1).pack(fill=tk.X, pady=(14, 0))
-
-		# Buttons
-		btn_frame = tk.Frame(dialog, bg="#1e1b17")
-		btn_frame.pack(fill=tk.X, padx=16, pady=12)
-
-		title_result = [None]
-
-		def on_ok(event=None):
-			title_result[0] = entry_var.get()
-			save_config({"editor_add_story_dialog": dialog.geometry()})
-			dialog.destroy()
-
-		def on_cancel(event=None):
-			save_config({"editor_add_story_dialog": dialog.geometry()})
-			dialog.destroy()
-
-		tk.Button(
-			btn_frame,
-			text="Hủy",
-			bg="#2f2a23",
-			fg="#a39887",
-			activebackground="#3a332c",
-			activeforeground="#f4ede1",
-			relief="flat",
-			borderwidth=0,
-			padx=18,
-			pady=6,
-			font=("Segoe UI", 9),
-			cursor="hand2",
-			command=on_cancel,
-		).pack(side=tk.RIGHT, padx=(6, 0))
-
-		tk.Button(
-			btn_frame,
-			text="✅ Tạo Truyện",
-			bg="#9c6a28",
-			fg="#f4ede1",
-			activebackground="#46734f",
-			activeforeground="#f4ede1",
-			relief="flat",
-			borderwidth=0,
-			padx=18,
-			pady=6,
-			font=("Segoe UI", 9, "bold"),
-			cursor="hand2",
-			command=on_ok,
-		).pack(side=tk.RIGHT)
-
-		entry.bind("<Return>", on_ok)
-		dialog.bind("<Escape>", on_cancel)
-
-		# Restore saved geometry or default centered, horizontal only (resizable=False vertically)
-		cfg = load_config()
-		saved_geo = cfg.get("editor_add_story_dialog")
-		applied = False
-		if saved_geo:
-			try:
-				# Only restore width+position, not height (since resizable is horizontal only)
-				import re as _re
-				m = _re.match(r"(\d+)x\d+([+-]\d+[+-]\d+)?", saved_geo)
-				if m:
-					w = max(int(m.group(1)), 480)
-					pos = m.group(2) or ""
-					dialog.update_idletasks()
-					h = dialog.winfo_reqheight()
-					dialog.geometry(f"{w}x{h}{pos}")
-					applied = True
-			except Exception:
-				pass
-		if not applied:
-			dialog.update_idletasks()
-			w, h = 480, dialog.winfo_reqheight()
-			rx = self.root.winfo_x() + (self.root.winfo_width() - w) // 2
-			ry = self.root.winfo_y() + (self.root.winfo_height() - h) // 2
-			dialog.geometry(f"{w}x{h}+{rx}+{ry}")
-		dialog.minsize(480, 0)
-
-		self.root.wait_window(dialog)
-
-
-		title = title_result[0]
-		if not title or not title.strip():
-			return
-		title = title.strip()
-
-
-		catalog = self._catalog_or_error()
-		if catalog is None:
-			return
-		# Auto generate 4-digit Story ID
-		slug = self.get_next_story_id(catalog)
-		if any(item.get('slug') == slug for item in catalog):
-			messagebox.showwarning("Chú ý", f"ID/Slug tự động '{slug}' đã tồn tại!")
-			return
-
-		store.ensure_story_dir(LIBRARY_DIR, slug)
-		import datetime
-		now = datetime.datetime.now()
-		catalog.append({
-			"title": title,
-			"slug": slug,
-			"date": now.strftime("%d/%m/%Y"),
-			"timestamp": now.timestamp(),
-			"chapters": []
-		})
-
-		try:
-			write_catalog(CATALOG_PATH, catalog)
-		except Exception as e:
-			messagebox.showerror("Lỗi", f"Không thể lưu list.json:\n{e}")
-			return
-
-		self.load_story_list()
-		self.flash(f"➕ Đã tạo truyện {slug} | {title}  (thư mục library/{slug})")
-
-		# Auto select in combobox
-		new_item = f"{slug} | {title}"
-		if new_item in self.story_options:
-			self.story_combo.set(new_item)
-			self.on_story_selected()
-
-	def _chapter_exists(self, catalog, story_slug, chap_slug):
-		story = next((item for item in catalog if item.get("slug") == story_slug), None)
-		return bool(story) and any(c.get("id") == chap_slug for c in story.get("chapters", []))
-
-	def save_chapter(self):
-		"""Save the editor chapter. Returns True when written."""
-		story_value = self.story_combo.get().strip()
-		if story_value and story_value not in self.story_options:
-			messagebox.showwarning("Chọn truyện", "Hãy chọn một truyện trong danh sách gợi ý trước khi lưu.", parent=self.root)
-			return False
-		chap_slug = self.chap_entry.get().strip()
-		chap_title = self.chap_title_entry.get().strip()
-		content = self.content_text.get("1.0", tk.END).strip()
-
-		if not story_value:
-			messagebox.showwarning("Chú ý", "Vui lòng chọn Truyện!")
-			return False
-		if not chap_title:
-			chap_title = "Oneshot"
-		if not content:
-			messagebox.showwarning("Chú ý", "Nội dung chương không được để trống!")
-			return False
-
-		story_slug, story_title = (part.strip() for part in story_value.split("|", 1))
-		catalog = self._catalog_or_error()
-		if catalog is None:
-			return False
-
-		# Auto assign 6-digit chapter ID if empty
-		if not chap_slug:
-			chap_slug = self.get_next_chapter_id(story_slug, catalog)
-		else:
-			chap_slug = slugify_vn(chap_slug)
-
-		# Ghi đè chương có sẵn chỉ khi chính chương đó đang được mở để sửa.
-		if (self._chapter_exists(catalog, story_slug, chap_slug)
-				and self._loaded_chapter != (story_slug, chap_slug)):
-			if not messagebox.askyesno("Ghi đè chương?",
-					f"Chương {chap_slug} đã có trong truyện này.\nGhi đè nội dung chương đó?",
-					parent=self.root, icon="warning", default="no"):
-				return False
-
-		paragraphs = [p.strip() for p in content.split("\n\n") if p.strip()]
-		try:
-			catalog, _slug, _saved = store.save_chapters(
-				LIBRARY_DIR, BASE_DIR, CATALOG_PATH, story_slug, story_title,
-				[(chap_slug, chap_title, (("", p) for p in paragraphs))], overwrite=True)
-		except Exception as e:
-			messagebox.showerror("Lỗi", f"Không thể lưu chương:\n{e}")
-			return False
-
-		self._sync_saved_chapters(story_slug, catalog, chap_slug)
-
-		# Dọn dẹp editor và điền sẵn ID chương tiếp theo
-		self.chap_title_entry.delete(0, tk.END)
-		self.content_text.delete("1.0", tk.END)
-		self.content_text.edit_reset()
-		self._loaded_chapter = None
-		self.mark_clean()
-		self.flash(f"✅ Đã lưu chương {chap_slug} · {chap_title} ({len(paragraphs)} đoạn)")
-		return True
-
-	def pick_json(self):
-		file_path = filedialog.askopenfilename(
-			title="Chọn data.json",
-			filetypes=[("JSON files", "*.json")],
-		)
-		if not file_path:
-			return
-
-		try:
-			with open(file_path, "r", encoding="utf-8") as f:
-				self.loaded_json = json.load(f)
-		except Exception:
-			messagebox.showerror("Lỗi", "Không thể đọc file JSON.")
-			return
-
-		title = self.loaded_json.get("title", "Không có")
-		chap_title = self.loaded_json.get("chapter_title", "")
-		content_items = self.loaded_json.get("content", [])
-		count = len(content_items)
-
-		# Auto-decode all Vietnamese paragraphs and insert to temp_text
-		vi_texts = []
-		if isinstance(content_items, list):
-			for item in content_items:
-				vi = item.get("vi")
-				if vi:
-					vi_texts.append(safe_decode_b64(vi))
-
-		self.temp_text.delete("1.0", tk.END)
-		self.temp_text.insert("1.0", "\n\n".join(vi_texts))
-
-		# Try to auto-detect story slug and chapter slug from directory structure
-		norm_path = os.path.normpath(file_path)
-		parts = norm_path.split(os.sep)
-		detected_story_slug = ""
-		detected_chap_slug = ""
-
-		if len(parts) >= 3 and parts[-1].lower() == "data.json":
-			detected_chap_slug = parts[-2]
-			detected_story_slug = parts[-3]
-
-		# Đang soạn dở thì không đụng vào truyện/ID/tên chương của editor.
-		if self.is_dirty():
-			detected_story_slug = ""
-
-		# Case A: Loaded from library/{story-id}/{chapter-id}/data.json
-		if detected_story_slug and detected_chap_slug and detected_story_slug.lower() != "stories" and detected_story_slug.lower() != "library":
-			# Auto select or input story
-			found_option = None
-			for opt in self.story_options:
-				if opt.startswith(f"{detected_story_slug} |"):
-					found_option = opt
-					break
-			
-			if found_option:
-				self.story_combo.set(found_option)
-			else:
-				self.story_combo.set(f"{detected_story_slug} | {title}")
-
-			# Auto set chapter ID
-			self.chap_entry.delete(0, tk.END)
-			self.chap_entry.insert(0, detected_chap_slug)
-
-			# Auto set chapter Title
-			if chap_title:
-				self.chap_title_entry.delete(0, tk.END)
-				self.chap_title_entry.insert(0, chap_title)
-
-		# Case B: Loaded from stories/{story-slug}/data.json (generated by builder.py)
-		elif detected_story_slug and detected_story_slug.lower() == "stories":
-			# Search the story options for a story that has the same title
-			found_option = None
-			for opt in self.story_options:
-				if "|" in opt:
-					slug_opt, title_opt = opt.split("|", 1)
-					if title_opt.strip().lower() == title.strip().lower():
-						found_option = opt
-						break
-			
-			if found_option:
-				self.story_combo.set(found_option)
-				story_id = found_option.split("|")[0].strip()
-				
-				# Get next chapter ID automatically!
-				next_chap_id = self.get_next_chapter_id(story_id)
-				self.chap_entry.delete(0, tk.END)
-				self.chap_entry.insert(0, next_chap_id)
-			
-			# Auto set chapter Title if it exists
-			if chap_title:
-				self.chap_title_entry.delete(0, tk.END)
-				self.chap_title_entry.insert(0, chap_title)
-
-		# Update status label
-		info_str = f"Đã nạp: {os.path.basename(file_path)} | Truyện: {title} | Chương: {chap_title if chap_title else 'Chưa rõ'} | {count} đoạn"
-		self.temp_status.config(text=info_str, fg="#d9a35c")
-
-	def process_json(self):
-		new_text = self.temp_text.get("1.0", tk.END).strip()
-		if not new_text:
-			messagebox.showwarning("Chú ý", "Cửa sổ temp đang trống hoặc chưa có nội dung.")
-			return
-
-		if not self.loaded_json:
-			self.loaded_json = {}
-
-		existing = self.content_text.get("1.0", tk.END).strip()
-
-		if existing:
-			choice = messagebox.askyesnocancel(
-				"Editor đang có nội dung",
-				"Có = Viết tiếp xuống dưới\nKhông = Thay thế toàn bộ nội dung đang có\nHủy = Không làm gì",
-				parent=self.root,
-			)
-			if choice is None:
-				return
-			if choice:
-				self.content_text.insert(tk.END, "\n\n" + new_text)
-			else:
-				self.content_text.delete("1.0", tk.END)
-				self.content_text.insert("1.0", new_text)
-		else:
-			self.content_text.delete("1.0", tk.END)
-			self.content_text.insert("1.0", new_text)
-
-		# Tên chương còn trống: lấy chapter_title trong JSON, không có thì dùng tên truyện
-		# (của file JSON đã mở, hoặc của truyện đang chọn ở ô TRUYỆN).
-		if not self.chap_title_entry.get().strip():
-			story_value = self.story_combo.get().strip()
-			selected_title = story_value.split("|", 1)[1].strip() if "|" in story_value else story_value
-			title = (self.loaded_json.get("chapter_title", "").strip()
-				or self.loaded_json.get("title", "").strip()
-				or selected_title)
-			if title:
-				self.chap_title_entry.insert(0, title)
-
-	def move_selected_text(self):
-		try:
-			selected_text = self.temp_text.get("sel.first", "sel.last")
-			if not selected_text.strip():
-				return
-			
-			# Auto-fill chapter title if first line contains "Chương" and title field is empty
-			if not self.chap_title_entry.get().strip():
-				first_line = selected_text.strip().split("\n")[0].strip()
-				if re.search(r"chương", first_line, re.IGNORECASE):
-					self.chap_title_entry.delete(0, tk.END)
-					self.chap_title_entry.insert(0, first_line)
-			
-			# Cut the text from temp_text
-			self.temp_text.delete("sel.first", "sel.last")
-			
-			# Paste to content_text
-			existing = self.content_text.get("1.0", tk.END).strip()
-			if existing:
-				self.content_text.insert(tk.END, "\n\n" + selected_text)
-			else:
-				self.content_text.insert("1.0", selected_text)
-				
-		except tk.TclError:
-			messagebox.showwarning("Chú ý", "Vui lòng bôi đen (chọn) phần văn bản cần chuyển trong cửa sổ bên phải.")
-
-
-
-	# --- HỆ THỐNG PHÂN CHƯƠNG TỰ ĐỘNG ---
-
-	DEFAULT_SPLIT_PATTERNS = store.DEFAULT_SPLIT_PATTERNS
-
-	def get_split_patterns(self):
-		"""Return list of (name, regex) for the pattern selector, merging defaults + saved custom."""
-		cfg = load_config()
-		saved = cfg.get("split_patterns", [])
-		# saved is list of [name, regex] from config
-		result = list(self.DEFAULT_SPLIT_PATTERNS)
-		for item in saved:
-			if isinstance(item, (list, tuple)) and len(item) == 2:
-				name, rx = item
-				# Skip if already in defaults (by regex)
-				if not any(rx == r for _, r in result):
-					# Tên trùng thì combobox chỉ chọn được mục đầu: đánh dấu mục đã lưu.
-					if any(name == n for n, _ in result):
-						name = f"{name} (đã lưu)"
-					result.append((name, rx))
-		return result
-
-	def save_split_pattern(self, name, regex):
-		"""Persist a new custom pattern to config."""
-		cfg = load_config()
-		saved = cfg.get("split_patterns", [])
-		# Avoid duplicate regex
-		saved = [p for p in saved if p[1] != regex]
-		saved.append([name, regex])
-		save_config({"split_patterns": saved})
-
-	def detect_chapters(self, text, pattern_regex):
-		"""
-		Split paragraphs (separated by \\n\\n) into chapters based on a regex header pattern.
-		Returns list of {"title": str, "paragraphs": [str]} dicts.
-		Paragraphs before the first header are grouped under title="".
-
-		Thin wrapper over library_store.split_into_chapters so the editor and
-		the builder share one grouping implementation.
-		"""
-		paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
-		try:
-			groups = store.split_into_chapters(paragraphs, pattern_regex)
-		except re.error:
-			return []
-		return [{"title": group["title"], "paragraphs": group["items"]} for group in groups]
-
-	def open_split_chapters_dialog(self):
-		"""Open the auto-split chapters dialog."""
-		raw_text = self.temp_text.get("1.0", tk.END).strip()
-		if not raw_text:
-			messagebox.showwarning("Chú ý", "Cửa sổ bên phải đang trống. Hãy load file JSON trước!")
-			return
-
-		patterns = self.get_split_patterns()
-
-		# --- Build Dialog ---
-		dlg = tk.Toplevel(self.root)
-		dlg.title("🔪 Phân Chương Tự Động")
-		dlg.configure(bg="#15130f")
-		dlg.transient(self.root)
-		dlg.grab_set()
-		dlg.resizable(True, True)
-
-		# Restore saved geometry
-		cfg = load_config()
-		geo = cfg.get("editor_split_dialog", "860x640")
-		try:
-			dlg.geometry(geo)
-		except tk.TclError:
-			geo = "860x640"
-			dlg.geometry(geo)
-		dlg.minsize(700, 500)
-
-		resize_timer = None
-		restore_timer = None
-		restored = False
-		closing = False
-		normal_geometry = geo
-		window_state = cfg.get("editor_split_dialog_state", "normal")
-		if window_state not in ("normal", "zoomed"):
-			window_state = "normal"
-
-		def capture_dialog_geometry():
-			nonlocal normal_geometry, window_state
-			if not restored or not dlg.winfo_exists() or not dlg.winfo_ismapped():
-				return
-			state = dlg.state()
-			if state not in ("normal", "zoomed"):
-				return
-			window_state = state
-			if state == "normal" and dlg.winfo_width() >= 700 and dlg.winfo_height() >= 500:
-				normal_geometry = dlg.geometry()
-
-		def save_dialog_geometry(capture=True):
-			nonlocal resize_timer
-			if resize_timer is not None:
-				self.root.after_cancel(resize_timer)
-			resize_timer = None
-			if capture:
-				capture_dialog_geometry()
-			save_config({
-				"editor_split_dialog": normal_geometry,
-				"editor_split_dialog_state": window_state,
-			})
-
-		def on_dialog_configure(event):
-			nonlocal resize_timer, normal_geometry, window_state
-			# Child widgets also emit Configure events; only track the dialog.
-			if not restored or closing or event.widget is not dlg or event.width < 700 or event.height < 500:
-				return
-			state = dlg.state()
-			if state not in ("normal", "zoomed"):
-				return
-			window_state = state
-			if state == "normal":
-				# Configure carries the new size even if wm geometry still lags it.
-				position = re.sub(r'^\d+x\d+', '', dlg.geometry())
-				normal_geometry = f"{event.width}x{event.height}{position}"
-			if resize_timer is not None:
-				self.root.after_cancel(resize_timer)
-			resize_timer = self.root.after(600, save_dialog_geometry)
-
-		def on_dialog_destroy(event):
-			nonlocal resize_timer
-			if event.widget is not dlg or closing:
-				return
-			# Fallback for parent shutdown or a direct destroy(). Tk can no
-			# longer be queried here, so use the last Configure snapshot.
-			save_dialog_geometry(capture=False)
-
-		destroy_dialog = dlg.destroy
-
-		def on_dlg_close():
-			nonlocal closing, restore_timer
-			if closing:
-				return
-			if restore_timer is not None:
-				dlg.after_cancel(restore_timer)
-				restore_timer = None
-			# Save synchronously before destruction, including a recent resize
-			# whose debounce timer has not fired yet (X, Cancel and Save All).
-			save_dialog_geometry()
-			closing = True
-			destroy_dialog()
-
-		# Parent shutdown and callers using destroy() must save before Tk
-		# discards the window too, not only the title-bar close action.
-		dlg.destroy = on_dlg_close
-		dlg.bind("<Configure>", on_dialog_configure, add="+")
-		dlg.bind("<Destroy>", on_dialog_destroy, add="+")
-		dlg.protocol("WM_DELETE_WINDOW", on_dlg_close)
-		def restore_dialog_geometry():
-			nonlocal restore_timer, restored
-			restore_timer = None
-			if closing:
-				return
-			# Desktop window-placement utilities can resize a newly mapped window.
-			# Reapply the saved size after that first placement, and never save
-			# the temporary startup dimensions as the user's preference.
-			dlg.geometry(geo)
-			if window_state == "zoomed":
-				dlg.state("zoomed")
-			dlg.update_idletasks()
-			restored = True
-
-		def on_dialog_map(event):
-			nonlocal restore_timer
-			if event.widget is dlg:
-				dlg.unbind("<Map>", map_binding)
-				# Allow the desktop's initial placement pass to finish first.
-				# On Windows this can arrive well after Map/after_idle (~500 ms).
-				restore_timer = dlg.after(1000, restore_dialog_geometry)
-
-		map_binding = dlg.bind("<Map>", on_dialog_map, add="+")
-
-		# ── HEADER ──
-		hdr = tk.Frame(dlg, bg="#1e1b17", pady=10)
-		hdr.pack(fill=tk.X)
-		tk.Label(hdr, text="🔪 Phân Chương Tự Động", fg="#f4ede1", bg="#1e1b17",
-				 font=("Segoe UI", 12, "bold")).pack(side=tk.LEFT, padx=16)
-
-		# ── STEP 1: Pattern selector ──
-		step1 = tk.Frame(dlg, bg="#1e1b17", padx=16, pady=8)
-		step1.pack(fill=tk.X, padx=12, pady=(8, 0))
-		tk.Label(step1, text="BƯỚC 1 — Chọn pattern nhận diện header chương:", fg="#a39887",
-				 bg="#1e1b17", font=("Segoe UI", 9, "bold")).pack(anchor="w")
-
-		pattern_row = tk.Frame(step1, bg="#1e1b17")
-		pattern_row.pack(fill=tk.X, pady=(6, 0))
-
-		pattern_names = [p[0] for p in patterns]
-		pattern_var = tk.StringVar(value=pattern_names[0])
-		pattern_combo = ttk.Combobox(pattern_row, textvariable=pattern_var, values=pattern_names,
-									 state="readonly", font=("Segoe UI", 9), width=28)
-		pattern_combo.pack(side=tk.LEFT, padx=(0, 8))
-
-		regex_var = tk.StringVar(value=patterns[0][1])
-		regex_entry = tk.Entry(pattern_row, textvariable=regex_var, bg="#2f2a23", fg="#e6dfd2",
-							   insertbackground="white", font=("Consolas", 9),
-							   highlightthickness=1, highlightbackground="#4a4238",
-							   highlightcolor="#b8a4d6", relief="flat")
-		regex_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=4, padx=(0, 8))
-
-		def selected_pattern():
-			sel = pattern_combo.get()
-			return next((rx for name, rx in patterns if name == sel), None)
-
-		def on_pattern_select(event=None):
-			rx = selected_pattern()
-			if rx is not None:
-				regex_var.set(rx)
-
-		pattern_combo.bind("<<ComboboxSelected>>", on_pattern_select)
-
-		# Một truyện có thể trộn nhiều kiểu tiêu đề ("Chương 1: X" rồi "Thứ 2 chương: X"):
-		# gộp pattern đang chọn vào regex hiện tại, đoạn khớp bất kỳ pattern nào là header.
-		def combine_selected_pattern():
-			rx = selected_pattern()
-			if rx is not None:
-				regex_var.set(store.combine_patterns(regex_var.get().strip(), rx))
-				run_detect()
-
-		def pattern_label(part):
-			"""Preset name for one alternative of the regex, else the regex itself."""
-			return next((name for name, rx in patterns if rx == part), part if len(part) <= 28 else part[:27] + "…")
-
-		# Save custom pattern button
-		def save_custom_pattern():
-			rx = regex_var.get().strip()
-			if not rx:
-				return
-			existing = next((n for n, r in patterns if r == rx), None)
-			if existing:
-				messagebox.showinfo("Đã có", f"Pattern này đã có trong danh sách: '{existing}'.", parent=dlg)
-				return
-			parts = store.split_alternatives(rx)
-			if len(parts) > 1 and all(any(r == part for _n, r in patterns) for part in parts):
-				name = " + ".join(pattern_label(part) for part in parts)
-			else:
-				name = f"Tuỳ chỉnh: {rx[:20]}"
-			self.save_split_pattern(name, rx)
-			patterns.append((name, rx))
-			pattern_combo["values"] = [n for n, _ in patterns]
-			pattern_var.set(name)
-			messagebox.showinfo("Đã lưu", f"Pattern '{name}' đã được lưu vào config.", parent=dlg)
-
-		tk.Button(pattern_row, text="➕ Gộp", bg="#5c4a73", fg="#f4ede1",
-				  relief="flat", borderwidth=0, padx=8, pady=4, font=("Segoe UI", 9),
-				  cursor="hand2", command=combine_selected_pattern).pack(side=tk.LEFT, padx=(0, 4))
-		tk.Button(pattern_row, text="💾 Lưu pattern", bg="#3a332c", fg="#f4ede1",
-				  relief="flat", borderwidth=0, padx=8, pady=4, font=("Segoe UI", 9),
-				  cursor="hand2", command=save_custom_pattern).pack(side=tk.LEFT, padx=(0, 4))
-
-		match_label = tk.Label(step1, text="Chọn pattern rồi bấm ➕ Gộp để quét cùng lúc nhiều kiểu tiêu đề chương.",
-			fg="#8a7f70", bg="#1e1b17", font=("Segoe UI", 9), anchor="w", justify="left")
-		match_label.pack(fill=tk.X, pady=(4, 0))
-
-		# ── Detected chapters state ──
-		detected_chapters = []  # list of {"title": str, "paragraphs": [str], "title_var": StringVar}
-		chapter_rows_frame = None
-
-		# ── STEP 2: Preview ──
-		step2_header = tk.Frame(dlg, bg="#15130f", padx=16, pady=6)
-		step2_header.pack(fill=tk.X, padx=12, pady=(10, 0))
-		count_label = tk.Label(step2_header, text="BƯỚC 2 — Xem & chỉnh sửa tên chương:", fg="#a39887",
-							   bg="#15130f", font=("Segoe UI", 9, "bold"))
-		count_label.pack(side=tk.LEFT)
-
-		tk.Button(step2_header, text="🔍 Phân tích lại", bg="#6a5683", fg="#f4ede1",
-				  relief="flat", borderwidth=0, padx=10, pady=3, font=("Segoe UI", 9, "bold"),
-				  cursor="hand2", command=lambda: run_detect()).pack(side=tk.RIGHT)
-
-		# Scrollable list
-		list_outer = tk.Frame(dlg, bg="#15130f")
-		list_outer.pack(fill=tk.BOTH, expand=True, padx=12, pady=(4, 0))
-
-		canvas = tk.Canvas(list_outer, bg="#15130f", highlightthickness=0, height=120)
-		scrollbar = ttk.Scrollbar(list_outer, orient="vertical", style="Editor.Vertical.TScrollbar", command=canvas.yview)
-		canvas.configure(yscrollcommand=scrollbar.set)
-		scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-		canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-
-		inner_frame = tk.Frame(canvas, bg="#15130f")
-		canvas_window = canvas.create_window((0, 0), window=inner_frame, anchor="nw")
-
-		def on_inner_configure(event):
-			canvas.configure(scrollregion=canvas.bbox("all"))
-		def on_canvas_configure(event):
-			canvas.itemconfig(canvas_window, width=event.width)
-		inner_frame.bind("<Configure>", on_inner_configure)
-		canvas.bind("<Configure>", on_canvas_configure)
-
-		# Mouse wheel scroll — bind to dlg (not bind_all) so it's removed when dialog closes
-		def on_mousewheel(event):
-			try:
-				canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-			except tk.TclError:
-				pass
-		dlg.bind("<MouseWheel>", on_mousewheel)
-
-		# ── Xem trước chương + thêm mốc ──
-		preview_index = None
-		preview_box = tk.Frame(dlg, bg="#1e1b17", padx=12, pady=6)
-		preview_box.pack(fill=tk.X, padx=12, pady=(6, 0))
-		preview_head = tk.Frame(preview_box, bg="#1e1b17")
-		preview_head.pack(fill=tk.X)
-		preview_label = tk.Label(preview_head, text="XEM TRƯỚC — bấm \"Xem\" ở một dòng",
-			fg="#a39887", bg="#1e1b17", font=("Segoe UI", 9, "bold"))
-		preview_label.pack(side=tk.LEFT)
-		split_btn = tk.Button(preview_head, text="✂ Tách chương tại đoạn có con trỏ", bg="#9c6a28", fg="#f4ede1",
-			relief="flat", borderwidth=0, padx=10, pady=3, font=("Segoe UI", 9, "bold"), cursor="hand2",
-			state=tk.DISABLED, command=lambda: split_at_cursor())
-		split_btn.pack(side=tk.RIGHT)
-		preview_text = tk.Text(preview_box, height=6, wrap=tk.WORD, bg="#15130f", fg="#d6cebf",
-			insertbackground="white", font=("Segoe UI", 10), bd=0, padx=10, pady=6,
-			spacing3=4, cursor="xterm")
-		preview_text.pack(fill=tk.X, pady=(6, 0))
-		preview_text.tag_configure("para_no", foreground="#8a7f70", font=("Consolas", 8))
-		preview_text.tag_configure("current_para", background="#3a2f1f")
-		# Read-only but still clickable: block typing, keep cursor movement.
-		preview_text.bind("<Key>", lambda e: None if e.keysym in ("Up", "Down", "Left", "Right", "Prior", "Next", "Home", "End") else "break")
-
-		def paragraph_at_cursor():
-			for tag in preview_text.tag_names("insert"):
-				if tag.startswith("p_"):
-					return int(tag[2:])
-			return None
-
-		def highlight_cursor_paragraph(event=None):
-			preview_text.tag_remove("current_para", "1.0", tk.END)
-			index = paragraph_at_cursor()
-			if index is not None:
-				ranges = preview_text.tag_ranges(f"p_{index}")
-				if ranges:
-					preview_text.tag_add("current_para", ranges[0], ranges[1])
-		preview_text.bind("<ButtonRelease-1>", highlight_cursor_paragraph, add="+")
-		preview_text.bind("<KeyRelease>", highlight_cursor_paragraph, add="+")
-
-		def show_preview(index):
-			nonlocal preview_index
-			if index is None or index >= len(detected_chapters):
-				preview_index = None
-				preview_text.delete("1.0", tk.END)
-				preview_label.config(text="XEM TRƯỚC — bấm \"Xem\" ở một dòng")
-				split_btn.config(state=tk.DISABLED)
-				return
-			preview_index = index
-			chap = detected_chapters[index]
-			preview_label.config(text=f"XEM TRƯỚC #{index + 1} · {chap['id']} · {chap['title_var'].get()[:40]}")
-			preview_text.delete("1.0", tk.END)
-			for number, para in enumerate(chap["paragraphs"]):
-				preview_text.insert(tk.END, f"[{number + 1}] ", ("para_no", f"p_{number}"))
-				preview_text.insert(tk.END, para + "\n", (f"p_{number}",))
-			preview_text.mark_set("insert", "1.0")
-			preview_text.yview_moveto(0)
-			split_btn.config(state=tk.NORMAL if len(chap["paragraphs"]) > 1 else tk.DISABLED)
-			build_chapter_list(keep_scroll=True)
-
-		def renumber():
-			if detected_chapters:
-				start = int(detected_chapters[0]["id"])
-				for offset, chapter in enumerate(detected_chapters):
-					chapter["id"] = store.format_chapter_id(start + offset)
-
-		def split_at_cursor():
-			if preview_index is None:
-				return
-			chap = detected_chapters[preview_index]
-			index = paragraph_at_cursor()
-			if index is None or index == 0:
-				messagebox.showinfo("Tách chương", "Đặt con trỏ vào một đoạn (không phải đoạn đầu tiên) để làm tên chương mới.", parent=dlg)
-				return
-			header = chap["paragraphs"][index]
-			new_chapter = {
-				"id": chap["id"],
-				"original_title": header,
-				"title_var": tk.StringVar(value=header[:120]),
-				"paragraphs": chap["paragraphs"][index + 1:],
-			}
-			chap["paragraphs"] = chap["paragraphs"][:index]
-			detected_chapters.insert(preview_index + 1, new_chapter)
-			renumber()
-			show_preview(preview_index + 1)
-
-		def build_chapter_list(keep_scroll=False):
-			position = canvas.yview()[0] if keep_scroll else None
-			n = len(detected_chapters)
-			count_label.config(text=f"BƯỚC 2 — Xem & chỉnh sửa ({n} chương phát hiện):",
-				fg="#d9a35c" if n else "#e8857b")
-			save_btn.config(text=f"💾 Lưu tất cả ({n} chương)")
-			for w in inner_frame.winfo_children():
-				w.destroy()
-
-			if not detected_chapters:
-				tk.Label(inner_frame, text="Không phát hiện được chương nào với pattern này.",
-						 fg="#e8857b", bg="#15130f", font=("Segoe UI", 10)).pack(pady=20)
-				return
-
-			# Column headers
-			hrow = tk.Frame(inner_frame, bg="#2f2a23")
-			hrow.pack(fill=tk.X, padx=4, pady=(4, 2))
-			tk.Label(hrow, text="#", fg="#8a7f70", bg="#2f2a23", font=("Segoe UI", 9, "bold"), width=4).pack(side=tk.LEFT, padx=(8,0))
-			tk.Label(hrow, text="ID", fg="#8a7f70", bg="#2f2a23", font=("Segoe UI", 9, "bold"), width=8).pack(side=tk.LEFT, padx=4)
-			tk.Label(hrow, text="Tên chương (có thể sửa)", fg="#8a7f70", bg="#2f2a23", font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT, padx=4, fill=tk.X, expand=True)
-			tk.Label(hrow, text="Đoạn", fg="#8a7f70", bg="#2f2a23", font=("Segoe UI", 9, "bold"), width=6).pack(side=tk.RIGHT, padx=8)
-
-			for i, chap in enumerate(detected_chapters):
-				row_bg="#d9a35c" if i == preview_index else ("#1e1b17" if i % 2 == 0 else "#221e19")
-				row = tk.Frame(inner_frame, bg=row_bg)
-				row.pack(fill=tk.X, padx=4, pady=1)
-
-				tk.Label(row, text=str(i+1), fg="#6b6255", bg=row_bg, font=("Segoe UI", 9), width=4).pack(side=tk.LEFT, padx=(8,0), pady=4)
-				tk.Label(row, text=chap["id"], fg="#d9a35c", bg=row_bg, font=("Consolas", 9), width=8).pack(side=tk.LEFT, padx=4)
-				tk.Button(row, text="Xem", command=lambda index=i: show_preview(index),
-					bg="#2f2a23", fg="#e6dfd2", relief="flat", borderwidth=0,
-					font=("Segoe UI", 9), padx=8, cursor="hand2").pack(side=tk.RIGHT, padx=4)
-				tk.Button(row, text="Xóa mốc", command=lambda index=i: remove_boundary(index),
-					state=tk.NORMAL if i > 0 else tk.DISABLED,
-					bg="#3a2420", fg="#f0a99f", relief="flat", borderwidth=0,
-					font=("Segoe UI", 9), padx=6).pack(side=tk.RIGHT, padx=4)
-
-				entry = tk.Entry(row, textvariable=chap["title_var"], bg=row_bg, fg="#e6dfd2",
-								 insertbackground="white", font=("Segoe UI", 9), relief="flat",
-								 highlightthickness=1, highlightbackground="#2f2a23",
-								 highlightcolor="#b8a4d6")
-				entry.pack(side=tk.LEFT, fill=tk.X, expand=True, ipady=3, padx=4)
-
-				tk.Label(row, text=str(len(chap["paragraphs"])), fg="#d9a35c", bg=row_bg,
-						 font=("Segoe UI", 9), width=6).pack(side=tk.RIGHT, padx=8)
-
-			if position is not None:
-				canvas.update_idletasks()
-				canvas.yview_moveto(position)
-
-		def remove_boundary(index):
-			if index <= 0 or index >= len(detected_chapters):
-				return
-			position = canvas.yview()[0]
-			removed = detected_chapters.pop(index)
-			previous = detected_chapters[index - 1]
-			# Restore the original header as body text, not its edited display title.
-			if removed["original_title"]:
-				previous["paragraphs"].append(removed["original_title"])
-			previous["paragraphs"].extend(removed["paragraphs"])
-			renumber()
-			if preview_index is not None and preview_index >= index - 1:
-				# The merged chapter (index-1) or a chapter after it shifted up by one.
-				show_preview(index - 1 if preview_index <= index else preview_index - 1)
-			build_chapter_list()
-			canvas.update_idletasks()
-			canvas.yview_moveto(position)
-
-		def change_split_story(event=None):
-			# Switching the destination must not restore deleted boundaries or titles.
-			value = story_combo.get().strip()
-			slug = value.split("|", 1)[0].strip() if "|" in value else slugify_vn(value)
-			start = int(self.get_next_chapter_id(slug))
-			for offset, chapter in enumerate(detected_chapters):
-				chapter["id"] = store.format_chapter_id(start + offset)
-			build_chapter_list()
-
-		def run_detect():
-			nonlocal detected_chapters
-			rx = regex_var.get().strip()
-			if not rx:
-				messagebox.showwarning("Chú ý", "Vui lòng nhập regex pattern!", parent=dlg)
-				return
-
-			# Validate regex
-			try:
-				re.compile(rx, re.IGNORECASE)
-			except re.error as e:
-				messagebox.showerror("Regex lỗi", str(e), parent=dlg)
-				return
-
-			raw = self.temp_text.get("1.0", tk.END).strip()
-			chapters_raw = self.detect_chapters(raw, rx)
-
-			# Get next chapter ID from story
-			story_value = story_combo.get().strip()
-			story_slug = ""
-			if "|" in story_value:
-				story_slug = story_value.split("|", 1)[0].strip()
-
-			start_id = self.get_next_chapter_id(story_slug) if story_slug else store.format_chapter_id(1)
-			try:
-				id_int = int(start_id)
-			except ValueError:
-				id_int = 1
-
-			show_preview(None)
-			detected_chapters = []
-			for i, ch in enumerate(chapters_raw):
-				chap_id = store.format_chapter_id(id_int + i)
-				title_val = ch["title"] if ch["title"] else f"Chương {id_int + i}"
-				detected_chapters.append({
-					"id": chap_id,
-					"original_title": ch["title"],
-					"title_var": tk.StringVar(value=title_val),
-					"paragraphs": ch["paragraphs"],
-				})
-
-			# Mỗi pattern thành phần bắt được bao nhiêu chương — thấy ngay kiểu nào bị sót.
-			parts = store.split_alternatives(rx)
-			if len(parts) > 1:
-				compiled_parts = []
-				for part in parts:
-					try:
-						compiled_parts.append((part, re.compile(part, re.IGNORECASE)))
-					except re.error:
-						compiled_parts.append((part, None))
-				counts = dict.fromkeys(parts, 0)
-				for ch in chapters_raw:
-					title = ch["title"]
-					hit = next((part for part, c in compiled_parts if title and c and c.match(title)), None)
-					if hit:
-						counts[hit] += 1
-				match_label.config(text="Khớp:  " + "  ·  ".join(f"{pattern_label(p)}: {n}" for p, n in counts.items()),
-					fg="#d9a35c")
-			else:
-				match_label.config(text="Chọn pattern rồi bấm ➕ Gộp để quét cùng lúc nhiều kiểu tiêu đề chương.",
-					fg="#8a7f70")
-
-			build_chapter_list()
-
-		# ── STEP 3: Story selector + Save ──
-		tk.Frame(dlg, bg="#2f2a23", height=1).pack(fill=tk.X, padx=12, pady=(8, 0))
-		step3 = tk.Frame(dlg, bg="#1e1b17", padx=16, pady=10)
-		step3.pack(fill=tk.X, padx=12, pady=(0, 0))
-		tk.Label(step3, text="BƯỚC 3 — Chọn truyện để lưu:", fg="#a39887", bg="#1e1b17",
-				 font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(0, 6))
-
-		story_row = tk.Frame(step3, bg="#1e1b17")
-		story_row.pack(fill=tk.X)
-
-		story_combo = StorySearchCombo(story_row, values=self.story_options, font=("Segoe UI", 10),
-								   state="readonly")
-		# Pre-select current story if available
-		cur = self.story_combo.get().strip()
-		if cur in self.story_options:
-			story_combo.set(cur)
-		story_combo.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
-		story_combo.bind("<<ComboboxSelected>>", change_split_story, add="+")
-
-		tk.Frame(dlg, bg="#2f2a23", height=1).pack(fill=tk.X, padx=12)
-		btn_row = tk.Frame(dlg, bg="#15130f", pady=10)
-		btn_row.pack(fill=tk.X, padx=12)
-
-		tk.Button(btn_row, text="Hủy", bg="#2f2a23", fg="#a39887", activebackground="#3a332c",
-				  relief="flat", borderwidth=0, padx=16, pady=6, font=("Segoe UI", 9),
-				  cursor="hand2", command=on_dlg_close).pack(side=tk.RIGHT, padx=(6, 0))
-
-		save_btn = tk.Button(btn_row, text="💾 Lưu tất cả (0 chương)", bg="#6a5683", fg="#f4ede1",
-				  activebackground="#6a5683", relief="flat", borderwidth=0,
-				  padx=16, pady=6, font=("Segoe UI", 9, "bold"), cursor="hand2",
-				  command=lambda: self.save_all_split_chapters(dlg, story_combo, detected_chapters, on_dlg_close))
-		save_btn.pack(side=tk.RIGHT)
-
-		# Initial detect
-		run_detect()
-
-	def save_all_split_chapters(self, dlg, story_combo, detected_chapters, close_callback):
-		"""Save all detected chapters to the library."""
-		story_value = story_combo.get().strip()
-		if story_value and story_value not in self.story_options:
-			messagebox.showwarning("Chọn truyện", "Hãy chọn một truyện trong danh sách gợi ý trước khi lưu.", parent=dlg)
-			return
-		if not story_value:
-			messagebox.showwarning("Chú ý", "Vui lòng chọn Truyện!", parent=dlg)
-			return
-		if not detected_chapters:
-			messagebox.showwarning("Chú ý", "Không có chương nào để lưu!", parent=dlg)
-			return
-
-		# Parse story slug + title
-		if "|" in story_value:
-			story_slug, story_title = story_value.split("|", 1)
-			story_slug = story_slug.strip()
-			story_title = story_title.strip()
-		else:
-			story_title = story_value
-			story_slug = slugify_vn(story_title)
-
-		# Check chapters without content
-		empty = [ch for ch in detected_chapters if not ch["paragraphs"]]
-		if empty:
-			names = ", ".join(ch["title_var"].get()[:30] for ch in empty[:3])
-			if not messagebox.askyesno("Chú ý",
-				f"{len(empty)} chương không có nội dung ({names}...).\nBạn vẫn muốn lưu các chương có nội dung?",
-				parent=dlg):
-				return
-
-		catalog = self._catalog_or_error(parent=dlg)
-		if catalog is None:
-			return
-		clashes = [ch["id"] for ch in detected_chapters
-			if ch["paragraphs"] and self._chapter_exists(catalog, story_slug, ch["id"])]
-		if clashes and not messagebox.askyesno("Ghi đè chương?",
-				f"{len(clashes)} chương đã tồn tại ({', '.join(clashes[:5])}...).\nGhi đè các chương này?",
-				parent=dlg, icon="warning", default="no"):
-			return
-
-		chapters = []
-		for ch in detected_chapters:
-			if not ch["paragraphs"]:
-				continue
-			chap_slug = ch["id"]
-			chap_title = ch["title_var"].get().strip() or f"Chương {chap_slug}"
-			chapters.append((chap_slug, chap_title, (("", p) for p in ch["paragraphs"])))
-		try:
-			catalog, _slug, saved_ids = store.save_chapters(
-				LIBRARY_DIR, BASE_DIR, CATALOG_PATH, story_slug, story_title,
-				chapters, overwrite=True)
-		except Exception as e:
-			messagebox.showerror("Lỗi", f"Không thể lưu chương:\n{e}", parent=dlg)
-			return
-
-		if saved_ids:
-			self._sync_saved_chapters(story_slug, catalog, saved_ids[-1])
-		close_callback()
-		self.flash(f"✅ Đã lưu {len(saved_ids)} chương vào truyện '{story_title}'")
-
-	# --- TÌM & THAY THẾ (DÙNG CHUNG CHO 2 Ô VĂN BẢN) ---
-
-	def _target(self):
-		return self.search_target or self.temp_text
-
-	def _compiled_query(self):
-		query = self.search_entry.get()
-		if not query:
-			return None
-		return store.compile_search(query, regex=self.regex_var.get(), match_case=self.case_var.get())
-
-	def get_match_coords(self):
-		ranges = self._target().tag_ranges("match")
-		return [(str(ranges[i]), str(ranges[i+1])) for i in range(0, len(ranges), 2)]
-
-	def schedule_search(self, event=None):
-		if event is not None and event.keysym in ("Return", "Escape", "Shift_L", "Shift_R"):
-			return
-		if getattr(self, "_search_timer", None):
-			self.root.after_cancel(self._search_timer)
-		self._search_timer = self.root.after(300, self.perform_search)
-
-	def _clear_matches(self, widget):
-		widget.tag_remove("match", "1.0", tk.END)
-		widget.tag_remove("active_match", "1.0", tk.END)
-
-	def perform_search(self, event=None, from_index=None):
-		self._search_timer = None
-		widget = self._target()
-		self._clear_matches(widget)
-		self.current_match_idx = -1
-		try:
-			pattern = self._compiled_query()
-		except (re.error, ValueError):
-			self.search_status.config(text="Regex lỗi", fg="#e8857b")
-			return
-		if pattern is None:
-			self.search_status.config(text="0/0", fg="#a39887")
-			return
-
-		text_content = widget.get("1.0", "end-1c")
-		MAX_MATCHES = 2000
-		flat_ranges = []
-		for match in pattern.finditer(text_content):
-			if match.start() == match.end():
-				continue  # Bỏ qua các match rỗng
-			flat_ranges.append(f"1.0+{match.start()}c")
-			flat_ranges.append(f"1.0+{match.end()}c")
-			if len(flat_ranges) >= MAX_MATCHES * 2:
-				break
-		if flat_ranges:
-			widget.tag_add("match", *flat_ranges)
-
-		coords = self.get_match_coords()
-		if not coords:
-			self.search_status.config(text="0/0", fg="#e8857b")
-			return
-		self.current_match_idx = 0
-		if from_index is not None:
-			self.current_match_idx = next((i for i, (start, _end) in enumerate(coords)
-				if widget.compare(start, ">=", from_index)), 0)
-		self.highlight_active_match()
-
-	def highlight_active_match(self):
-		widget = self._target()
-		widget.tag_remove("active_match", "1.0", tk.END)
-		coords = self.get_match_coords()
-		if not coords:
-			self.current_match_idx = -1
-			self.search_status.config(text="0/0", fg="#e8857b")
-			return
-		self.current_match_idx = max(0, min(self.current_match_idx, len(coords) - 1))
-		start, end = coords[self.current_match_idx]
-		widget.tag_add("active_match", start, end)
-		widget.see(start)
-		self.search_status.config(text=f"{self.current_match_idx + 1}/{len(coords)}", fg="#d9a35c")
-
-	def find_next(self, event=None):
-		widget = self._target()
-		coords = self.get_match_coords()
-		if not coords:
-			return "break"
-		active_ranges = widget.tag_ranges("active_match")
-		if active_ranges:
-			current_pos, op = str(active_ranges[0]), ">"
-		else:
-			current_pos, op = widget.index(tk.INSERT), ">="
-		self.current_match_idx = next((i for i, (start, _end) in enumerate(coords)
-			if widget.compare(start, op, current_pos)), 0)
-		self.highlight_active_match()
-		return "break"
-
-	def find_prev(self, event=None):
-		widget = self._target()
-		coords = self.get_match_coords()
-		if not coords:
-			return "break"
-		active_ranges = widget.tag_ranges("active_match")
-		current_pos = str(active_ranges[0]) if active_ranges else widget.index(tk.INSERT)
-		self.current_match_idx = next((i for i in range(len(coords) - 1, -1, -1)
-			if widget.compare(coords[i][0], "<", current_pos)), len(coords) - 1)
-		self.highlight_active_match()
-		return "break"
-
-	def select_above_match(self, event=None):
-		widget = self._target()
-		coords = self.get_match_coords()
-		if not coords or self.current_match_idx < 0 or self.current_match_idx >= len(coords):
-			return "break"
-		start, _end = coords[self.current_match_idx]
-		widget.tag_remove("sel", "1.0", tk.END)
-		widget.tag_add("sel", "1.0", start)
-		widget.mark_set("insert", "1.0")
-		widget.see("1.0")
-		widget.focus_set()
-		return "break"
-
-	def show_search_dialog(self, event=None, target=None, replace=False):
-		target = target or getattr(self, "_last_text", None) or self.temp_text
-		if self.search_target is not None and self.search_target is not target:
-			self._clear_matches(self.search_target)
-		self.search_target = target
-		is_source = target is self.temp_text
-		self.search_where.config(text="🔍 Tìm trong Nguồn:" if is_source else "🔍 Tìm trong Chương:")
-		if is_source:
-			self.select_above_btn.pack(side="left", padx=2, before=self._search_close_btn)
-		else:
-			self.select_above_btn.pack_forget()
-		if not self.search_frame.winfo_ismapped():
-			self.search_frame.pack(fill="x", padx=24, pady=(0, 10), before=self.panes)
-		if replace and not self.replace_row.winfo_ismapped():
-			self.replace_row.pack(fill="x", padx=8, pady=(2, 6))
-		# Use the current selection as the query when it is a short phrase.
-		try:
-			selected = target.get("sel.first", "sel.last")
-		except tk.TclError:
-			selected = ""
-		anchor = target.index(tk.INSERT)
-		if selected and "\n" not in selected and len(selected) <= 80:
-			anchor = target.index("sel.first")  # bắt đầu từ chính chỗ đang bôi đen
-			self.search_entry.delete(0, tk.END)
-			self.search_entry.insert(0, re.escape(selected) if self.regex_var.get() else selected)
-		focus = self.replace_entry if replace and self.search_entry.get() else self.search_entry
-		focus.focus_set()
-		focus.selection_range(0, tk.END)
-		# Như builder: bắt đầu từ kết quả gần con trỏ, không nhảy về đầu văn bản.
-		self.perform_search(from_index=anchor)
-		return "break"
-
-	def show_replace_dialog(self, event=None):
-		return self.show_search_dialog(replace=True)
-
-	def hide_search_dialog(self, event=None):
-		widget = self._target()
-		active = widget.tag_ranges("active_match")
-		if self.search_frame.winfo_ismapped():
-			self.search_frame.pack_forget()
-			self.replace_row.pack_forget()
-			widget.focus_set()
-		self._clear_matches(widget)
-		self.current_match_idx = -1
-		if active:  # giữ vị trí vừa tìm được (như builder): bôi đen để sửa/xoá ngay, mở lại tìm tiếp từ đây
-			widget.tag_remove("sel", "1.0", tk.END)
-			widget.tag_add("sel", active[0], active[1])
-			widget.mark_set(tk.INSERT, active[1])
-			widget.see(active[0])
-		return "break"
-
-	@staticmethod
-	def _edit_as_one_undo(widget, change):
-		"""Group delete+insert into a single Ctrl+Z step."""
-		auto = widget.cget("autoseparators")
-		widget.configure(autoseparators=False)
-		try:
-			widget.edit_separator()
-			change()
-			widget.edit_separator()
-		finally:
-			widget.configure(autoseparators=auto)
-
-	def _replacement_for(self, match):
-		replacement = self.replace_entry.get()
-		return match.expand(replacement) if self.regex_var.get() else replacement
-
-	def replace_current(self):
-		widget = self._target()
-		try:
-			pattern = self._compiled_query()
-		except (re.error, ValueError) as error:
-			self.flash(f"Regex lỗi: {error}", "error")
-			return
-		active = widget.tag_ranges("active_match")
-		if pattern is None or not active:
-			self.perform_search()
-			return
-		start, end = str(active[0]), str(active[1])
-		offset = len(widget.get("1.0", start))
-		match = pattern.match(widget.get("1.0", "end-1c"), offset)
-		if not match:
-			self.perform_search()
-			return
-		try:
-			new_text = self._replacement_for(match)
-		except (re.error, IndexError) as error:
-			self.flash(f"Chuỗi thay thế lỗi: {error}", "error")
-			return
-		self._edit_as_one_undo(widget, lambda: (widget.delete(start, end), widget.insert(start, new_text)))
-		self.perform_search(from_index=f"{start}+{len(new_text)}c")
-
-	def replace_all(self):
-		widget = self._target()
-		try:
-			pattern = self._compiled_query()
-			if pattern is None:
-				return
-			text = widget.get("1.0", "end-1c")
-			new_text, count = pattern.subn(self._replacement_for, text)
-		except (re.error, IndexError, ValueError) as error:
-			self.flash(f"Lỗi thay thế: {error}", "error")
-			return
-		if not count:
-			self.flash("Không có chỗ nào khớp để thay.", "warn")
-			return
-		self._edit_as_one_undo(widget, lambda: (widget.delete("1.0", "end-1c"), widget.insert("1.0", new_text)))
-		self.perform_search()
-		self.flash(f"↪ Đã thay {count} chỗ trong {'Nguồn' if widget is self.temp_text else 'Chương'} (Ctrl+Z để hoàn tác).")
-
-	def replace_in_whole_story(self):
-		"""Replace in every saved chapter of the selected story (with backup)."""
-		story_value = self.story_combo.get().strip()
-		if story_value not in self.story_options:
-			messagebox.showwarning("Chọn truyện", "Chọn truyện ở ô TRUYỆN bên trái trước.", parent=self.root)
-			return
-		story_slug, story_title = (part.strip() for part in story_value.split("|", 1))
-		try:
-			pattern = self._compiled_query()
-		except (re.error, ValueError) as error:
-			messagebox.showerror("Regex lỗi", str(error), parent=self.root)
-			return
-		if pattern is None:
-			messagebox.showwarning("Chú ý", "Nhập nội dung cần tìm trước.", parent=self.root)
-			return
-		if self._loaded_chapter and self._loaded_chapter[0] == story_slug and self.is_dirty():
-			messagebox.showwarning("Chương chưa lưu",
-				"Chương của truyện này đang mở và chưa lưu. Hãy lưu (Ctrl+S) hoặc bỏ thay đổi trước.", parent=self.root)
-			return
-		catalog = self._catalog_or_error()
-		if catalog is None:
-			return
-		replacement = self.replace_entry.get()
-		regex = self.regex_var.get()
-		try:
-			preview = store.replace_in_story(LIBRARY_DIR, catalog, story_slug, pattern, replacement, regex=regex)
-		except Exception as error:
-			messagebox.showerror("Lỗi", f"Không quét được truyện:\n{error}", parent=self.root)
-			return
-		if not preview["total"]:
-			self.flash(f"Không tìm thấy \"{self.search_entry.get()}\" trong truyện {story_title}.", "warn")
-			return
-		sample = ", ".join(f"{cid} ({n})" for cid, n in preview["chapters"][:8])
-		more = "…" if len(preview["chapters"]) > 8 else ""
-		if not messagebox.askyesno("Thay trong cả truyện",
-				f"Thay {preview['total']} chỗ trong {len(preview['chapters'])} chương của \"{story_title}\"?\n\n"
-				f"\"{self.search_entry.get()}\" → \"{replacement}\"\n\nChương: {sample}{more}\n\n"
-				"Bản data.json cũ được sao lưu vào thư mục .backups.",
-				parent=self.root, icon="warning", default="no"):
-			return
-		try:
-			result = store.replace_in_story(LIBRARY_DIR, catalog, story_slug, pattern, replacement,
-				regex=regex, apply=True, backup_root=BACKUP_DIR)
-			write_catalog(CATALOG_PATH, catalog)
-		except Exception as error:
-			messagebox.showerror("Lỗi", f"Thay thế bị dừng giữa chừng:\n{error}\n\nBản sao lưu nằm trong {BACKUP_DIR}.",
-				parent=self.root)
-			return
-
-		# The open chapter (clean) now differs from disk: apply the same change to it.
-		if self._loaded_chapter and self._loaded_chapter[0] == story_slug:
-			changed_ids = {cid for cid, _n in result["chapters"]}
-			if self._loaded_chapter[1] in changed_ids:
-				body = self.content_text.get("1.0", "end-1c")
-				new_body = pattern.sub(self._replacement_for, body)
-				self.content_text.delete("1.0", tk.END)
-				self.content_text.insert("1.0", new_body)
-				title = self.chap_title_entry.get()
-				self.chap_title_entry.delete(0, tk.END)
-				self.chap_title_entry.insert(0, pattern.sub(self._replacement_for, title))
-				self.mark_clean()
-		current = self.chap_select_combo.get().split("|", 1)[0].strip() or None
-		self._refresh_chap_select(story_slug, catalog, current)
-		self.perform_search()
-		self.flash(f"↪ Đã thay {result['total']} chỗ trong {len(result['chapters'])} chương · sao lưu: {result['backup']}")
+from qt_widgets import (ACCENT, ERROR, HINT, STYLE, FindBar, LineEdit, PlainTextEdit, ask_yes_no,
+                        ask_yes_no_cancel, button, error, info, label, py_offset, qt_offsets, raw_text,
+                        restore_geometry, save_geometry, selected_text, set_label, warn)
+from translator_core import BG, FIELD, MUTED, PANEL, TEXT
+
+CARD = "#1e1b17"
+GOLD = "#d9a35c"
+FLASH_COLORS = {"ok": GOLD, "warn": "#e8c27a", "error": ERROR, "info": MUTED}
+
+
+def hbox(*items, margins=(0, 0, 0, 0), spacing=6):
+    row = QHBoxLayout()
+    row.setContentsMargins(*margins)
+    row.setSpacing(spacing)
+    for item in items:
+        if item == "stretch":
+            row.addStretch(1)
+        elif isinstance(item, tuple):
+            row.addWidget(item[0], item[1])
+        else:
+            row.addWidget(item)
+    return row
+
+
+def head(text):
+    return label(text, MUTED, 9, True)
+
+
+class StoryPicker(LineEdit):
+    """Ô chọn truyện: gõ tên/mã (không dấu, đủ mọi từ) để lọc, ↓/F4 mở toàn bộ danh sách.
+    Phát ``picked(text)`` khi chọn một mục."""
+    picked = Signal(str)
+
+    def __init__(self, options=()):
+        super().__init__()
+        self.options = list(options)
+        self.setPlaceholderText("Gõ tên hoặc mã truyện…")
+        self._model = QStringListModel(self)
+        self._completer = QCompleter(self._model, self)
+        self._completer.setCompletionMode(QCompleter.UnfilteredPopupCompletion)
+        self._completer.setMaxVisibleItems(14)
+        self._completer.setWidget(self)
+        self._completer.activated.connect(self._choose)
+        self._completer.popup().setStyleSheet(f"background: {FIELD}; color: white; selection-background-color: {ACCENT};")
+        self.textEdited.connect(self._filter)
+        self.returnPressed.connect(self._enter)
+
+    def set_options(self, options):
+        self.options = list(options)
+
+    def value(self):
+        return self.text().strip()
+
+    def is_valid(self):
+        return self.value() in self.options
+
+    def _filter(self, text):
+        self._model.setStringList(ec.filter_options(self.options, text)[:300])
+        if self._model.rowCount():
+            self._completer.complete()
+        else:
+            self._completer.popup().hide()
+
+    def show_all(self):
+        self._model.setStringList(self.options)
+        self.setFocus()
+        self._completer.complete()
+
+    def _choose(self, text):
+        self.setText(text)
+        self.picked.emit(text)
+
+    def _enter(self):
+        if self._completer.popup().isVisible():
+            return
+        matches = ec.filter_options(self.options, self.text())
+        if self.value() in self.options:
+            self.picked.emit(self.value())
+        elif len(matches) == 1:
+            self._choose(matches[0])
+
+    def keyPressEvent(self, event):
+        if event.key() in (Qt.Key_Down, Qt.Key_F4) and not self._completer.popup().isVisible():
+            self._filter(self.text()) if self.text().strip() else self.show_all()
+            return
+        super().keyPressEvent(event)
+
+
+def story_picker_row(picker):
+    drop = button("▾", picker.show_all, small=True)
+    drop.setToolTip("Mở danh sách truyện")
+    return hbox((picker, 1), drop, spacing=2)
+
+
+class EditorFindBar(FindBar):
+    """Thanh tìm & thay dùng chung cho ô Chương và ô Nguồn."""
+
+    def __init__(self, app, edit):
+        super().__init__(edit, app)
+        self.app = app
+        self.select_above_btn = button("⬆️ Chọn Lên", app.select_above_match, "#6a5683", small=True)
+        self.select_above_btn.setToolTip("Bôi đen từ đầu Nguồn tới kết quả đang xem (để chuyển sang Chương)")
+        self.row.insertWidget(self.row.indexOf(self.close_btn), self.select_above_btn)
+        self.replace_entry = LineEdit()
+        self.replace_entry.setStyleSheet("font-family: Consolas; font-size: 10pt;")
+        self.replace_row = QWidget()
+        self.replace_row.setLayout(hbox(label("↪ Thay bằng:", "#d6cebf", 9, True), (self.replace_entry, 1),
+                                        button("Thay", app.replace_current, "#3a332c", small=True),
+                                        button("Thay tất cả", app.replace_all, ACCENT, small=True),
+                                        button("Cả truyện…", app.replace_in_whole_story, "#8a5a22", small=True)))
+        self.rows.addWidget(self.replace_row)
+        self.replace_row.hide()
+        self.replace_entry.returnPressed.connect(app.replace_current)
+        QShortcut(QKeySequence("Escape"), self.replace_entry, self.close_bar, context=Qt.WidgetShortcut)
+
+    def close_bar(self):
+        self.replace_row.hide()
+        super().close_bar()
+
+
+# ═════════════════════════ Cửa sổ chính ═════════════════════════
+
+class EditorWindow(QWidget):
+    def __init__(self, embedded=False):
+        super().__init__()
+        self.embedded = embedded
+        self.loaded_json = None
+        self.story_options = []
+        self._clean_snapshot = ("", "", "")
+        self._loaded_chapter = None   # (story_slug, chapter_id) mở bằng "Mở chương"
+        if not embedded:
+            self.setWindowTitle("Trình Chỉnh Sửa Chapter & Quản Lý Thư Viện")
+            restore_geometry(self, "editor_main", 1300, 750)
+        self.setMinimumSize(1040, 640)
+        self._flash_timer = QTimer(self, singleShot=True, interval=8000)
+        self._flash_timer.timeout.connect(self._reset_status)
+        self._count_timer = QTimer(self, singleShot=True, interval=300)
+        self._count_timer.timeout.connect(self.update_counter)
+        self.setup_ui()
+        self.load_story_list()
+        self.mark_clean()
+        self._last_text = self.temp_text
+        QApplication.instance().focusChanged.connect(self._on_focus_changed)
+        try:
+            import r2_store
+            from qt_widgets import UiBridge
+            self.bridge = UiBridge(self)
+            r2_store.add_listener(lambda message, ok: self.bridge.call(self.flash, message, "info" if ok else "error"))
+        except ImportError:
+            pass
+
+    # ── giao diện ──
+
+    def setup_ui(self):
+        root = QVBoxLayout(self)
+        root.setContentsMargins(24, 18, 24, 10)
+        root.addWidget(label("THƯ VIỆN  /  BIÊN TẬP", GOLD, 9, True))
+        root.addWidget(label("Không gian biên tập", "#f4ede1", 22, True))
+        root.addWidget(label("Chọn truyện · Chỉnh sửa nội dung · Phân chương và lưu vào thư viện", MUTED, 10))
+        self.find_bar = None
+        self.panes = QSplitter(Qt.Horizontal)
+        self.panes.setHandleWidth(12)
+        self.panes.setChildrenCollapsible(False)
+        self.panes.addWidget(self._card(self.build_left))
+        self.panes.addWidget(self._card(self.build_right))
+        self.find_bar = EditorFindBar(self, self.temp_text)
+        root.addSpacing(8)
+        root.addWidget(self.find_bar)
+        root.addWidget(self.panes, 1)
+        self.library_status = label("Thư viện", MUTED, 9)
+        root.addLayout(hbox(self.library_status, "stretch",
+                            label("Ctrl+S Lưu  •  Ctrl+O Mở JSON  •  Ctrl+F Tìm  •  Ctrl+H Thay thế", "#8a7f70", 9),
+                            margins=(0, 6, 0, 0)))
+        ctx = Qt.WidgetWithChildrenShortcut
+        for keys, slot in (("Ctrl+S", self.save_chapter), ("Ctrl+O", self.pick_json),
+                           ("Ctrl+F", lambda: self.show_search()), ("Ctrl+H", lambda: self.show_search(replace=True)),
+                           ("F3", lambda: self.find_bar.step(1)), ("Shift+F3", lambda: self.find_bar.step(-1))):
+            QShortcut(QKeySequence(keys), self, slot, context=ctx)
+
+    def _card(self, build):
+        card = QFrame()
+        card.setObjectName("card")
+        card.setStyleSheet(f"QFrame#card {{ background: {CARD}; border: 1px solid #3a332c; }}"
+                           f"QFrame#card QLabel, QFrame#card QCheckBox {{ background: {CARD}; }}")
+        lay = QVBoxLayout(card)
+        lay.setContentsMargins(18, 14, 18, 14)
+        build(lay)
+        return card
+
+    def _text_edit(self):
+        edit = PlainTextEdit()
+        edit.setStyleSheet(f"QPlainTextEdit {{ background: {BG}; font-size: 11pt; padding: 8px; }}")
+        return edit
+
+    def build_left(self, lay):
+        lay.addWidget(label("01   Biên tập chương", "#f4ede1", 14, True))
+        lay.addWidget(head("TRUYỆN  ·  Gõ tên hoặc mã để tìm"))
+        self.story_combo = StoryPicker()
+        self.story_combo.picked.connect(lambda _t: self.on_story_selected())
+        row = story_picker_row(self.story_combo)
+        row.addWidget(button("+ Truyện mới", self.add_new_story, "#2f2a23", bold=True))
+        row.addWidget(button("Xóa truyện", self.delete_story, "#7a322b", bold=True))
+        lay.addLayout(row)
+        lay.addWidget(head("CHƯƠNG ĐÃ LƯU"))
+        self.chap_select_combo = QComboBox()
+        self.chap_select_combo.setMaxVisibleItems(20)
+        lay.addLayout(hbox((self.chap_select_combo, 1), button("Xóa chương", self.delete_chapter, "#7a322b", bold=True),
+                           button("Mở chương", self.load_chapter_for_edit, "#2f2a23", bold=True)))
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(12)
+        grid.addWidget(head("ID KẾ TIẾP"), 0, 0)
+        grid.addWidget(head("TÊN CHƯƠNG"), 0, 1)
+        self.chap_entry = LineEdit()
+        self.chap_entry.setFixedWidth(110)
+        self.chap_title_entry = LineEdit()
+        grid.addWidget(self.chap_entry, 1, 0)
+        grid.addWidget(self.chap_title_entry, 1, 1)
+        lay.addLayout(grid)
+        self.counter_label = label("", "#8a7f70", 9)
+        lay.addLayout(hbox(head("NỘI DUNG"), *self._search_buttons(lambda: self.content_text), "stretch",
+                           self.counter_label, margins=(0, 6, 0, 0)))
+        self.content_text = self._text_edit()
+        lay.addWidget(self.content_text, 1)
+        self.content_text.textChanged.connect(self._count_timer.start)
+        self.chap_title_entry.textEdited.connect(lambda _t: self._count_timer.start())
+        lay.addWidget(button("Lưu chương vào thư viện", self.save_chapter, ACCENT, bold=True))
+
+    def build_right(self, lay):
+        lay.addWidget(label("02   Nguồn & phân chương", "#f4ede1", 14, True))
+        lay.addWidget(label("Mở bản dịch, chọn nội dung hoặc tách thành nhiều chương.", MUTED, 10))
+        grid = QGridLayout()
+        for index, (text, slot, primary) in enumerate((
+                ("Mở file JSON", self.pick_json, False), ("Phân chương tự động", self.open_split_chapters_dialog, True),
+                ("← Chuyển toàn bộ", self.process_json, False), ("← Chuyển phần chọn", self.move_selected_text, False))):
+            grid.addWidget(button(text, slot, ACCENT if primary else "#2f2a23", bold=True), index // 2, index % 2)
+        lay.addLayout(grid)
+        self.temp_status = label("Chưa mở nguồn · Chọn file JSON để bắt đầu", MUTED, 9, wrap=True)
+        lay.addWidget(self.temp_status)
+        lay.addLayout(hbox(head("NGUỒN"), *self._search_buttons(lambda: self.temp_text), "stretch"))
+        self.temp_text = self._text_edit()
+        lay.addWidget(self.temp_text, 1)
+
+    def _search_buttons(self, target):
+        """Nút Tìm / Thay hiện sẵn cho một ô văn bản (cùng chức năng Ctrl+F / Ctrl+H)."""
+        return (button("🔍 Tìm", lambda: self.show_search(target()), small=True),
+                button("↪ Thay", lambda: self.show_search(target(), replace=True), small=True))
+
+    def _on_focus_changed(self, _old, new):
+        if new in (getattr(self, "temp_text", None), getattr(self, "content_text", None)):
+            self._last_text = new
+
+    # ── trạng thái chưa lưu / thông báo ──
+
+    def _editor_snapshot(self):
+        return (self.chap_entry.text().strip(), self.chap_title_entry.text().strip(),
+                raw_text(self.content_text).strip())
+
+    def mark_clean(self):
+        self._clean_snapshot = self._editor_snapshot()
+        self.update_counter()
+
+    def is_dirty(self):
+        _chap_id, title, content = self._editor_snapshot()
+        # Chỉ tên/nội dung chưa lưu mới tính; mã chương điền sẵn không phải công sức người dùng.
+        return (title, content) != self._clean_snapshot[1:] and bool(title or content)
+
+    def confirm_discard(self, action):
+        """Hỏi trước khi bỏ nội dung chưa lưu. True = tiếp tục."""
+        if not self.is_dirty():
+            return True
+        answer = ask_yes_no_cancel(self, "Nội dung chưa lưu",
+                                   f"Chương đang soạn chưa được lưu.\n\nLưu trước khi {action}?\n"
+                                   "Có = Lưu rồi tiếp tục · Không = Bỏ thay đổi · Hủy = Quay lại")
+        if answer is None:
+            return False
+        return self.save_chapter() if answer else True
+
+    def flash(self, text, kind="ok"):
+        """Thông báo ở chân trang thay cho hộp thoại; tự về trạng thái thường sau 8 giây."""
+        set_label(self.library_status, text, FLASH_COLORS.get(kind, MUTED))
+        self._flash_timer.start()
+
+    def _reset_status(self):
+        set_label(self.library_status, f"{len(self.story_options)} truyện  ·  Mới cập nhật trước", MUTED)
+
+    def update_counter(self):
+        dirty = self.is_dirty()
+        set_label(self.counter_label, ec.chapter_counter_text(raw_text(self.content_text), dirty),
+                  "#e8c27a" if dirty else "#8a7f70")
+
+    def _catalog_or_error(self, parent=None):
+        """Đọc chặt cho mọi thao tác sẽ ghi list.json. None nếu lỗi."""
+        try:
+            return read_catalog(ec.CATALOG_PATH)
+        except CatalogError as exc:
+            error(parent or self, "Không đọc được danh mục", f"{exc}\n\nĐã dừng để không ghi đè mất danh sách truyện.")
+            return None
+
+    def _read_chapter_catalog(self):
+        """Đọc dễ dãi, chỉ để hiển thị."""
+        try:
+            return read_catalog(ec.CATALOG_PATH)
+        except CatalogError:
+            return []
+
+    def next_chapter_id(self, story_slug, catalog=None):
+        if not story_slug:
+            return store.format_chapter_id(1)
+        return store.next_chapter_id(self._read_chapter_catalog() if catalog is None else catalog, story_slug)
+
+    # ── danh sách truyện / chương ──
+
+    def load_story_list(self):
+        ec.ensure_catalog()
+        self.story_options = []
+        try:
+            self.story_options = ec.story_options(read_catalog(ec.CATALOG_PATH))
+        except CatalogError as exc:
+            error(self, "Không đọc được danh mục",
+                  f"{exc}\n\nTrình biên tập sẽ không ghi vào list.json cho tới khi file được sửa.")
+        self.story_combo.set_options(self.story_options)
+        self._reset_status()
+
+    def current_story_slug(self):
+        value = self.story_combo.value()
+        return ec.split_option(value)[0] if value else ""
+
+    def on_story_selected(self):
+        story_value = self.story_combo.value()
+        if not story_value:
+            return
+        story_slug = ec.split_option(story_value)[0]
+        self.chap_entry.setText(self.next_chapter_id(story_slug))
+        self._refresh_chap_select(story_slug)
+
+    def _refresh_chap_select(self, story_slug, catalog=None, selected_id=None):
+        options = ec.chapter_options(self._read_chapter_catalog() if catalog is None else catalog, story_slug)
+        self.chap_select_combo.clear()
+        self.chap_select_combo.addItems(options)
+        index = next((i for i, o in enumerate(options) if o.split("|", 1)[0].strip() == selected_id), -1)
+        self.chap_select_combo.setCurrentIndex(index)
+
+    def _sync_saved_chapters(self, story_slug, catalog, selected_id):
+        """Cập nhật theo danh mục vừa lưu, không đọc lại đĩa."""
+        self.story_options = ec.story_options(catalog)
+        self.story_combo.set_options(self.story_options)
+        self._reset_status()
+        self.story_combo.setText(next((o for o in self.story_options if o.split("|", 1)[0].strip() == story_slug), ""))
+        self._refresh_chap_select(story_slug, catalog, selected_id)
+        self.chap_entry.setText(self.next_chapter_id(story_slug, catalog))
+
+    def delete_story(self):
+        story_value = self.story_combo.value()
+        if not self.story_combo.is_valid():
+            warn(self, "Chú ý", "Vui lòng chọn truyện trong danh sách!")
+            return
+        story_slug, story_title = ec.split_option(story_value)
+        if not ask_yes_no(self, "Xóa truyện", f"Xóa truyện {story_title} cùng toàn bộ chương đã lưu?\n\n"
+                                              "Dữ liệu truyện sẽ bị xóa khỏi thư viện.", default_no=True, warning=True):
+            return
+        try:
+            catalog, cleanup_warning = ec.delete_library_story(story_slug)
+        except Exception as exc:
+            error(self, "Lỗi", f"Không thể xóa truyện:\n{exc}")
+            return
+        self.story_options = ec.story_options(catalog)
+        self.story_combo.set_options(self.story_options)
+        self.story_combo.clear()
+        self.chap_select_combo.clear()
+        self.chap_entry.setText(store.format_chapter_id(1))
+        # Chỉ xoá ô soạn nếu nó đang chứa chương của truyện vừa xoá.
+        if self._loaded_chapter and self._loaded_chapter[0] == story_slug:
+            self.chap_title_entry.clear()
+            self.content_text.clear()
+            self._loaded_chapter = None
+            self.mark_clean()
+        if cleanup_warning:
+            warn(self, "Đã xóa truyện", cleanup_warning)
+        else:
+            self.flash(f"🗑 Đã xóa truyện: {story_title}")
+
+    def delete_chapter(self):
+        story_value = self.story_combo.value()
+        chap_value = self.chap_select_combo.currentText().strip()
+        if not self.story_combo.is_valid():
+            warn(self, "Chú ý", "Vui lòng chọn truyện trong danh sách!")
+            return
+        if not chap_value:
+            warn(self, "Chú ý", "Vui lòng chọn chương muốn xóa!")
+            return
+        story_slug = ec.split_option(story_value)[0]
+        chap_slug = chap_value.split("|", 1)[0].strip()
+        if not ask_yes_no(self, "Xóa chương", f"Xóa chương {chap_value} khỏi truyện {story_value}?\n\n"
+                                              "Dữ liệu chương sẽ bị xóa khỏi thư viện. Nếu đang biên tập chương này, "
+                                              "nội dung chưa lưu cũng sẽ bị xóa.", default_no=True, warning=True):
+            return
+        try:
+            catalog, cleanup_warning = ec.delete_library_chapter(story_slug, chap_slug)
+        except Exception as exc:
+            error(self, "Lỗi", f"Không thể xóa chương:\n{exc}")
+            return
+        if self.chap_entry.text().strip() == chap_slug:
+            self.chap_title_entry.clear()
+            self.content_text.clear()
+            self.chap_entry.setText(self.next_chapter_id(story_slug, catalog))
+            self._loaded_chapter = None
+            self.mark_clean()
+        elif not self.chap_title_entry.text().strip() and not raw_text(self.content_text).strip():
+            self.chap_entry.setText(self.next_chapter_id(story_slug, catalog))
+        self._refresh_chap_select(story_slug, catalog)
+        if cleanup_warning:
+            warn(self, "Đã xóa chương", cleanup_warning)
+        else:
+            self.flash(f"🗑 Đã xóa chương: {chap_value}")
+
+    def load_chapter_for_edit(self):
+        if not self.confirm_discard("mở chương khác"):
+            return
+        story_value = self.story_combo.value()
+        chap_value = self.chap_select_combo.currentText().strip()
+        if not story_value:
+            warn(self, "Chú ý", "Vui lòng chọn Truyện trước!")
+            return
+        if not chap_value:
+            warn(self, "Chú ý", "Vui lòng chọn Chương muốn sửa!")
+            return
+        story_slug = ec.split_option(story_value)[0]
+        chap_slug = chap_value.split("|", 1)[0].strip()
+        try:
+            chap_title, paragraphs = ec.read_library_chapter(story_slug, chap_slug)
+        except Exception as exc:
+            error(self, "Lỗi", f"Không thể đọc chương:\n{exc}")
+            return
+        self.chap_entry.setText(chap_slug)
+        self.chap_title_entry.setText(chap_title)
+        self.content_text.setPlainText("\n\n".join(paragraphs))   # setPlainText xoá lịch sử hoàn tác
+        self._loaded_chapter = (story_slug, chap_slug)
+        self.mark_clean()
+        self.flash(f"📖 Đang sửa chương {chap_value} — Ctrl+S để lưu đè.", "info")
+
+    def add_new_story(self):
+        default_title = (self.loaded_json or {}).get("title", "")
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Thêm Truyện Mới")
+        restore_geometry(dlg, "editor_add_story_dialog", 480, 170)
+        lay = QVBoxLayout(dlg)
+        lay.addWidget(label("➕ Thêm Truyện Mới", "#f4ede1", 11, True))
+        lay.addWidget(label("Tên hiển thị của truyện:", MUTED, 9))
+        entry = LineEdit(default_title)
+        entry.selectAll()
+        lay.addWidget(entry)
+        lay.addWidget(label("ID sẽ được tạo tự động.", HINT, 9))
+        lay.addLayout(hbox("stretch", button("✅ Tạo Truyện", dlg.accept, ACCENT, bold=True), button("Hủy", dlg.reject)))
+        entry.returnPressed.connect(dlg.accept)
+        accepted = dlg.exec() == QDialog.Accepted
+        save_geometry(dlg, "editor_add_story_dialog")
+        title = entry.text().strip()
+        if not accepted or not title:
+            return
+        catalog = self._catalog_or_error()
+        if catalog is None:
+            return
+        try:
+            slug = ec.add_story(catalog, title)
+        except Exception as exc:
+            error(self, "Lỗi", f"Không thể lưu list.json:\n{exc}")
+            return
+        self.load_story_list()
+        self.flash(f"➕ Đã tạo truyện {slug} | {title}  (thư mục library/{slug})")
+        new_item = f"{slug} | {title}"
+        if new_item in self.story_options:
+            self.story_combo.setText(new_item)
+            self.on_story_selected()
+
+    # ── lưu ──
+
+    def save_chapter(self):
+        """Lưu chương đang soạn. True khi đã ghi."""
+        story_value = self.story_combo.value()
+        if story_value and not self.story_combo.is_valid():
+            warn(self, "Chọn truyện", "Hãy chọn một truyện trong danh sách gợi ý trước khi lưu.")
+            return False
+        chap_slug = self.chap_entry.text().strip()
+        chap_title = self.chap_title_entry.text().strip() or "Oneshot"
+        content = raw_text(self.content_text).strip()
+        if not story_value:
+            warn(self, "Chú ý", "Vui lòng chọn Truyện!")
+            return False
+        if not content:
+            warn(self, "Chú ý", "Nội dung chương không được để trống!")
+            return False
+        story_slug, story_title = ec.split_option(story_value)
+        catalog = self._catalog_or_error()
+        if catalog is None:
+            return False
+        chap_slug = ec.slugify_vn(chap_slug) if chap_slug else self.next_chapter_id(story_slug, catalog)
+        # Ghi đè chương có sẵn chỉ khi chính chương đó đang được mở để sửa.
+        if ec.chapter_exists(catalog, story_slug, chap_slug) and self._loaded_chapter != (story_slug, chap_slug):
+            if not ask_yes_no(self, "Ghi đè chương?", f"Chương {chap_slug} đã có trong truyện này.\n"
+                                                      "Ghi đè nội dung chương đó?", default_no=True, warning=True):
+                return False
+        paragraphs = [p.strip() for p in content.split("\n\n") if p.strip()]
+        try:
+            catalog, _slug, _saved = store.save_chapters(
+                ec.LIBRARY_DIR, ec.BASE_DIR, ec.CATALOG_PATH, story_slug, story_title,
+                [(chap_slug, chap_title, (("", p) for p in paragraphs))], overwrite=True)
+        except Exception as exc:
+            error(self, "Lỗi", f"Không thể lưu chương:\n{exc}")
+            return False
+        self._sync_saved_chapters(story_slug, catalog, chap_slug)
+        # Dọn ô soạn và điền sẵn mã chương tiếp theo
+        self.chap_title_entry.clear()
+        self.content_text.clear()
+        self._loaded_chapter = None
+        self.mark_clean()
+        self.flash(f"✅ Đã lưu chương {chap_slug} · {chap_title} ({len(paragraphs)} đoạn)")
+        return True
+
+    # ── nguồn ──
+
+    def pick_json(self):
+        path, _ = QFileDialog.getOpenFileName(self, "Chọn data.json", ec.LIBRARY_DIR, "JSON files (*.json)")
+        if not path:
+            return
+        try:
+            src = ec.read_source_json(path)
+        except Exception:
+            error(self, "Lỗi", "Không thể đọc file JSON.")
+            return
+        self.loaded_json = src["json"]
+        self.temp_text.setPlainText(src["text"])
+        title, chap_title = src["title"], src["chapter_title"]
+        story_slug, chap_slug = src["story_slug"], src["chapter_slug"]
+        # Đang soạn dở thì không đụng vào truyện/ID/tên chương của ô soạn.
+        if self.is_dirty():
+            story_slug = ""
+        if story_slug and chap_slug and story_slug.lower() not in ("stories", "library"):
+            # library/<truyện>/<chương>/data.json
+            found = next((o for o in self.story_options if o.startswith(f"{story_slug} |")), None)
+            self.story_combo.setText(found or f"{story_slug} | {title}")
+            self.chap_entry.setText(chap_slug)
+            if chap_title:
+                self.chap_title_entry.setText(chap_title)
+        elif story_slug.lower() == "stories":
+            # stories/<truyện>/data.json (do builder tạo): tìm truyện cùng tên trong thư viện
+            found = next((o for o in self.story_options
+                          if "|" in o and o.split("|", 1)[1].strip().lower() == title.strip().lower()), None)
+            if found:
+                self.story_combo.setText(found)
+                self.chap_entry.setText(self.next_chapter_id(found.split("|")[0].strip()))
+            if chap_title:
+                self.chap_title_entry.setText(chap_title)
+        set_label(self.temp_status, f"Đã nạp: {os.path.basename(path)} | Truyện: {title} | "
+                                    f"Chương: {chap_title or 'Chưa rõ'} | {src['count']} đoạn", GOLD)
+
+    def process_json(self):
+        new_text = raw_text(self.temp_text).strip()
+        if not new_text:
+            warn(self, "Chú ý", "Cửa sổ temp đang trống hoặc chưa có nội dung.")
+            return
+        self.loaded_json = self.loaded_json or {}
+        if raw_text(self.content_text).strip():
+            choice = ask_yes_no_cancel(self, "Editor đang có nội dung",
+                                       "Có = Viết tiếp xuống dưới\nKhông = Thay thế toàn bộ nội dung đang có\n"
+                                       "Hủy = Không làm gì")
+            if choice is None:
+                return
+            cursor = self.content_text.textCursor()
+            if choice:
+                cursor.movePosition(QTextCursor.End)
+                cursor.insertText("\n\n" + new_text)
+            else:
+                cursor.select(QTextCursor.Document)
+                cursor.insertText(new_text)
+        else:
+            self.content_text.setPlainText(new_text)
+        # Tên chương còn trống: lấy chapter_title trong JSON, không có thì tên truyện.
+        if not self.chap_title_entry.text().strip():
+            story_value = self.story_combo.value()
+            selected_title = ec.split_option(story_value)[1] if story_value else ""
+            title = (self.loaded_json.get("chapter_title", "").strip() or self.loaded_json.get("title", "").strip()
+                     or selected_title)
+            if title:
+                self.chap_title_entry.setText(title)
+
+    def move_selected_text(self):
+        picked = selected_text(self.temp_text)
+        if not picked.strip():
+            warn(self, "Chú ý", "Vui lòng bôi đen (chọn) phần văn bản cần chuyển trong cửa sổ bên phải.")
+            return
+        # Tên chương trống mà dòng đầu có chữ "Chương" thì lấy làm tên.
+        if not self.chap_title_entry.text().strip():
+            first_line = picked.strip().split("\n")[0].strip()
+            if re.search(r"chương", first_line, re.IGNORECASE):
+                self.chap_title_entry.setText(first_line)
+        self.temp_text.textCursor().removeSelectedText()
+        cursor = self.content_text.textCursor()
+        cursor.movePosition(QTextCursor.End)
+        cursor.insertText(("\n\n" if raw_text(self.content_text).strip() else "") + picked)
+
+    # ── tìm & thay ──
+
+    def show_search(self, target=None, replace=False):
+        target = target or self._last_text or self.temp_text
+        bar = self.find_bar
+        bar.set_edit(target)
+        is_source = target is self.temp_text
+        bar.where.setText("🔍 Nguồn:" if is_source else "🔍 Chương:")
+        bar.select_above_btn.setVisible(is_source)
+        if replace:
+            bar.replace_row.show()
+        bar.open_bar()
+        if replace and bar.entry.text():
+            bar.replace_entry.setFocus()
+            bar.replace_entry.selectAll()
+
+    def _pattern_or_flash(self):
+        try:
+            return self.find_bar.pattern()
+        except (re.error, ValueError) as exc:
+            self.flash(f"Regex lỗi: {exc}", "error")
+            return None
+
+    def _replacement_for(self, match):
+        text = self.find_bar.replace_entry.text()
+        return match.expand(text) if self.find_bar.regex.isChecked() else text
+
+    def replace_current(self):
+        bar, edit = self.find_bar, self.find_bar.edit
+        pattern = self._pattern_or_flash()
+        current = bar.current()
+        if pattern is None or current is None:
+            bar.refresh()
+            return
+        text = raw_text(edit)
+        match = pattern.match(text, py_offset(text, current[0]))
+        if not match:
+            bar.refresh()
+            return
+        try:
+            new_text = self._replacement_for(match)
+        except (re.error, IndexError) as exc:
+            self.flash(f"Chuỗi thay thế lỗi: {exc}", "error")
+            return
+        cursor = QTextCursor(edit.document())
+        cursor.setPosition(current[0])
+        cursor.setPosition(current[1], QTextCursor.KeepAnchor)
+        cursor.insertText(new_text)   # một bước Ctrl+Z
+        bar.refresh(anchor=current[0] + qt_offsets(new_text)(len(new_text)))
+
+    def replace_all(self):
+        edit = self.find_bar.edit
+        pattern = self._pattern_or_flash()
+        if pattern is None:
+            return
+        try:
+            new_text, count = pattern.subn(self._replacement_for, raw_text(edit))
+        except (re.error, IndexError, ValueError) as exc:
+            self.flash(f"Lỗi thay thế: {exc}", "error")
+            return
+        if not count:
+            self.flash("Không có chỗ nào khớp để thay.", "warn")
+            return
+        cursor = QTextCursor(edit.document())
+        cursor.select(QTextCursor.Document)
+        cursor.insertText(new_text)   # một bước Ctrl+Z
+        self.find_bar.refresh()
+        self.flash(f"↪ Đã thay {count} chỗ trong {'Nguồn' if edit is self.temp_text else 'Chương'} (Ctrl+Z để hoàn tác).")
+
+    def select_above_match(self):
+        """Bôi đen từ đầu Nguồn tới trước kết quả đang xem."""
+        current = self.find_bar.current()
+        if current is None:
+            return
+        edit = self.find_bar.edit
+        cursor = QTextCursor(edit.document())
+        cursor.setPosition(current[0])
+        cursor.setPosition(0, QTextCursor.KeepAnchor)
+        edit.setTextCursor(cursor)
+        edit.setFocus()
+
+    def replace_in_whole_story(self):
+        """Thay trong mọi chương đã lưu của truyện đang chọn (có sao lưu)."""
+        if not self.story_combo.is_valid():
+            warn(self, "Chọn truyện", "Chọn truyện ở ô TRUYỆN bên trái trước.")
+            return
+        story_slug, story_title = ec.split_option(self.story_combo.value())
+        try:
+            pattern = self.find_bar.pattern()
+        except (re.error, ValueError) as exc:
+            error(self, "Regex lỗi", str(exc))
+            return
+        if pattern is None:
+            warn(self, "Chú ý", "Nhập nội dung cần tìm trước.")
+            return
+        if self._loaded_chapter and self._loaded_chapter[0] == story_slug and self.is_dirty():
+            warn(self, "Chương chưa lưu", "Chương của truyện này đang mở và chưa lưu. "
+                                          "Hãy lưu (Ctrl+S) hoặc bỏ thay đổi trước.")
+            return
+        catalog = self._catalog_or_error()
+        if catalog is None:
+            return
+        replacement = self.find_bar.replace_entry.text()
+        regex = self.find_bar.regex.isChecked()
+        query = self.find_bar.entry.text()
+        try:
+            preview = store.replace_in_story(ec.LIBRARY_DIR, catalog, story_slug, pattern, replacement, regex=regex)
+        except Exception as exc:
+            error(self, "Lỗi", f"Không quét được truyện:\n{exc}")
+            return
+        if not preview["total"]:
+            self.flash(f"Không tìm thấy \"{query}\" trong truyện {story_title}.", "warn")
+            return
+        sample = ", ".join(f"{cid} ({n})" for cid, n in preview["chapters"][:8])
+        more = "…" if len(preview["chapters"]) > 8 else ""
+        if not ask_yes_no(self, "Thay trong cả truyện",
+                          f"Thay {preview['total']} chỗ trong {len(preview['chapters'])} chương của \"{story_title}\"?\n\n"
+                          f"\"{query}\" → \"{replacement}\"\n\nChương: {sample}{more}\n\n"
+                          "Bản data.json cũ được sao lưu vào thư mục .backups.", default_no=True, warning=True):
+            return
+        try:
+            result = store.replace_in_story(ec.LIBRARY_DIR, catalog, story_slug, pattern, replacement,
+                                            regex=regex, apply=True, backup_root=ec.BACKUP_DIR)
+            write_catalog(ec.CATALOG_PATH, catalog)
+        except Exception as exc:
+            error(self, "Lỗi", f"Thay thế bị dừng giữa chừng:\n{exc}\n\nBản sao lưu nằm trong {ec.BACKUP_DIR}.")
+            return
+        # Chương đang mở (chưa sửa) giờ khác trên đĩa: áp cùng thay đổi vào ô soạn.
+        if self._loaded_chapter and self._loaded_chapter[0] == story_slug:
+            if self._loaded_chapter[1] in {cid for cid, _n in result["chapters"]}:
+                self.content_text.setPlainText(pattern.sub(self._replacement_for, raw_text(self.content_text)))
+                self.chap_title_entry.setText(pattern.sub(self._replacement_for, self.chap_title_entry.text()))
+                self.mark_clean()
+        current = self.chap_select_combo.currentText().split("|", 1)[0].strip() or None
+        self._refresh_chap_select(story_slug, catalog, current)
+        self.find_bar.refresh()
+        self.flash(f"↪ Đã thay {result['total']} chỗ trong {len(result['chapters'])} chương · sao lưu: {result['backup']}")
+
+    # ── phân chương ──
+
+    def open_split_chapters_dialog(self):
+        if not raw_text(self.temp_text).strip():
+            warn(self, "Chú ý", "Cửa sổ bên phải đang trống. Hãy load file JSON trước!")
+            return
+        SplitDialog(self).exec()
+
+    def save_split_chapters(self, dlg, story_value, chapters):
+        """Lưu các chương đã tách. True khi đã lưu."""
+        if story_value and story_value not in self.story_options:
+            warn(dlg, "Chọn truyện", "Hãy chọn một truyện trong danh sách gợi ý trước khi lưu.")
+            return False
+        if not story_value:
+            warn(dlg, "Chú ý", "Vui lòng chọn Truyện!")
+            return False
+        if not chapters:
+            warn(dlg, "Chú ý", "Không có chương nào để lưu!")
+            return False
+        story_slug, story_title = ec.split_option(story_value)
+        empty = [ch for ch in chapters if not ch["paragraphs"]]
+        if empty:
+            names = ", ".join(ch["title"][:30] for ch in empty[:3])
+            if not ask_yes_no(dlg, "Chú ý", f"{len(empty)} chương không có nội dung ({names}...).\n"
+                                            "Bạn vẫn muốn lưu các chương có nội dung?"):
+                return False
+        catalog = self._catalog_or_error(parent=dlg)
+        if catalog is None:
+            return False
+        clashes = [ch["id"] for ch in chapters if ch["paragraphs"] and ec.chapter_exists(catalog, story_slug, ch["id"])]
+        if clashes and not ask_yes_no(dlg, "Ghi đè chương?", f"{len(clashes)} chương đã tồn tại "
+                                                             f"({', '.join(clashes[:5])}...).\nGhi đè các chương này?",
+                                      default_no=True, warning=True):
+            return False
+        items = [(ch["id"], ch["title"].strip() or f"Chương {ch['id']}", (("", p) for p in ch["paragraphs"]))
+                 for ch in chapters if ch["paragraphs"]]
+        try:
+            catalog, _slug, saved_ids = store.save_chapters(
+                ec.LIBRARY_DIR, ec.BASE_DIR, ec.CATALOG_PATH, story_slug, story_title, items, overwrite=True)
+        except Exception as exc:
+            error(dlg, "Lỗi", f"Không thể lưu chương:\n{exc}")
+            return False
+        if saved_ids:
+            self._sync_saved_chapters(story_slug, catalog, saved_ids[-1])
+        self.flash(f"✅ Đã lưu {len(saved_ids)} chương vào truyện '{story_title}'")
+        return True
+
+    # ── đóng ──
+
+    def can_close(self):
+        return self.confirm_discard("thoát")
+
+    def closeEvent(self, event):
+        if not self.can_close():
+            event.ignore()
+            return
+        if not self.embedded:
+            save_geometry(self, "editor_main")
+        super().closeEvent(event)
+
+
+class SplitDialog(QDialog):
+    """🔪 Phân chương tự động: chọn/gộp mẫu tiêu đề, xem & sửa tên, tách/gộp mốc, lưu."""
+
+    def __init__(self, app):
+        super().__init__(app)
+        self.app = app
+        self.setWindowTitle("🔪 Phân Chương Tự Động")
+        self.setWindowFlag(Qt.WindowMaximizeButtonHint, True)
+        restore_geometry(self, "editor_split_dialog", 900, 700)
+        self.setMinimumSize(700, 560)
+        self.patterns = ec.get_split_patterns()
+        self.chapters = []    # [{"id", "original_title", "title", "paragraphs"}]
+        self.preview_index = None
+        self._build()
+        self.run_detect()
+
+    def _build(self):
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(14, 10, 14, 10)
+        lay.addWidget(label("🔪 Phân Chương Tự Động", "#f4ede1", 12, True))
+        lay.addWidget(head("BƯỚC 1 — Chọn pattern nhận diện header chương:"))
+        self.pattern_combo = QComboBox()
+        self.pattern_combo.addItems([n for n, _ in self.patterns])
+        self.pattern_combo.setMinimumWidth(220)
+        self.regex_entry = LineEdit(self.patterns[0][1])
+        self.regex_entry.setStyleSheet("font-family: Consolas; font-size: 9pt;")
+        lay.addLayout(hbox(self.pattern_combo, (self.regex_entry, 1),
+                           button("➕ Gộp", self.combine_selected_pattern, "#5c4a73", small=True),
+                           button("💾 Lưu pattern", self.save_custom_pattern, "#3a332c", small=True)))
+        self.match_label = label("Chọn pattern rồi bấm ➕ Gộp để quét cùng lúc nhiều kiểu tiêu đề chương.", "#8a7f70", 9)
+        lay.addWidget(self.match_label)
+        self.pattern_combo.activated.connect(lambda i: self.regex_entry.setText(self.patterns[i][1]))
+        self.regex_entry.returnPressed.connect(self.run_detect)
+
+        self.count_label = head("BƯỚC 2 — Xem & chỉnh sửa tên chương:")
+        lay.addLayout(hbox(self.count_label, "stretch",
+                           button("Xóa mốc (gộp vào chương trước)", self.remove_boundary, "#3a2420", fg="#f0a99f", small=True),
+                           button("🔍 Phân tích lại", self.run_detect, "#6a5683", small=True, bold=True), margins=(0, 8, 0, 0)))
+        self.table = QTableWidget(0, 4)
+        self.table.setHorizontalHeaderLabels(["#", "ID", "Tên chương (bấm đúp để sửa)", "Đoạn"])
+        self.table.verticalHeader().hide()
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.table.setAlternatingRowColors(True)
+        self.table.setEditTriggers(QAbstractItemView.DoubleClicked | QAbstractItemView.EditKeyPressed)
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(2, QHeaderView.Stretch)
+        for col, width in ((0, 46), (1, 80), (3, 64)):
+            self.table.setColumnWidth(col, width)
+        self.table.setStyleSheet(f"QTableWidget {{ background: {PANEL}; alternate-background-color: #221e19; "
+                                 f"selection-background-color: #5a4320; gridline-color: {BG}; }}")
+        self.table.currentCellChanged.connect(lambda row, _c, _pr, _pc: self.show_preview(row if row >= 0 else None))
+        self.table.itemChanged.connect(self._on_item_changed)
+        lay.addWidget(self.table, 3)
+
+        self.preview_label = head("XEM TRƯỚC — chọn một dòng ở bảng")
+        self.split_btn = button("✂ Tách chương tại đoạn có con trỏ", self.split_at_cursor, ACCENT, small=True, bold=True)
+        self.split_btn.setEnabled(False)
+        lay.addLayout(hbox(self.preview_label, "stretch", self.split_btn, margins=(0, 6, 0, 0)))
+        self.preview = PlainTextEdit()
+        self.preview.setReadOnly(True)
+        self.preview.setStyleSheet(f"QPlainTextEdit {{ background: {BG}; color: #d6cebf; font-size: 10pt; }}")
+        self.preview.cursorPositionChanged.connect(self._highlight_paragraph)
+        lay.addWidget(self.preview, 2)
+
+        lay.addWidget(head("BƯỚC 3 — Chọn truyện để lưu:"))
+        self.story = StoryPicker(self.app.story_options)
+        if self.app.story_combo.is_valid():
+            self.story.setText(self.app.story_combo.value())
+        self.story.picked.connect(lambda _t: self.change_story())
+        self.save_btn = button("💾 Lưu tất cả (0 chương)", self.save_all, "#6a5683", bold=True)
+        lay.addLayout(story_picker_row(self.story))
+        lay.addLayout(hbox("stretch", self.save_btn, button("Hủy", self.reject), margins=(0, 6, 0, 0)))
+
+    def done(self, code):
+        save_geometry(self, "editor_split_dialog")
+        super().done(code)
+
+    def pattern_label(self, part):
+        """Tên mẫu có sẵn cho một nhánh của regex, không có thì chính regex."""
+        return next((name for name, rx in self.patterns if rx == part), part if len(part) <= 28 else part[:27] + "…")
+
+    def combine_selected_pattern(self):
+        rx = self.patterns[self.pattern_combo.currentIndex()][1]
+        self.regex_entry.setText(store.combine_patterns(self.regex_entry.text().strip(), rx))
+        self.run_detect()
+
+    def save_custom_pattern(self):
+        rx = self.regex_entry.text().strip()
+        if not rx:
+            return
+        existing = next((n for n, r in self.patterns if r == rx), None)
+        if existing:
+            info(self, "Đã có", f"Pattern này đã có trong danh sách: '{existing}'.")
+            return
+        parts = store.split_alternatives(rx)
+        if len(parts) > 1 and all(any(r == part for _n, r in self.patterns) for part in parts):
+            name = " + ".join(self.pattern_label(part) for part in parts)
+        else:
+            name = f"Tuỳ chỉnh: {rx[:20]}"
+        ec.save_split_pattern(name, rx)
+        self.patterns.append((name, rx))
+        self.pattern_combo.addItem(name)
+        self.pattern_combo.setCurrentIndex(len(self.patterns) - 1)
+        info(self, "Đã lưu", f"Pattern '{name}' đã được lưu vào config.")
+
+    def start_id(self):
+        value = self.story.value()
+        slug = ec.split_option(value)[0] if "|" in value else ""
+        try:
+            return int(self.app.next_chapter_id(slug) if slug else store.format_chapter_id(1))
+        except ValueError:
+            return 1
+
+    def run_detect(self):
+        rx = self.regex_entry.text().strip()
+        if not rx:
+            warn(self, "Chú ý", "Vui lòng nhập regex pattern!")
+            return
+        try:
+            re.compile(rx, re.IGNORECASE)
+        except re.error as exc:
+            error(self, "Regex lỗi", str(exc))
+            return
+        found = ec.detect_chapters(raw_text(self.app.temp_text).strip(), rx)
+        start = self.start_id()
+        self.chapters = [{"id": store.format_chapter_id(start + i), "original_title": ch["title"],
+                          "title": ch["title"] or f"Chương {start + i}", "paragraphs": ch["paragraphs"]}
+                         for i, ch in enumerate(found)]
+        counts = ec.pattern_counts(found, rx)
+        if counts:
+            set_label(self.match_label, "Khớp:  " + "  ·  ".join(f"{self.pattern_label(p)}: {n}" for p, n in counts.items()),
+                      GOLD)
+        else:
+            set_label(self.match_label, "Chọn pattern rồi bấm ➕ Gộp để quét cùng lúc nhiều kiểu tiêu đề chương.", "#8a7f70")
+        self.build_table()
+        self.show_preview(None)
+
+    def build_table(self, select=None):
+        n = len(self.chapters)
+        set_label(self.count_label, f"BƯỚC 2 — Xem & chỉnh sửa ({n} chương phát hiện):" if n else
+                  "BƯỚC 2 — Không phát hiện được chương nào với pattern này.", GOLD if n else ERROR)
+        self.save_btn.setText(f"💾 Lưu tất cả ({n} chương)")
+        self.table.blockSignals(True)
+        self.table.setRowCount(n)
+        for i, chap in enumerate(self.chapters):
+            cells = (str(i + 1), chap["id"], chap["title"], str(len(chap["paragraphs"])))
+            for col, value in enumerate(cells):
+                item = QTableWidgetItem(value)
+                if col != 2:
+                    item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+                    item.setTextAlignment(Qt.AlignCenter)
+                if col in (1, 3):
+                    item.setForeground(QColor(GOLD))
+                elif col == 0:
+                    item.setForeground(QColor(HINT))
+                self.table.setItem(i, col, item)
+        self.table.blockSignals(False)
+        if select is not None and 0 <= select < n:
+            self.table.setCurrentCell(select, 2)
+
+    def _on_item_changed(self, item):
+        if item.column() == 2 and 0 <= item.row() < len(self.chapters):
+            self.chapters[item.row()]["title"] = item.text()
+            if item.row() == self.preview_index:
+                self._update_preview_label()
+
+    def _update_preview_label(self):
+        chap = self.chapters[self.preview_index]
+        self.preview_label.setText(f"XEM TRƯỚC #{self.preview_index + 1} · {chap['id']} · {chap['title'][:40]}")
+
+    def show_preview(self, index):
+        if index is None or not 0 <= index < len(self.chapters):
+            self.preview_index = None
+            self.preview.clear()
+            self.preview_label.setText("XEM TRƯỚC — chọn một dòng ở bảng")
+            self.split_btn.setEnabled(False)
+            return
+        self.preview_index = index
+        chap = self.chapters[index]
+        self._update_preview_label()
+        self.preview.setPlainText("\n".join(f"[{n + 1}] {p}" for n, p in enumerate(chap["paragraphs"])))
+        self.preview.moveCursor(QTextCursor.Start)
+        self.split_btn.setEnabled(len(chap["paragraphs"]) > 1)
+
+    def _highlight_paragraph(self):
+        sel = QTextEdit.ExtraSelection()
+        sel.cursor = self.preview.textCursor()
+        sel.cursor.clearSelection()
+        sel.format.setBackground(QColor("#3a2f1f"))
+        sel.format.setProperty(QTextFormat.FullWidthSelection, True)
+        self.preview.setExtraSelections([sel])
+
+    def renumber(self):
+        if self.chapters:
+            start = int(self.chapters[0]["id"])
+            for offset, chapter in enumerate(self.chapters):
+                chapter["id"] = store.format_chapter_id(start + offset)
+
+    def split_at_cursor(self):
+        if self.preview_index is None:
+            return
+        chap = self.chapters[self.preview_index]
+        index = self.preview.textCursor().blockNumber()
+        if index <= 0 or index >= len(chap["paragraphs"]):
+            info(self, "Tách chương", "Đặt con trỏ vào một đoạn (không phải đoạn đầu tiên) để làm tên chương mới.")
+            return
+        header = chap["paragraphs"][index]
+        self.chapters.insert(self.preview_index + 1, {"id": chap["id"], "original_title": header,
+                                                      "title": header[:120], "paragraphs": chap["paragraphs"][index + 1:]})
+        chap["paragraphs"] = chap["paragraphs"][:index]
+        self.renumber()
+        self.build_table(select=self.preview_index + 1)
+
+    def remove_boundary(self):
+        index = self.table.currentRow()
+        if index <= 0 or index >= len(self.chapters):
+            info(self, "Xóa mốc", "Chọn một chương (không phải chương đầu) để gộp vào chương trước nó.")
+            return
+        removed = self.chapters.pop(index)
+        previous = self.chapters[index - 1]
+        # Trả tiêu đề gốc về làm đoạn văn, không dùng tên đã sửa để hiển thị.
+        if removed["original_title"]:
+            previous["paragraphs"].append(removed["original_title"])
+        previous["paragraphs"].extend(removed["paragraphs"])
+        self.renumber()
+        self.build_table(select=index - 1)
+        self.show_preview(index - 1)
+
+    def change_story(self):
+        # Đổi truyện đích không được khôi phục mốc/tên đã xoá: chỉ đánh lại mã.
+        start = self.start_id()
+        for offset, chapter in enumerate(self.chapters):
+            chapter["id"] = store.format_chapter_id(start + offset)
+        self.build_table(select=self.table.currentRow())
+
+    def save_all(self):
+        if self.app.save_split_chapters(self, self.story.value(), self.chapters):
+            self.accept()
+
+
+def main():
+    app = QApplication(sys.argv)
+    app.setFont(QFont("Segoe UI", 10))
+    app.setStyleSheet(STYLE)
+    window = EditorWindow()
+    window.show()
+    sys.exit(app.exec())
 
 
 if __name__ == "__main__":
-	root = tk.Tk()
-	style = ttk.Style()
-	style.theme_use("clam")
-	root.option_add("*TCombobox*Listbox.background", "#15130f")
-	root.option_add("*TCombobox*Listbox.foreground", "#f4ede1")
-	app = ChapterEditorApp(root)
-	root.mainloop()
+    main()
