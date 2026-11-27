@@ -8,6 +8,7 @@ import json
 import os
 import re
 import sys
+import threading
 import time
 import unicodedata
 
@@ -144,28 +145,57 @@ def split_translation(lines, limit=CHUNK_LIMIT):
     return chunks
 
 
+# editor_config.json dùng chung cho builder, editor, studio (bản Tk và Qt): một bản đọc/ghi duy nhất.
+_config_lock = threading.Lock()
+
+
+def _read_config():
+    """dict cấu hình; ValueError nếu file hỏng (không phải dict JSON)."""
+    if not os.path.exists(CONFIG_PATH):
+        return {}
+    with open(CONFIG_PATH, "r", encoding="utf-8-sig") as f:
+        data = json.load(f)
+    if not isinstance(data, dict):
+        raise ValueError("editor_config.json không phải một object JSON")
+    return data
+
+
 def load_config():
+    """Cấu hình hiện tại; file hỏng/không đọc được thì {} (app vẫn mở với mặc định)."""
     try:
-        if os.path.exists(CONFIG_PATH):
-            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-                return json.load(f)
-    except Exception:
-        pass
-    return {}
+        return _read_config()
+    except (OSError, ValueError):
+        return {}
 
 
 def save_config(data):
-    try:
-        existing = load_config()
-        existing.update(data)
-        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-            json.dump(existing, f, ensure_ascii=False, indent=2)
-    except Exception:
-        pass
+    """Gộp ``data`` vào cấu hình và ghi nguyên tử (temp + rename).
+
+    File đang hỏng thì không ghi đè: đổi tên thành editor_config.json.broken-<thời điểm> để còn
+    lấy lại cài đặt, rồi mới ghi file mới. Một khoá chung giữ cho đọc–gộp–ghi không bị chen."""
+    with _config_lock:
+        try:
+            try:
+                existing = _read_config()
+            except ValueError:
+                broken = f"{CONFIG_PATH}.broken-{time.strftime('%Y%m%d-%H%M%S')}"
+                os.replace(CONFIG_PATH, broken)
+                print(f"editor_config.json hỏng, đã giữ lại ở {broken}")
+                existing = {}
+            existing.update(data)
+            store.write_json_atomic(CONFIG_PATH, existing, indent=2)
+        except OSError as error:   # không ghi được cấu hình thì app vẫn chạy tiếp
+            print(f"Không lưu được editor_config.json: {error}")
 
 
-def slugify_vn(text):
-    """Convert a Vietnamese (or any) title into a URL-friendly slug."""
+STORY_SLUG_MAX = 80
+
+
+def slugify_vn(text, max_len=None):
+    """Convert a Vietnamese (or any) title into a URL-friendly slug.
+
+    max_len: slug dài hơn thì cắt ở dấu "-" gần nhất và thêm 6 ký tự băm của slug đầy đủ
+    (hai tiêu đề dài chung phần đầu vẫn ra slug khác nhau)."""
     _vn_map = str.maketrans("đĐ", "dD")
     text = text.translate(_vn_map)
     text = unicodedata.normalize("NFD", text)
@@ -173,7 +203,29 @@ def slugify_vn(text):
     text = text.lower()
     text = re.sub(r"[^a-z0-9\s-]", "", text)
     text = re.sub(r"[\s-]+", "-", text).strip("-")
+    if max_len and len(text) > max_len:
+        import hashlib
+        digest = hashlib.sha1(text.encode("utf-8")).hexdigest()[:6]
+        head = text[:max_len - 7]
+        head = head[:head.rfind("-")] if "-" in head else head
+        text = f"{head.strip('-')}-{digest}"
     return text
+
+
+def story_slug(title, catalog_path=None):
+    """Slug thư mục stories/<slug> cho một truyện ngắn: tiêu đề đã có trong stories/list.json thì dùng
+    lại đúng slug cũ (dịch lại không sinh bản trùng), truyện mới thì slug tối đa STORY_SLUG_MAX ký tự
+    (đường dẫn dài quá MAX_PATH của Windows sẽ hỏng khi ghi/đồng bộ — review Lần 8, B13)."""
+    path = catalog_path or os.path.join(STORIES_DIR, "list.json")
+    try:
+        catalog = read_catalog(path)
+    except Exception:
+        catalog = []
+    wanted = unicodedata.normalize("NFC", title.strip()).casefold()
+    for item in catalog:
+        if item.get("slug") and unicodedata.normalize("NFC", str(item.get("title", "")).strip()).casefold() == wanted:
+            return item["slug"]
+    return slugify_vn(title, max_len=STORY_SLUG_MAX)
 
 
 def compile_name_pattern(vi_names):

@@ -21,7 +21,7 @@ from translator_core import (  # noqa: F401
     BASE_DIR, API_URL, CHUNK_LIMIT, DELAY, CONFIG_PATH, STORIES_DIR, LIBRARY_DIR, LIBRARY_CATALOG, DRAFT_DIR,
     BG, PANEL, FIELD, MUTED, TEXT,
     name_cfg_path, draft_path, write_draft, remove_draft, estimate_chunks, split_translation,
-    load_config, save_config, slugify_vn, compile_name_pattern, fix_capitalization_after_names,
+    load_config, save_config, slugify_vn, story_slug, compile_name_pattern, fix_capitalization_after_names,
     prepare_name_updates, _ner_installed, _ner_preload)
 
 
@@ -2365,7 +2365,7 @@ class TranslatorGUI:
             messagebox.showwarning("Chú ý", "Vui lòng nhập tiêu đề và nội dung!")
             self.btn_run.config(state="normal")
             return
-        slug = slugify_vn(title)
+        slug = story_slug(title)
         if not slug:
             messagebox.showwarning("Chú ý", "Tiêu đề không hợp lệ, không thể tạo slug!")
             self.btn_run.config(state="normal")

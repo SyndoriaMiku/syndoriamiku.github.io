@@ -12,6 +12,8 @@ import unicodedata
 
 import library_store as store
 from library_store import read_catalog, write_catalog
+# Cấu hình và slug: một bản duy nhất ở translator_core (review Lần 8, B11/B12).
+from translator_core import CONFIG_PATH, load_config, save_config, slugify_vn  # noqa: F401
 
 # Khi đóng gói bằng PyInstaller, thư viện nằm cạnh file exe chứ không phải thư mục tạm.
 if getattr(sys, 'frozen', False):
@@ -22,7 +24,6 @@ else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LIBRARY_DIR = os.path.join(BASE_DIR, "library")
 CATALOG_PATH = os.path.join(LIBRARY_DIR, "list.json")
-CONFIG_PATH = os.path.join(BASE_DIR, "editor_config.json")
 BACKUP_DIR = os.path.join(BASE_DIR, ".backups")
 
 
@@ -65,27 +66,7 @@ def split_option(value):
     return slugify_vn(value), value.strip()
 
 
-# ───────────────────────── cấu hình ─────────────────────────
-
-def load_config():
-    try:
-        if os.path.exists(CONFIG_PATH):
-            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-                return json.load(f)
-    except Exception:
-        pass
-    return {}
-
-
-def save_config(data):
-    try:
-        existing = load_config()
-        existing.update(data)
-        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-            json.dump(existing, f, ensure_ascii=False, indent=2)
-    except Exception:
-        pass
-
+# ───────────────────────── đọc nội dung ─────────────────────────
 
 def safe_decode_b64(value):
     try:
@@ -96,19 +77,7 @@ def safe_decode_b64(value):
         return "[Loi giai ma]"
 
 
-def slugify_vn(text):
-    """Convert a Vietnamese (or any) title into a URL-friendly slug."""
-    _vn_map = str.maketrans("đĐ", "dD")
-    text = text.translate(_vn_map)
-    text = unicodedata.normalize("NFD", text)
-    text = "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
-    text = text.lower()
-    text = re.sub(r"[^a-z0-9\s-]", "", text)  # keep only alphanum, spaces, hyphens
-    text = re.sub(r"[\s-]+", "-", text).strip("-")
-    return text
-
-
-def counter_text(content, dirty=False):
+def chapter_counter_text(content, dirty=False):
     """"N chữ · N đoạn · N ký tự" của ô nội dung chương (đoạn cách nhau bằng dòng trống)."""
     text = content.strip()
     paragraphs = len([p for p in text.split("\n\n") if p.strip()]) if text else 0

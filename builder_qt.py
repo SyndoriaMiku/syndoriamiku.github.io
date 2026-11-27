@@ -1737,7 +1737,7 @@ class TranslatorWindow(QWidget, core.TranslatorCore):
         if not title or not content:
             warn(self, "Chú ý", "Vui lòng nhập tiêu đề và nội dung!")
             return
-        slug = core.slugify_vn(title)
+        slug = core.story_slug(title)
         if not slug:
             warn(self, "Chú ý", "Tiêu đề không hợp lệ, không thể tạo slug!")
             return

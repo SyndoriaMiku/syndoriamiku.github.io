@@ -35,6 +35,60 @@ class HelpersTest(unittest.TestCase):
                 core.read_draft(path)
 
 
+class ConfigTest(unittest.TestCase):
+    """Review Lần 8, B11: ghi nguyên tử, không xoá sạch cài đặt khi file hỏng, không mất khoá khi ghi song song."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self._old = core.CONFIG_PATH
+        core.CONFIG_PATH = os.path.join(self._tmp.name, "editor_config.json")
+
+    def tearDown(self):
+        core.CONFIG_PATH = self._old
+        self._tmp.cleanup()
+
+    def test_broken_file_is_kept_aside_not_overwritten(self):
+        with open(core.CONFIG_PATH, "w", encoding="utf-8") as fh:
+            fh.write('{"qt_builder_main": "abc", hong')
+        self.assertEqual(core.load_config(), {})
+        core.save_config({"a": 1})
+        self.assertEqual(core.load_config(), {"a": 1})
+        broken = [n for n in os.listdir(self._tmp.name) if ".broken-" in n]
+        self.assertEqual(len(broken), 1)
+        with open(os.path.join(self._tmp.name, broken[0]), encoding="utf-8") as fh:
+            self.assertIn("qt_builder_main", fh.read())
+
+    def test_concurrent_saves_keep_every_key(self):
+        import editor_core
+        threads = [threading.Thread(target=(core.save_config if i % 2 else editor_core.save_config),
+                                    args=({f"k{i}": i},)) for i in range(20)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        self.assertEqual(core.load_config(), {f"k{i}": i for i in range(20)})
+
+
+class StorySlugTest(unittest.TestCase):
+    """Review Lần 8, B13: slug truyện mới tối đa 80 ký tự; truyện đã có giữ slug cũ."""
+
+    def test_long_title_is_cut_with_hash(self):
+        title = "Ta " + " ".join(["Trùng Sinh Thành Phản Diện"] * 10)
+        slug = core.slugify_vn(title, max_len=80)
+        self.assertLessEqual(len(slug), 80)
+        self.assertRegex(slug, r"^ta-trung-sinh-.*-[0-9a-f]{6}$")
+        self.assertNotEqual(slug, core.slugify_vn(title + " 2", max_len=80))
+        self.assertEqual(core.slugify_vn("Hàn Lập", max_len=80), "han-lap")
+
+    def test_existing_title_reuses_its_slug(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "list.json")
+            long_slug = "a" * 150
+            core.store.write_json_atomic(path, [{"title": "Truyện  Dài ", "slug": long_slug}])
+            self.assertEqual(core.story_slug("truyện  dài", path), long_slug)
+            self.assertEqual(core.story_slug("Truyện mới", path), "truyen-moi")
+
+
 class TranslateStoryTest(unittest.TestCase):
     def test_pairs_lines_and_applies_names(self):
         tc = core.TranslatorCore()

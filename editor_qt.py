@@ -310,7 +310,7 @@ class EditorWindow(QWidget):
 
     def update_counter(self):
         dirty = self.is_dirty()
-        set_label(self.counter_label, ec.counter_text(raw_text(self.content_text), dirty),
+        set_label(self.counter_label, ec.chapter_counter_text(raw_text(self.content_text), dirty),
                   "#e8c27a" if dirty else "#8a7f70")
 
     def _catalog_or_error(self, parent=None):
