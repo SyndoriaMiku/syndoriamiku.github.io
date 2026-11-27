@@ -19,139 +19,10 @@ from editor_widgets import StorySearchCombo, StyledScrolledText, story_options, 
 import library_store as store
 from library_store import CatalogError, read_catalog, write_catalog
 
-# Khi đóng gói bằng PyInstaller, thư viện nằm cạnh file exe chứ không phải thư mục tạm.
-if getattr(sys, 'frozen', False):
-	BASE_DIR = os.path.dirname(sys.executable)
-	if os.path.basename(BASE_DIR).lower() == 'dist':
-		BASE_DIR = os.path.dirname(BASE_DIR)
-else:
-	BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-LIBRARY_DIR = os.path.join(BASE_DIR, "library")
-CATALOG_PATH = os.path.join(LIBRARY_DIR, "list.json")
-CONFIG_PATH = os.path.join(BASE_DIR, "editor_config.json")
-BACKUP_DIR = os.path.join(BASE_DIR, ".backups")
-
-
-def delete_library_chapter(story_slug, chapter_id):
-	"""Remove chapter files and atomically update the catalog; rollback on failure."""
-	for value in (story_slug, chapter_id):
-		if not re.fullmatch(r"[A-Za-z0-9_-]+", value):
-			raise ValueError("Mã truyện hoặc chương không hợp lệ.")
-	library_root = os.path.realpath(LIBRARY_DIR)
-	story_dir = os.path.join(library_root, story_slug)
-	chapter_dir = os.path.join(story_dir, chapter_id)
-	for path in (story_dir, chapter_dir):
-		if os.path.normcase(os.path.realpath(path)) != os.path.normcase(path):
-			raise ValueError("Không xóa chương qua đường dẫn liên kết.")
-	catalog = read_catalog(CATALOG_PATH)
-	story = next((item for item in catalog if item.get("slug") == story_slug), None)
-	if story is None or not any(ch.get("id") == chapter_id for ch in story.get("chapters", [])):
-		raise ValueError("Chương không còn trong danh mục. Hãy chọn lại chương.")
-	if os.path.lexists(chapter_dir) and not os.path.isdir(chapter_dir):
-		raise ValueError("Đường dẫn chương không phải thư mục.")
-
-	staging = None
-	try:
-		if os.path.isdir(chapter_dir):
-			staging = tempfile.mkdtemp(prefix=".delete-chapter-", dir=story_dir)
-			os.replace(chapter_dir, os.path.join(staging, "chapter"))
-		story["chapters"] = [ch for ch in story["chapters"] if ch.get("id") != chapter_id]
-		write_catalog(CATALOG_PATH, catalog)
-	except Exception:
-		if staging:
-			staged_chapter = os.path.join(staging, "chapter")
-			if os.path.exists(staged_chapter):
-				os.replace(staged_chapter, chapter_dir)
-			os.rmdir(staging)
-		raise
-
-	cleanup_warning = None
-	if staging:
-		try:
-			shutil.rmtree(staging)
-		except OSError as error:
-			cleanup_warning = f"Chương đã được gỡ khỏi thư viện, nhưng chưa dọn được dữ liệu tạm:\n{staging}\n{error}"
-	return catalog, cleanup_warning
-
-
-def delete_library_story(story_slug):
-	"""Remove one story directory and atomically update the catalog."""
-	if not re.fullmatch(r"[A-Za-z0-9_-]+", story_slug):
-		raise ValueError("Mã truyện không hợp lệ.")
-	library_root = os.path.realpath(LIBRARY_DIR)
-	story_dir = os.path.join(library_root, story_slug)
-	if os.path.normcase(os.path.realpath(story_dir)) != os.path.normcase(story_dir):
-		raise ValueError("Không xóa truyện qua đường dẫn liên kết.")
-	catalog = read_catalog(CATALOG_PATH)
-	if not any(item.get("slug") == story_slug for item in catalog):
-		raise ValueError("Truyện không còn trong danh mục. Hãy chọn lại truyện.")
-	if os.path.lexists(story_dir) and not os.path.isdir(story_dir):
-		raise ValueError("Đường dẫn truyện không phải thư mục.")
-
-	staging = None
-	try:
-		if os.path.isdir(story_dir):
-			staging = tempfile.mkdtemp(prefix=".delete-story-", dir=library_root)
-			os.replace(story_dir, os.path.join(staging, "story"))
-		catalog = [item for item in catalog if item.get("slug") != story_slug]
-		write_catalog(CATALOG_PATH, catalog)
-	except Exception:
-		if staging:
-			staged_story = os.path.join(staging, "story")
-			if os.path.exists(staged_story):
-				os.replace(staged_story, story_dir)
-			os.rmdir(staging)
-		raise
-
-	cleanup_warning = None
-	if staging:
-		try:
-			shutil.rmtree(staging)
-		except OSError as error:
-			cleanup_warning = f"Truyện đã được gỡ khỏi thư viện, nhưng chưa dọn được dữ liệu tạm:\n{staging}\n{error}"
-	return catalog, cleanup_warning
-
-
-def load_config():
-	try:
-		if os.path.exists(CONFIG_PATH):
-			with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-				return json.load(f)
-	except Exception:
-		pass
-	return {}
-
-
-def save_config(data):
-	try:
-		existing = load_config()
-		existing.update(data)
-		with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-			json.dump(existing, f, ensure_ascii=False, indent=2)
-	except Exception:
-		pass
-
-
-
-def safe_decode_b64(value):
-	try:
-		raw = base64.b64decode(value)
-		text = raw.decode("utf-8")
-		return unicodedata.normalize('NFC', text)
-	except Exception:
-		return "[Loi giai ma]"
-
-
-def slugify_vn(text):
-	"""Convert a Vietnamese (or any) title into a URL-friendly slug."""
-	_vn_map = str.maketrans("đĐ", "dD")
-	text = text.translate(_vn_map)
-	text = unicodedata.normalize("NFD", text)
-	text = "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
-	text = text.lower()
-	text = re.sub(r"[^a-z0-9\s-]", "", text)  # keep only alphanum, spaces, hyphens
-	text = re.sub(r"[\s-]+", "-", text).strip("-")
-	return text
+# Phần không dính giao diện nằm ở editor_core (dùng chung với editor_qt.py).
+from editor_core import (  # noqa: F401
+	BASE_DIR, LIBRARY_DIR, CATALOG_PATH, CONFIG_PATH, BACKUP_DIR,
+	delete_library_chapter, delete_library_story, load_config, save_config, safe_decode_b64, slugify_vn)
 
 
 def setup_text_shortcuts(widget):
@@ -2004,13 +1875,16 @@ class ChapterEditorApp:
 			selected = target.get("sel.first", "sel.last")
 		except tk.TclError:
 			selected = ""
+		anchor = target.index(tk.INSERT)
 		if selected and "\n" not in selected and len(selected) <= 80:
+			anchor = target.index("sel.first")  # bắt đầu từ chính chỗ đang bôi đen
 			self.search_entry.delete(0, tk.END)
-			self.search_entry.insert(0, selected)
+			self.search_entry.insert(0, re.escape(selected) if self.regex_var.get() else selected)
 		focus = self.replace_entry if replace and self.search_entry.get() else self.search_entry
 		focus.focus_set()
 		focus.selection_range(0, tk.END)
-		self.perform_search()
+		# Như builder: bắt đầu từ kết quả gần con trỏ, không nhảy về đầu văn bản.
+		self.perform_search(from_index=anchor)
 		return "break"
 
 	def show_replace_dialog(self, event=None):
@@ -2018,12 +1892,18 @@ class ChapterEditorApp:
 
 	def hide_search_dialog(self, event=None):
 		widget = self._target()
+		active = widget.tag_ranges("active_match")
 		if self.search_frame.winfo_ismapped():
 			self.search_frame.pack_forget()
 			self.replace_row.pack_forget()
 			widget.focus_set()
 		self._clear_matches(widget)
 		self.current_match_idx = -1
+		if active:  # giữ vị trí vừa tìm được (như builder): bôi đen để sửa/xoá ngay, mở lại tìm tiếp từ đây
+			widget.tag_remove("sel", "1.0", tk.END)
+			widget.tag_add("sel", active[0], active[1])
+			widget.mark_set(tk.INSERT, active[1])
+			widget.see(active[0])
 		return "break"
 
 	@staticmethod

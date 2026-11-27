@@ -5,25 +5,7 @@ import unicodedata
 from datetime import datetime
 
 
-def search_key(value):
-    value = unicodedata.normalize('NFD', value.casefold().replace('đ', 'd'))
-    return ''.join(c for c in value if unicodedata.category(c) != 'Mn')
-
-
-def story_options(catalog):
-    def updated(item):
-        try:
-            stamp = float(item.get('timestamp') or 0)
-            if stamp > 0:
-                return stamp
-        except (ValueError, TypeError):
-            pass
-        try:
-            return datetime.strptime(item.get('date', ''), '%d/%m/%Y').timestamp()
-        except (ValueError, TypeError):
-            return 0
-    return [f'{item["slug"]} | {item.get("title", "")}'
-            for item in sorted(catalog, key=updated, reverse=True) if item.get('slug')]
+from editor_core import search_key, story_options  # noqa: E402,F401  (dùng chung, không cần Tk)
 
 
 class StorySearchCombo(ttk.Combobox):

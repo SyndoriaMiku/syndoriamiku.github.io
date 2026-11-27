@@ -1,23 +1,28 @@
 # -*- mode: python ; coding: utf-8 -*-
-from PyInstaller.utils.hooks import collect_data_files
 
 
 a = Analysis(
-    ['studio.py'],
+    ['studio_qt.py'],
     pathex=[],
     binaries=[],
-    datas=collect_data_files('tkinterdnd2'),
-    hiddenimports=['tkinterdnd2'],
+    datas=[],
+    hiddenimports=['moxhi_scanner', 'moxhi_numpy', 'sentencepiece'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    # Scan Names (torch + transformers, ~7 GB với CUDA) chỉ chạy từ source;
-    # đóng gói vào exe sẽ vượt giới hạn 100 MB/file của GitHub.
+    # torch + transformers (~7 GB với CUDA) không đóng gói được (giới hạn 100 MB/file của GitHub).
+    # Quét tên trong exe dùng Moxhi chạy bằng numpy + sentencepiece (moxhi_numpy.py), chỉ CPU;
+    # BERT NER chỉ chạy từ source.
     excludes=['torch', 'torchvision', 'torchaudio', 'transformers', 'tokenizers', 'safetensors',
               'huggingface_hub', 'triton', 'tensorflow', 'jax', 'scipy', 'sklearn', 'pandas',
               'matplotlib', 'IPython', 'notebook', 'onnxruntime',
-              # name_scanner.py (jieba) không còn được builder/studio dùng; numpy chỉ do jieba kéo vào.
-              'jieba', 'numpy'],
+              # name_scanner.py (jieba) không còn được builder/studio dùng.
+              'jieba',
+              # Giao diện là Qt (PySide6): không cần Tk; bỏ các mô-đun Qt không dùng cho nhẹ.
+              'tkinter', '_tkinter', 'tkinterdnd2',
+              'PySide6.QtNetwork', 'PySide6.QtQml', 'PySide6.QtQuick', 'PySide6.QtOpenGL',
+              'PySide6.QtOpenGLWidgets', 'PySide6.QtPdf', 'PySide6.QtSvg', 'PySide6.QtDBus',
+              'PySide6.QtConcurrent', 'PySide6.QtSql', 'PySide6.QtTest', 'PySide6.QtXml'],
     noarchive=False,
     optimize=0,
 )

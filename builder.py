@@ -15,215 +15,14 @@ import library_store as store
 import r2_store
 from library_store import CatalogError, read_catalog, write_catalog
 from editor_widgets import search_key, apply_tk_defaults, StyledScrolledText
-try:
-    import han_viet as _hv
-    _HAN_VIET_OK = True
-except ImportError:
-    _HAN_VIET_OK = False
-
-try:
-    from gpu_name_scanner import NameScanner as _NameScanner
-    from gpu_name_scanner import is_installed as _ner_installed, preload_in_background as _ner_preload
-    _NAME_SCANNER_OK = True
-except ImportError:
-    _NameScanner = None
-    _NAME_SCANNER_OK = False
-
-try:  # MoxhiMT-30-Tag: cùng model với trang moxhi-tag.pages.dev (quét tên + cho sẵn tên tiếng Việt)
-    import moxhi_scanner as _moxhi
-    _MOXHI_OK = True
-except ImportError:
-    _moxhi = None
-    _MOXHI_OK = False
-
-
-# --- XÁC ĐỊNH THƯ MỤC GỐC ---
-if getattr(sys, 'frozen', False):
-    BASE_DIR = os.path.dirname(sys.executable)
-    if os.path.basename(BASE_DIR).lower() == 'dist':
-        BASE_DIR = os.path.dirname(BASE_DIR)
-else:
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-# --- CẤU HÌNH API ---
-API_URL = "https://comic.sangtacvietcdn.xyz/tsm.php?cdn=/"
-CHUNK_LIMIT = 20000
-DELAY = 1.2
-CONFIG_PATH = os.path.join(BASE_DIR, "editor_config.json")
-STORIES_DIR = os.path.join(BASE_DIR, "stories")
-LIBRARY_DIR = os.path.join(BASE_DIR, "library")
-LIBRARY_CATALOG = os.path.join(LIBRARY_DIR, "list.json")
-DRAFT_DIR = os.path.join(BASE_DIR, ".drafts")
-
-# Bảng màu dùng chung
-BG, PANEL, FIELD, MUTED, TEXT = "#15130f", "#1e1b17", "#29251f", "#a39887", "#e6dfd2"
-
-
-def name_cfg_path():
-    """name.cfg sits next to the exe when frozen, else next to this file."""
-    if getattr(sys, 'frozen', False):
-        return os.path.join(os.path.dirname(sys.executable), "name.cfg")
-    return os.path.join(BASE_DIR, "name.cfg")
-
-
-def draft_path(slug):
-    return os.path.join(DRAFT_DIR, f"{slug}.json")
-
-
-def write_draft(title, slug, cn_lines, vi_lines):
-    store.write_json_atomic(draft_path(slug), {
-        "title": title, "slug": slug, "cn": list(cn_lines), "vi": list(vi_lines),
-        "time": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
-    })
-
-
-def remove_draft(slug):
-    try:
-        os.remove(draft_path(slug))
-    except OSError:
-        pass
-
-
-def estimate_chunks(lines, limit=CHUNK_LIMIT):
-    """Same grouping rule as run_process (before name substitution)."""
-    chunks, current = 0, 0
-    for line in lines:
-        added = len(line) + (1 if current else 0)
-        if current and current + added > limit:
-            chunks += 1
-            current = len(line)
-        else:
-            current += added
-    return chunks + (1 if current else 0)
-
-
-def split_translation(lines, limit=CHUNK_LIMIT):
-    """Group (orig, replaced) lines into API chunks of <= limit characters."""
-    chunks, group, length = [], [], 0
-    for orig_line, rep_line in lines:
-        added = len(rep_line) + (1 if group else 0)
-        if not group or length + added <= limit:
-            group.append((orig_line, rep_line))
-            length += added
-        else:
-            chunks.append(group)
-            group, length = [(orig_line, rep_line)], len(rep_line)
-    if group:
-        chunks.append(group)
-    return chunks
-
-
-def load_config():
-    try:
-        if os.path.exists(CONFIG_PATH):
-            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-                return json.load(f)
-    except Exception:
-        pass
-    return {}
-
-
-def save_config(data):
-    try:
-        existing = load_config()
-        existing.update(data)
-        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-            json.dump(existing, f, ensure_ascii=False, indent=2)
-    except Exception:
-        pass
-
-
-
-def slugify_vn(text):
-    """Convert a Vietnamese (or any) title into a URL-friendly slug."""
-    _vn_map = str.maketrans("đĐ", "dD")
-    text = text.translate(_vn_map)
-    text = unicodedata.normalize("NFD", text)
-    text = "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
-    text = text.lower()
-    text = re.sub(r"[^a-z0-9\s-]", "", text)
-    text = re.sub(r"[\s-]+", "-", text).strip("-")
-    return text
-
-
-def compile_name_pattern(vi_names):
-    names = sorted(set(n.strip() for n in vi_names if n and n.strip()), key=len, reverse=True)
-    return re.compile(r'(?<!\w)(?:' + '|'.join(map(re.escape, names)) + r')(?!\w)') if names else None
-
-
-def fix_capitalization_after_names(text: str, vi_names: list, name_pattern=None) -> str:
-    """
-    Hạ chữ hoa sai sau tên riêng hoặc ký tự ẩn giữa câu do API giữ lại.
-    Không hạ chữ hoa nếu chuỗi tiếp theo là khởi đầu của một Tên riêng khác trong từ điển.
-    """
-    if not text:
-        return text
-
-    # Khớp tên dài trước, đúng ranh giới từ để không sửa bên trong tên khác.
-    matches = []
-    pattern = name_pattern if name_pattern is not None else compile_name_pattern(vi_names)
-    if pattern is not None:
-        matches = list(pattern.finditer(text))
-    name_starts = {match.start() for match in matches}
-    candidates = {}
-    horizontal_space = r'[^\S\r\n\v\f\x85\u2028\u2029]'
-    invisible = r'[\u200b-\u200d\u2060\ufeff]'
-    separator = rf'(?:{horizontal_space}|{invisible})'
-    following_pattern = re.compile(separator + r'+(\w+)')
-    for match in matches:
-        # API có thể giữ ký tự ẩn từ bản gốc giữa tên và từ tiếp theo
-        # (đặc biệt ZWNJ U+200C). Giữ các ký tự này, chỉ sửa chữ hoa.
-        # Không đi qua dấu câu hoặc xuống dòng (đầu câu mới).
-        following = following_pattern.match(text, match.end())
-        if not following:
-            continue
-        start = following.start(1)
-        word = following.group(1)
-        candidates[start] = word
-
-    # Một tên có thể được API dịch khác config ("mây thư"), hoặc không có
-    # trong config. Ký tự ẩn vẫn có thể làm API viết hoa nhầm từ tiếp theo.
-    # Yêu cầu trước khoảng phân cách là một ký tự từ: không vượt qua dấu
-    # kết câu, dấu mở lời thoại hay xuống dòng.
-    hidden_boundary = re.compile(rf'(?<=\w){horizontal_space}*{invisible}{separator}*(\w+)')
-    for match in hidden_boundary.finditer(text):
-        candidates[match.start(1)] = match.group(1)
-
-    edits = []
-    for start, word in sorted(candidates.items()):
-        if start in name_starts:
-            continue
-        # Giữ nguyên từ viết tắt như VIP, FBI.
-        if word.istitle() and not (word.isupper() and len(word) > 1):
-            edits.append((start, start + len(word), word.lower()))
-
-    parts = []
-    cursor = 0
-    for start, end, replacement in edits:
-        parts.extend((text[cursor:start], replacement))
-        cursor = end
-    parts.append(text[cursor:])
-    return ''.join(parts)
-
-
-def prepare_name_updates(vi_lines, wrong, right, vi_names):
-    """Compute changed lines only; safe to run without accessing Tk widgets."""
-    if not wrong:
-        return []
-    wrong_pattern = re.compile(re.escape(wrong), re.IGNORECASE)
-    name_pattern = compile_name_pattern(vi_names)
-    spacing_pattern = compile_name_loose_pattern([right])
-    updates = []
-    for index, original in enumerate(vi_lines):
-        if not wrong_pattern.search(original):
-            continue
-        translated = wrong_pattern.sub(lambda match: right, original)
-        translated = unicodedata.normalize('NFC', translated)
-        translated = fix_name_spacing(translated, spacing_pattern)
-        translated = fix_capitalization_after_names(translated, vi_names, name_pattern)
-        if translated != original:
-            updates.append((index, translated))
-    return updates
+# Phần không dính giao diện nằm ở translator_core (dùng chung với builder_qt.py).
+from translator_core import (  # noqa: F401
+    _hv, _HAN_VIET_OK, _NameScanner, _NAME_SCANNER_OK, _moxhi, _MOXHI_OK,
+    BASE_DIR, API_URL, CHUNK_LIMIT, DELAY, CONFIG_PATH, STORIES_DIR, LIBRARY_DIR, LIBRARY_CATALOG, DRAFT_DIR,
+    BG, PANEL, FIELD, MUTED, TEXT,
+    name_cfg_path, draft_path, write_draft, remove_draft, estimate_chunks, split_translation,
+    load_config, save_config, slugify_vn, compile_name_pattern, fix_capitalization_after_names,
+    prepare_name_updates, _ner_installed, _ner_preload)
 
 
 # --- CỬA SỔ REVIEW ---
@@ -1270,6 +1069,13 @@ class TranslatorGUI:
         self.find_entry = tk.Entry(bar, textvariable=self.find_var, bg=PANEL, fg="#f4ede1",
                                    insertbackground="white", borderwidth=0, font=("Consolas", 10))
         self.find_entry.pack(side="left", fill="x", expand=True, ipady=4, pady=4)
+        self.find_regex = tk.BooleanVar(value=False)
+        self.find_case = tk.BooleanVar(value=False)
+        check = dict(bg=FIELD, fg=MUTED, selectcolor=PANEL, activebackground=FIELD, activeforeground=TEXT,
+                     borderwidth=0, highlightthickness=0, font=("Segoe UI", 9), cursor="hand2",
+                     command=lambda: self.refresh_find(keep_position=True))
+        tk.Checkbutton(bar, text="Regex", variable=self.find_regex, **check).pack(side="left", padx=(6, 0))
+        tk.Checkbutton(bar, text="Aa", variable=self.find_case, **check).pack(side="left")
         self.find_status = tk.Label(bar, text="", width=12, bg=FIELD, fg=MUTED, font=("Segoe UI", 9))
         self.find_status.pack(side="left", padx=6)
         small = dict(bg="#3a332c", fg="white", activebackground="#4a4238", activeforeground="white",
@@ -1303,6 +1109,8 @@ class TranslatorGUI:
             selected = ""
         if selected and "\n" not in selected:
             self.txt_area.mark_set("insert", "sel.first")  # bắt đầu từ chính chỗ đang bôi đen
+            if self.find_regex.get():
+                selected = re.escape(selected)
             self.find_var.set(selected)  # trace sẽ tìm lại
         self.find_entry.focus_set()
         self.find_entry.select_range(0, tk.END)
@@ -1327,7 +1135,7 @@ class TranslatorGUI:
         self._find_timer = self.root.after(150, self.refresh_find)
 
     def refresh_find(self, keep_position=False):
-        """Tô sáng mọi kết quả; không phân biệt hoa/thường."""
+        """Tô sáng mọi kết quả (chuỗi thường hoặc regex; mặc định không phân biệt hoa/thường)."""
         if self._find_timer:
             self.root.after_cancel(self._find_timer)
         self._find_timer = None
@@ -1340,16 +1148,22 @@ class TranslatorGUI:
         if not query:
             self.find_status.config(text="", fg=MUTED)
             return
-        count = tk.IntVar()
-        index = "1.0"
-        while len(self._find_matches) < self.FIND_LIMIT:
-            index = text.search(query, index, stopindex=tk.END, nocase=True, count=count)
-            if not index or not count.get():
+        try:
+            pattern = store.compile_search(query, regex=self.find_regex.get(), match_case=self.find_case.get())
+        except re.error:
+            self.find_status.config(text="Regex lỗi", fg="#e8857b")
+            return
+        flat = []
+        for match in pattern.finditer(text.get("1.0", "end-1c")):
+            if match.start() == match.end():
+                continue  # regex khớp rỗng (vd. "a*") thì bỏ
+            start, end = text.index(f"1.0+{match.start()}c"), text.index(f"1.0+{match.end()}c")
+            self._find_matches.append((start, end))
+            flat += (start, end)
+            if len(self._find_matches) >= self.FIND_LIMIT:
                 break
-            end = f"{index}+{count.get()}c"
-            self._find_matches.append((index, end))
-            text.tag_add("find_match", index, end)
-            index = end
+        if flat:
+            text.tag_add("find_match", *flat)
         if not self._find_matches:
             self.find_status.config(text="Không thấy", fg="#e8857b")
             return

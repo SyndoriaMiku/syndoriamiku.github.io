@@ -1,0 +1,3 @@
+# Giao diện Story Studio / Story Translator / editor (studio_qt.py, builder_qt.py, editor_qt.py).
+PySide6-Essentials==6.12.0
+requests
