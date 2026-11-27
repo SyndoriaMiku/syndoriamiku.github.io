@@ -19,6 +19,7 @@ import os
 import re
 import shutil
 import tempfile
+import time
 import unicodedata
 
 import r2_store
@@ -39,6 +40,18 @@ class CatalogError(RuntimeError):
 
 # ─────────────────────────── JSON / files ───────────────────────────
 
+def _replace_retry(source, target, attempts=20, delay=0.05):
+    """os.replace, thử lại khi Windows báo file đích đang bị tiến trình khác mở (WinError 5/32)."""
+    for attempt in range(attempts):
+        try:
+            os.replace(source, target)
+            return
+        except PermissionError:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(delay)
+
+
 def write_text_atomic(path, text):
     directory = os.path.dirname(os.path.abspath(path))
     os.makedirs(directory, exist_ok=True)
@@ -48,7 +61,7 @@ def write_text_atomic(path, text):
             stream.write(text)
             stream.flush()
             os.fsync(stream.fileno())
-        os.replace(temp_path, path)
+        _replace_retry(temp_path, path)
         temp_path = None
     finally:
         if temp_path and os.path.exists(temp_path):

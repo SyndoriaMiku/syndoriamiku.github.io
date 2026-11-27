@@ -47,40 +47,10 @@ API_CONNECT_TIMEOUT = 10
 API_READ_TIMEOUT = 45
 CHUNK_LIMIT = 15000  # Số ký tự tối đa trong content, tính cả khoảng trắng/xuống dòng.
 DELAY = 1.2
-CONFIG_PATH = os.path.join(BASE_DIR, "editor_config.json")
 
 
-def load_config():
-    try:
-        if os.path.exists(CONFIG_PATH):
-            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-                return json.load(f)
-    except Exception:
-        pass
-    return {}
-
-
-def save_config(data):
-    try:
-        existing = load_config()
-        existing.update(data)
-        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-            json.dump(existing, f, ensure_ascii=False, indent=2)
-    except Exception:
-        pass
-
-
-
-def slugify_vn(text):
-    """Convert a Vietnamese (or any) title into a URL-friendly slug."""
-    _vn_map = str.maketrans("đĐ", "dD")
-    text = text.translate(_vn_map)
-    text = unicodedata.normalize("NFD", text)
-    text = "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
-    text = text.lower()
-    text = re.sub(r"[^a-z0-9\s-]", "", text)
-    text = re.sub(r"[\s-]+", "-", text).strip("-")
-    return text
+# Cấu hình (ghi nguyên tử, có khoá) và slug dùng chung với builder/editor (review Lần 9, B17).
+from translator_core import load_config, save_config, slugify_vn  # noqa: E402
 
 
 def fix_capitalization_after_names(text: str, vi_names: list) -> str:

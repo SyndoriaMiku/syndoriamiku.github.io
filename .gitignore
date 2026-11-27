@@ -69,6 +69,7 @@ _data/
 
 # Cài đặt trên máy (vị trí cửa sổ, mẫu tách chương, bộ quét tên): app tự tạo khi thiếu
 /editor_config.json
+/editor_config.json.*
 
 # File tạm của ghi nguyên tử (tempfile.mkstemp) còn sót khi app bị tắt giữa chừng.
 .tmp-*

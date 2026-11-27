@@ -69,6 +69,22 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(core.load_config(), {f"k{i}": i for i in range(20)})
 
 
+    def test_two_processes_keep_every_key(self):
+        """Review Lần 9, B14: hai app cùng mở (hai tiến trình) không làm mất cài đặt của nhau."""
+        import subprocess
+        core.save_config({"base": 1})
+        script = ("import sys; sys.path.insert(0, sys.argv[1]); import translator_core as c; "
+                  "c.CONFIG_PATH = sys.argv[2]\n"
+                  "for i in range(60): c.save_config({sys.argv[3] + str(i): i})")
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        procs = [subprocess.Popen([sys.executable, "-c", script, root, core.CONFIG_PATH, tag],
+                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT) for tag in ("a", "b")]
+        outputs = [proc.communicate(timeout=120)[0].decode("utf-8", "replace") for proc in procs]
+        config = core.load_config()
+        self.assertEqual(len(config), 121, outputs)
+        self.assertNotIn("Không lưu được", "".join(outputs))
+
+
 class StorySlugTest(unittest.TestCase):
     """Review Lần 8, B13: slug truyện mới tối đa 80 ký tự; truyện đã có giữ slug cũ."""
 
@@ -79,6 +95,8 @@ class StorySlugTest(unittest.TestCase):
         self.assertRegex(slug, r"^ta-trung-sinh-.*-[0-9a-f]{6}$")
         self.assertNotEqual(slug, core.slugify_vn(title + " 2", max_len=80))
         self.assertEqual(core.slugify_vn("Hàn Lập", max_len=80), "han-lap")
+        for small in (1, 3, 6, 7, 8):   # review Lần 9, B15: không vượt giới hạn khi max_len nhỏ
+            self.assertLessEqual(len(core.slugify_vn(title, max_len=small)), 8)
 
     def test_existing_title_reuses_its_slug(self):
         with tempfile.TemporaryDirectory() as tmp:

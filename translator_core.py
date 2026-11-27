@@ -149,6 +149,56 @@ def split_translation(lines, limit=CHUNK_LIMIT):
 _config_lock = threading.Lock()
 
 
+class _ConfigFileLock:
+    """Khoá giữa các tiến trình (vd. studio và editor cùng mở) quanh editor_config.json, bằng file
+    editor_config.json.lock. Chờ tối đa ``timeout`` giây rồi làm tiếp không khoá (không treo app)."""
+
+    def __init__(self, timeout=3.0):
+        self.timeout = timeout
+        self.handle = None
+
+    def __enter__(self):
+        try:
+            self.handle = open(CONFIG_PATH + ".lock", "a+")
+        except OSError:
+            return self
+        deadline = time.monotonic() + self.timeout
+        while True:
+            try:
+                if os.name == "nt":
+                    import msvcrt
+                    self.handle.seek(0)
+                    msvcrt.locking(self.handle.fileno(), msvcrt.LK_NBLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.flock(self.handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return self
+            except OSError:
+                if time.monotonic() >= deadline:
+                    self.handle.close()
+                    self.handle = None
+                    return self
+                time.sleep(0.01)
+
+    def __exit__(self, *exc):
+        if self.handle is None:
+            return False
+        try:
+            if os.name == "nt":
+                import msvcrt
+                self.handle.seek(0)
+                msvcrt.locking(self.handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(self.handle.fileno(), fcntl.LOCK_UN)
+        except OSError:
+            pass
+        finally:
+            self.handle.close()
+            self.handle = None
+        return False
+
+
 def _read_config():
     """dict cấu hình; ValueError nếu file hỏng (không phải dict JSON)."""
     if not os.path.exists(CONFIG_PATH):
@@ -162,18 +212,20 @@ def _read_config():
 
 def load_config():
     """Cấu hình hiện tại; file hỏng/không đọc được thì {} (app vẫn mở với mặc định)."""
-    try:
-        return _read_config()
-    except (OSError, ValueError):
-        return {}
+    with _config_lock, _ConfigFileLock():
+        try:
+            return _read_config()
+        except (OSError, ValueError):
+            return {}
 
 
 def save_config(data):
     """Gộp ``data`` vào cấu hình và ghi nguyên tử (temp + rename).
 
     File đang hỏng thì không ghi đè: đổi tên thành editor_config.json.broken-<thời điểm> để còn
-    lấy lại cài đặt, rồi mới ghi file mới. Một khoá chung giữ cho đọc–gộp–ghi không bị chen."""
-    with _config_lock:
+    lấy lại cài đặt, rồi mới ghi file mới. Khoá trong tiến trình + khoá file giữa các tiến trình giữ
+    cho đọc–gộp–ghi không bị chen (review Lần 9, B14)."""
+    with _config_lock, _ConfigFileLock():
         try:
             try:
                 existing = _read_config()
@@ -203,6 +255,8 @@ def slugify_vn(text, max_len=None):
     text = text.lower()
     text = re.sub(r"[^a-z0-9\s-]", "", text)
     text = re.sub(r"[\s-]+", "-", text).strip("-")
+    if max_len:
+        max_len = max(max_len, 8)   # chỗ cho "-" + 6 ký tự băm + ít nhất 1 ký tự (review Lần 9, B15)
     if max_len and len(text) > max_len:
         import hashlib
         digest = hashlib.sha1(text.encode("utf-8")).hexdigest()[:6]

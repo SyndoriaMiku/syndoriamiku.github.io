@@ -22,7 +22,8 @@ from library_store import CatalogError, read_catalog, write_catalog
 # Phần không dính giao diện nằm ở editor_core (dùng chung với editor_qt.py).
 from editor_core import (  # noqa: F401
 	BASE_DIR, LIBRARY_DIR, CATALOG_PATH, CONFIG_PATH, BACKUP_DIR,
-	delete_library_chapter, delete_library_story, load_config, save_config, safe_decode_b64, slugify_vn)
+	delete_library_chapter, delete_library_story, load_config, save_config, safe_decode_b64, slugify_vn,
+	chapter_counter_text)
 
 
 def setup_text_shortcuts(widget):
@@ -239,11 +240,8 @@ class ChapterEditorApp:
 		self._count_timer = None
 		if not hasattr(self, "counter_label"):
 			return
-		text = self.content_text.get("1.0", tk.END).strip()
-		paragraphs = len([p for p in text.split("\n\n") if p.strip()]) if text else 0
-		words = len(text.split())
-		dirty = "  ·  ● chưa lưu" if self.is_dirty() else ""
-		self.counter_label.config(text=f"{words:,} chữ  ·  {paragraphs} đoạn  ·  {len(text):,} ký tự{dirty}".replace(",", "."),
+		dirty = self.is_dirty()
+		self.counter_label.config(text=chapter_counter_text(self.content_text.get("1.0", tk.END), dirty),
 			fg="#e8c27a" if dirty else "#8a7f70")
 
 	def _on_content_modified(self, event=None):
