@@ -13,6 +13,6 @@ jobs:
         with:
           python-version: '3.x'
       - name: Check syntax of desktop modules
-        run: python -m py_compile builder.py editor.py studio.py library_store.py editor_widgets.py r2_store.py moxhi_scanner.py moxhi_numpy.py gpu_name_scanner.py han_viet.py translator_core.py builder_qt.py qt_widgets.py editor_core.py editor_qt.py studio_qt.py builder_new.py
+        run: python -m py_compile builder.py editor.py studio.py library_store.py editor_widgets.py r2_store.py moxhi_scanner.py moxhi_numpy.py gpu_name_scanner.py han_viet.py translator_core.py builder_qt.py qt_widgets.py editor_core.py editor_qt.py studio_qt.py
       - name: Run tests
         run: python -m unittest discover -s tests -v
